@@ -1,4 +1,4 @@
-# Walkthrough IR v1 — reference
+# Walkthrough IR v1: reference
 
 The IR is the only contract between whoever **plans** an explanation (an agent, a person, a tool) and the **engine** that plays it. It describes *what to show, in which order, and why*. The engine handles everything mechanical:
 
@@ -52,6 +52,11 @@ The compiled IR also carries the repository's **file tree** at `head` (`tree`), 
       "after": "inline content (optional)"
     }
   },
+  "tour": {                          // optional; the tour is ON by default ("tour": false turns it off)
+    "order": ["path/a.ts", "path/b.ts"],               // file order of the replay (the narrative order)
+    "tempo": { "path/a.ts": "skim", "path/b.ts#2": "key" },  // per file or per hunk: key | normal | skim
+    "questions": { "path/b.ts": "What changes in the query?" } // optional question shown while a file replays
+  },
   "glossary": [{ "term": "…", "definition": "one sentence" }],
   "chapters": [ /* Chapter */ ]
 }
@@ -73,6 +78,9 @@ The compiled IR also carries the repository's **file tree** at `head` (`tree`), 
       "id": "request-diff",            // unique; deep link: player.html#scene=request-diff
       "title": "request() now wraps send",
       "goal": "What the viewer knows after this scene (one sentence)",
+      "question": "The question the viewer has now, which this scene answers (shown above the code all scene long)",
+      "at": { "file": "path/to/file.ts", "hunk": 2 },   // play right after the tour replays this hunk (or this file)
+      "bridge": "Why this comes next: how the previous scene's answer raises this question (transition card)",
       "narration": "One lead sentence (why).\n\n- one bullet per visual beat\n- … (supports `code`, **bold**, *italic*)",
       "steps": [ /* Step */ ]
     }
@@ -80,13 +88,40 @@ The compiled IR also carries the repository's **file tree** at `head` (`tree`), 
 }
 ```
 
+## The tour: the whole diff is the spine
+
+By default the compiler builds a **tour** that replays every changed hunk of every changed file exactly once, so nothing in the change can be skipped. Generated files and lock files are left out.
+
+- **Order.** `tour.order` comes first. Files that are not listed follow in the order the author's scenes first touch them, then the remaining changed files, with tests last.
+- **Explanations attach to the tour.** A scene with `"at": { "file": "…", "hunk": 2 }` is played right after the tour has replayed that hunk; without `hunk`, after the whole file. Scenes without `at`, such as an overview graph, play where they are. The tour inserts the replay segments it needs before each attached scene. Hunks that no scene reaches are replayed in a final **Remaining changes** chapter.
+- **Tempo per hunk.**
+
+  | Tempo | Replay | Default for |
+  |---|---|---|
+  | `key` | typed character by character (up to ~700 characters; longer hunks fall back to `normal`) | a hunk a scene is attached to |
+  | `normal` | lines arrive one by one (~80 ms per line) | everything else |
+  | `skim` | the block appears at once | wiring: imports, re-exports, registrations, barrel files |
+
+  Removed lines always turn red first.
+- **Files appear and disappear.** An added file appears in the explorer when the tour (or a scene) first reaches it. A deleted file is struck through after its replay. A file's later hunks look unwritten until the tour reaches them.
+- **Segments are light.** Replay segments carry no narration, no transition card, and no end-of-scene pause. The strip shows the file, `hunk i/n`, and a question ("What changed in …?", or `tour.questions`). The walkthrough panel lists them as file rows with one dot per hunk, and its header counts the hunks seen.
+- **Returning to a file.** When an explanation scene continues in a file the tour has since left, the compiler inserts an `open` (a tab click) so that the switch is visible.
+
+A `replay` step (`{ "do": "replay", "file", "hunk", "tempo" }`) is what the tour generates. Authors rarely write it themselves.
+
+**How the player presents a scene** (see `design-rationale.md`):
+1. Every scene after the first opens with a short **transition card**. It shows what was just seen, the `bridge`, the `question` this scene answers, and the file it goes to. The previous view stays dimmed behind the card, and the structure map marks the next stop.
+2. While the scene plays, the strip above the code shows the scene number, the **question**, and the file in view.
+3. Only **one explanation is visible at a time**: the current narration item or the latest `note`, whichever is newer. It is attached right under the code range most recently highlighted. When there is no code to attach to, for example the lead sentence or a graph, it appears as a caption at the bottom of the editor.
+4. Only the two most recent highlights stay fully salient; older ones recede to a thin bar.
+
 **Narration items.** The narration is split into *items*: each sentence of a prose paragraph, and each `- ` bullet of a list paragraph. Items appear one by one as the scene plays. The current item is emphasised, earlier items stay, and later items are faint. By default the items are spread over the scene's steps by text length. A step can pin an item with **`cue: n`** (1-based), which makes item *n* appear when that step starts. Pin the items that name something on screen.
 
 **Scene boundaries.** When a scene ends, highlights, focus, notes, the pointer, the references panel, the graph and the `say` caption are cleared. Open tabs, layout, scroll positions and diff settings carry over, the same way they persist in an IDE.
 
 The scene duration is the longer of two values: the time its steps take, and the reading time of its narration. By default the player pauses at the end of every scene.
 
-## Step — common fields
+## Step: common fields
 
 | Field | Meaning |
 |---|---|

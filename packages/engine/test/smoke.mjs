@@ -18,11 +18,20 @@ const example = path.join(ROOT, 'examples/retry/walkthrough.json');
 // 1. compile the example
 const res = compileFile(example, { repo });
 assert.equal(res.ok, true, JSON.stringify(res.errors));
-assert.equal(res.stats.scenes, 8);
+const allScenes = res.ir.chapters.flatMap((c) => c.scenes);
+assert.equal(allScenes.filter((x) => !x.auto).length, 8, 'author scenes kept');
+// the tour replays every changed hunk exactly once, before the scene that explains it
+const replays = allScenes.flatMap((x) => x.steps.filter((st) => st.do === 'replay').map((st) => `${st.file}#${st.hunk}`));
+assert.equal(new Set(replays).size, replays.length, 'no hunk replayed twice');
+assert.equal(replays.length, res.stats.tour.hunks, 'every hunk replayed');
+assert.ok(replays.includes('src/config.ts#1') && replays.includes('test/retry.test.ts#1'));
+const order = allScenes.map((x) => x.id);
+assert.ok(order.indexOf('request-diff') > order.findIndex((id) => id.startsWith('tour-')), 'client.ts is replayed before it is explained');
+assert.ok(allScenes.some((x) => x.auto && x.steps.some((st) => st.do === 'replay' && st._mode === 'block')), 'wiring hunks are skimmed');
 assert.ok(res.ir.files['src/api/retry.ts'].after.includes('withRetry'));
 assert.ok(res.ir.files['src/users/profile.ts'] === undefined, 'unchanged, unreferenced files are not added');
 assert.ok(!('repo' in res.ir.source), 'local paths are stripped');
-const goto = res.ir.chapters[2].scenes[0].steps[0];
+const goto = allScenes.find((x) => x.id === 'goto-withretry').steps[0];
 assert.equal(goto._to.file, 'src/api/retry.ts');
 assert.equal(goto._to.line, 9);
 assert.ok(res.stats.estimatedSeconds > 30 && res.stats.estimatedSeconds < 200, `estimate ${res.stats.estimatedSeconds}s`);
@@ -30,8 +39,8 @@ assert.deepEqual(res.stats.unnarratedFiles, []);
 assert.ok(res.resolved.some((r) => r.path.endsWith('.to') && r.file === 'src/api/retry.ts' && r.from === 9), 'resolved report includes goto targets');
 assert.equal(res.ir.tree.root, 'repo');
 assert.ok(res.ir.tree.files.some(([d, n]) => res.ir.tree.dirs[d] === 'src/users' && n === 'profile.ts'), 'explorer tree includes unchanged files');
-const typeStep = res.ir.chapters[1].scenes[0].steps.find((x) => x.do === 'type');
-assert.ok(typeStep && typeStep._chars > 40 && typeStep._r.from === 22, `type resolved (${typeStep && typeStep._chars} chars)`);
+const rp = allScenes.flatMap((x) => x.steps).find((st) => st.do === 'replay' && st.file === 'src/api/client.ts' && st.hunk === 3);
+assert.ok(rp && rp._lines > 5 && rp._dels >= 1 && rp._mode === 'lines', `replay resolved (${rp && rp._mode}, ${rp && rp._lines} lines)`);
 console.log('✓ compile');
 
 // 2. render is a standalone page
@@ -43,8 +52,9 @@ console.log('✓ render');
 
 // 3. diagnostics on a broken IR
 const broken = JSON.parse(fs.readFileSync(example, 'utf8'));
-broken.chapters[1].scenes[0].steps[1].range = { find: 'this text does not exist' };
-broken.chapters[2].scenes[0].steps[0].from.token = 'nope';
+const byId = (ir, id) => ir.chapters.flatMap((c) => c.scenes).find((x) => x.id === id);
+byId(broken, 'request-diff').steps[1].range = { find: 'this text does not exist' };
+byId(broken, 'goto-withretry').steps[0].from.token = 'nope';
 broken.chapters[0].scenes[0].steps.push({ do: 'teleport' });
 const brokenFile = path.join(tmp, 'broken.json');
 fs.writeFileSync(brokenFile, JSON.stringify(broken));
@@ -55,8 +65,8 @@ assert.match(msgs, /not found in src\/api\/client\.ts/);
 assert.match(msgs, /token "nope"/);
 assert.match(msgs, /unknown action "teleport"/);
 const amb = JSON.parse(fs.readFileSync(example, 'utf8'));
-amb.chapters[1].scenes[0].steps[2].range = { find: 'HttpError' };            // appears on several lines
-amb.chapters[1].scenes[0].steps[3].range = { find: "throw new Error(`Request failed" }; // only on the before side
+byId(amb, 'request-diff').steps[2].range = { find: 'HttpError' };            // appears on several lines
+byId(amb, 'request-diff').steps[3].range = { find: "throw new Error(`Request failed" }; // only on the before side
 const ambRes = compile(amb, { repo });
 assert.match(ambRes.warnings.map((w) => w.message).join('\n'), /ambiguous anchor: text "HttpError" matches \d+ lines/);
 assert.match(ambRes.errors.map((e) => e.message).join('\n'), /it is on the before side \(line \d+\)/);

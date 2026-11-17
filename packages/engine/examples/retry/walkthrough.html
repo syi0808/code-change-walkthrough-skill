@@ -26,7 +26,9 @@
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "D2Coding", monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Segoe UI", "Noto Sans KR", sans-serif;
   --row-h: 20px;
-  --ease: cubic-bezier(.2, .7, .2, 1);
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);          /* ease-out (quint): default for anything entering or responding */
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);   /* on-screen movement between two states */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);    /* large surfaces moving (panels, the docking graph) */
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
@@ -66,7 +68,8 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--sans); }
-button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; transition: transform .16s var(--ease), background-color .16s var(--ease), color .16s var(--ease); }
+button:active { transform: scale(.97); }
 button:focus-visible, select:focus-visible, input:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: -1px; }
 kbd { font: 11px var(--mono); padding: 0 4px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; background: var(--bg-2); }
 code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padding: 0 4px; border-radius: 4px; }
@@ -89,7 +92,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 .icon-btn svg { width: 16px; height: 16px; }
 .icon-btn.sm { width: 22px; height: 22px; } .icon-btn.sm svg { width: 14px; height: 14px; }
 
-.wt-main { display: grid; grid-template-columns: 264px minmax(0, 1fr) 360px; min-height: 0; transition: grid-template-columns .3s var(--ease); }
+.wt-main { display: grid; grid-template-columns: 264px minmax(0, 1fr) 360px; min-height: 0; transition: grid-template-columns .5s var(--ease-drawer); }
 .wt.hide-explorer .wt-main { grid-template-columns: 0 minmax(0, 1fr) 360px; }
 .wt.hide-guide .wt-main { grid-template-columns: 264px minmax(0, 1fr) 0; }
 .wt.hide-explorer.hide-guide .wt-main { grid-template-columns: 0 minmax(0, 1fr) 0; }
@@ -126,6 +129,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 .ex-body.spot .ex-row.path { opacity: .72; }
 .ex-body.spot .ex-row.target { opacity: 1; }
 .wt-explorer:hover .ex-body.spot .ex-row { opacity: 1; transition-delay: .12s; }
+.ex-row.gone .nm { text-decoration: line-through; } .ex-row.gone { opacity: .45; }
 .ex-row.more { color: var(--fg-3); font-style: italic; cursor: default; }
 .ex-row.appear { animation: exIn .28s var(--ease) both; }
 @keyframes exIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
@@ -133,7 +137,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 
 /* ================================================================ stage & panes */
 .wt-stage { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; isolation: isolate; }
-.wt-panes { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 0fr; min-height: 0; transition: grid-template-columns .35s var(--ease); }
+.wt-panes { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 0fr; min-height: 0; transition: grid-template-columns .5s var(--ease-drawer); }
 .wt-panes.columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .wt-panes .pane + .pane { border-left: 1px solid var(--line); }
 .wt-panes:not(.columns) .pane:nth-child(2) { visibility: hidden; border: 0; }
@@ -151,8 +155,8 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 .tab.st-modified .nm, .tab.st-modified .sb { color: var(--git-mod); }
 .tab.st-added .nm, .tab.st-added .sb { color: var(--git-add); }
 .tab.st-deleted .nm { color: var(--git-del); text-decoration: line-through; } .tab.st-deleted .sb { color: var(--git-del); }
-.tab-new { animation: tabIn .3s var(--ease) both; }
-@keyframes tabIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.tab-new { animation: tabIn .25s var(--ease) both; }
+@keyframes tabIn { from { opacity: 0; transform: translateY(4px); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
 .crumbs { display: flex; align-items: center; gap: 10px; padding: 2px 8px 2px 14px; font-size: 12.5px; color: var(--fg-2); min-height: 26px; white-space: nowrap; overflow: hidden; flex: none; box-shadow: 0 2px 4px -3px rgba(0,0,0,.4); position: relative; z-index: 4; background: var(--bg); }
 .crumbs .path { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .crumbs .path i { font-style: normal; color: var(--fg-3); margin: 0 5px; }
@@ -168,8 +172,8 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 .dstat .sq i.a { background: var(--add-fg); } .dstat .sq i.d { background: var(--del-fg); }
 .editor { flex: 1; overflow: auto; position: relative; font: 12.5px/var(--row-h) var(--mono); tab-size: 4; }
 .code { position: relative; min-width: max-content; padding-bottom: 40vh; }
-.code.enter { animation: codeIn .32s var(--ease) both; }
-@keyframes codeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.code.enter { animation: codeIn .3s var(--ease) both; }
+@keyframes codeIn { from { opacity: 0; transform: translateY(4px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
 .empty-pane { display: grid; place-items: center; align-content: center; gap: 6px; height: 100%; min-height: 240px; color: var(--fg-3); text-align: center; padding: 24px; font-family: var(--sans); }
 
 /* ---------------------------------------------------------------- rows (GitHub diff) */
@@ -213,31 +217,36 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 @keyframes unfold { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 
 /* ---------------------------------------------------------------- walkthrough highlight: a ring + accent bar that keeps diff colours visible */
+.row::before { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2; opacity: 0;
+  background: color-mix(in srgb, var(--t, var(--t-focus)) 9%, transparent);
+  box-shadow: inset 3px 0 var(--t, var(--t-focus));
+  transition: opacity .32s var(--ease), box-shadow .32s var(--ease), background-color .32s var(--ease); }
 .row.hl { --t: var(--t-focus); }
 .row.hl-info { --t: var(--t-info); } .row.hl-warn { --t: var(--t-warn); } .row.hl-add { --t: var(--t-add); } .row.hl-remove { --t: var(--t-remove); }
-.row.hl::before { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2;
-  background: color-mix(in srgb, var(--t) 9%, transparent);
-  box-shadow: inset 3px 0 var(--t), inset -1px 0 color-mix(in srgb, var(--t) 55%, transparent);
-  animation: hlIn .38s var(--ease) both; }
+.row.hl::before { opacity: 1; box-shadow: inset 3px 0 var(--t), inset -1px 0 color-mix(in srgb, var(--t) 55%, transparent); }
 .row.hl.hl-first::before { box-shadow: inset 3px 0 var(--t), inset -1px 0 color-mix(in srgb, var(--t) 55%, transparent), inset 0 1px color-mix(in srgb, var(--t) 70%, transparent); }
 .row.hl.hl-last::before { box-shadow: inset 3px 0 var(--t), inset -1px 0 color-mix(in srgb, var(--t) 55%, transparent), inset 0 -1px color-mix(in srgb, var(--t) 70%, transparent); }
 .row.hl.hl-first.hl-last::before { box-shadow: inset 3px 0 var(--t), inset 0 0 0 1px color-mix(in srgb, var(--t) 60%, transparent); }
-@keyframes hlIn { from { opacity: 0; transform: scaleX(.985); transform-origin: left; } to { opacity: 1; transform: none; } }
+/* older highlights recede to a thin bar (attention budget, M14) */
+.row.hl.hl-old::before { opacity: 1; background: transparent; box-shadow: inset 2px 0 color-mix(in srgb, var(--fg-3) 70%, transparent); }
 .row.dim { opacity: .3; }
 .row.flash::after { content: ""; position: absolute; inset: 0; background: var(--flash); pointer-events: none; animation: flash 1.2s ease-out forwards; z-index: 2; }
 @keyframes flash { from { opacity: 1; } to { opacity: 0; } }
-.hl-label { position: absolute; left: calc(var(--vw, 100%) - 12px); transform: translateX(-100%); top: 1px; white-space: nowrap; z-index: 3; font: 600 10.5px/17px var(--sans); padding: 0 7px; border-radius: 9px; color: #fff; pointer-events: none; box-shadow: 0 1px 3px rgba(0,0,0,.25); background: var(--t-focus); }
-.hl-label.tone-info { background: var(--t-info); } .hl-label.tone-warn { background: var(--t-warn); color: #1f1f1f; } .hl-label.tone-add { background: var(--t-add); } .hl-label.tone-remove { background: var(--t-remove); }
-.hl-label.in { animation: labelIn .35s var(--ease) both; }
-@keyframes labelIn { from { opacity: 0; transform: translateX(calc(-100% + 8px)); } to { opacity: 1; transform: translateX(-100%); } }
+.hl-label { position: absolute; left: calc(var(--vw, 100%) - 12px); transform: translateX(-100%); top: 1px; white-space: nowrap; z-index: 3; font: 600 10.5px/16px var(--sans); padding: 0 7px; border-radius: 9px; pointer-events: none;
+  --c: var(--t-focus); color: var(--c); background: color-mix(in srgb, var(--c) 16%, var(--bg)); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.hl-label.tone-info { --c: var(--t-info); } .hl-label.tone-warn { --c: var(--t-warn); } .hl-label.tone-add { --c: var(--t-add); } .hl-label.tone-remove { --c: var(--t-remove); }
+.hl-label.in { animation: labelIn .28s var(--ease) both; }
+@keyframes labelIn { from { opacity: 0; transform: translateX(calc(-100% + 6px)); filter: blur(3px); } to { opacity: 1; transform: translateX(-100%); filter: none; } }
 
 /* ---------------------------------------------------------------- diff reveal (changes sweep in after a file opens) */
 .row.chg-pend, .row.chg-pend .gn, .row.split.chg-pend .half, .row.split.chg-pend .half .gn { background: transparent !important; }
 .row.chg-pend .gn, .row.split.chg-pend .half .gn { background: var(--bg) !important; color: var(--fg-3); }
 .row.chg-pend .mk { visibility: hidden; }
 .row.chg-pend .wd-add, .row.chg-pend .wd-del { background: transparent; }
-.row.chg-pend .cg { background: transparent !important; }
-.row.chg-pend.ch-delpt .cg::after { display: none; }
+
+/* ---------------------------------------------------------------- tour replay: lines / blocks arriving */
+.row.ln-new { animation: lnIn .22s var(--ease) both; }
+@keyframes lnIn { from { opacity: 0; transform: translateX(-4px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
 
 /* ---------------------------------------------------------------- typing replay */
 .row.typ-hidden { display: none; }
@@ -255,12 +264,62 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 /* ---------------------------------------------------------------- notes */
 .note { display: grid; grid-template-rows: 1fr; margin: 0 12px 0 74px; position: relative; z-index: 3; }
 .note-in { margin: 3px 0 8px; padding: 7px 11px; background: var(--note-bg); border: 1px solid var(--line-2); border-left: 3px solid var(--note-edge, var(--t-focus)); border-radius: 6px; font: 13px/1.55 var(--sans); white-space: normal; max-width: 660px; box-shadow: 0 2px 8px rgba(0,0,0,.12); color: var(--fg-strong); }
-.note.in { animation: noteIn .42s var(--ease) both; }
-@keyframes noteIn { from { opacity: 0; transform: translateY(-6px) scaleY(.92); transform-origin: top; } to { opacity: 1; transform: none; } }
+.note.in { animation: noteIn .3s var(--ease) both; }
+.note { transition: opacity .2s var(--ease), filter .2s var(--ease), transform .2s var(--ease); }
+.note.out { opacity: 0; filter: blur(4px); transform: translateY(-2px); }
+@keyframes noteIn { from { opacity: 0; transform: translateY(-4px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
 .note .tag { font: 700 10px var(--sans); text-transform: uppercase; letter-spacing: .05em; color: var(--note-edge, var(--t-focus)); margin-right: 7px; }
 .note.tone-why { --note-edge: var(--t-info); } .note.tone-risk { --note-edge: var(--t-remove); } .note.tone-tip { --note-edge: var(--t-add); }
 .tokline { position: absolute; height: 2px; background: var(--accent); pointer-events: none; z-index: 5; border-radius: 1px; animation: fadeIn .2s; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ================================================================ orientation: strip (where / which step), caption (what now), bridge (why next) */
+.wt-orient { display: none; }
+.wt.oriented .wt-orient { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--bg-side); font-size: 12.5px; color: var(--fg-2); white-space: nowrap; overflow: hidden; flex: none; }
+.o-pos { font: 12px var(--mono); color: var(--fg-3); } .o-pos b { color: var(--fg-strong); font-weight: 600; }
+.o-q { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--fg-strong); font-weight: 600; font-size: 13px; }
+.o-q .q { flex: none; width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; font: 700 11px var(--mono); color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.o-q code { font-weight: 500; }
+.o-spacer { flex: 1; }
+.o-hunk { font: 11.5px var(--mono); color: var(--fg-3); }
+.gd-meta b { color: var(--fg-strong); font-weight: 600; }
+.o-file { display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px; border-radius: 6px; background: var(--bg-3); color: var(--fg); min-width: 0; }
+.o-file .fi { font: 700 9px var(--mono); } .o-file .nm { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+.o-file .role { color: var(--fg-3); font-size: 11.5px; }
+/* floating caption: the voice when it has no code to sit next to (fixed layer, no layout shift) */
+.wt-caption { position: fixed; z-index: 60; transform: translateY(-100%); display: flex; justify-content: center; pointer-events: none; opacity: 0; transition: opacity .2s var(--ease); }
+.wt-caption.show { opacity: 1; }
+.cap-in { display: inline-flex; gap: 12px; align-items: flex-start; max-width: 100%; padding: 10px 16px; border-radius: 12px; pointer-events: auto;
+  background: color-mix(in srgb, var(--bg-2) 94%, transparent); border: 1px solid var(--line-2); box-shadow: var(--shadow); backdrop-filter: blur(8px); }
+.cap-dots { display: flex; gap: 4px; padding-top: 9px; flex: none; }
+.cap-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); transition: background-color .3s var(--ease), transform .3s var(--ease); }
+.cap-dots i.past { background: color-mix(in srgb, var(--accent) 45%, var(--line-2)); }
+.cap-dots i.cur { background: var(--accent); transform: scale(1.25); }
+.cap-text { font-size: 15px; line-height: 1.6; color: var(--fg-strong); max-width: 860px; }
+/* the callout: the same voice, attached right under the code it explains */
+.note.callout { margin-left: 74px; }
+.note.callout .note-in { display: flex; gap: 10px; align-items: flex-start; border-left-color: var(--accent); font-size: 14px; padding: 8px 12px; }
+.note .note-in { max-width: min(660px, calc(var(--vw, 100%) - 96px)); }
+.note.callout .cap-text { font-size: 14px; }
+.note.callout .cap-dots { padding-top: 7px; }
+.note.callout .tag { padding-top: 2px; }
+.swap { animation: swapIn .3s var(--ease) both; }
+.swap-soft { animation: fadeIn .2s var(--ease) both; }
+@keyframes swapIn { from { opacity: 0; transform: translateY(3px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+.wt-panes, .wt-refs { transition: opacity .45s var(--ease), filter .45s var(--ease), transform .45s var(--ease-drawer); }
+.wt-stage.bridging .wt-panes, .wt-stage.bridging .wt-refs { opacity: .28; filter: blur(2px) saturate(.7); transform: scale(.992); }
+.wt-bridge { position: absolute; inset: 30px 0 0; z-index: 30; display: grid; place-items: center; pointer-events: none; padding: 16px; }
+.br-card { width: min(560px, 100%); padding: 20px 24px; border-radius: 14px; background: color-mix(in srgb, var(--bg-2) 92%, transparent); border: 1px solid var(--line-2); box-shadow: var(--shadow);
+  opacity: 0; transform: translateY(8px) scale(.98); filter: blur(6px); transition: opacity .3s var(--ease), transform .45s var(--ease), filter .3s var(--ease); }
+.wt-bridge.show .br-card { opacity: 1; transform: none; filter: none; }
+.br-eyebrow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--fg-3); letter-spacing: .02em; }
+.br-ch { color: var(--accent); font-weight: 600; }
+.br-n { font-family: var(--mono); }
+.br-from { margin-top: 10px; font-size: 12px; color: var(--fg-3); }
+.br-sub { margin-top: 4px; font-size: 12.5px; color: var(--fg-3); }
+.br-title { margin-top: 6px; font-size: 20px; font-weight: 650; color: var(--fg-strong); line-height: 1.35; }
+.br-why { margin-top: 10px; font-size: 13.5px; line-height: 1.6; color: var(--fg-2); }
+.br-where { margin-top: 14px; }
 
 /* ================================================================ overlays */
 .wt-start { position: absolute; inset: 0; z-index: 40; display: grid; place-content: center; justify-items: center; gap: 10px; background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(3px); text-align: center; padding: 16px; transition: opacity .45s var(--ease), visibility .45s; }
@@ -278,12 +337,12 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 .wt-keys kbd { font-size: 12px; padding: 1px 6px; background: var(--bg-3); color: var(--fg); box-shadow: var(--shadow); }
 .wt-toast { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); z-index: 25; background: var(--bg-2); border: 1px solid var(--line-2); box-shadow: var(--shadow); border-radius: 6px; padding: 5px 12px; font: 12px var(--mono); color: var(--fg); pointer-events: none; white-space: nowrap; max-width: 90%; overflow: hidden; text-overflow: ellipsis; }
 .wt-toast.in { animation: toastIn .3s var(--ease) both; }
-@keyframes toastIn { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, -4px); filter: blur(4px); } to { opacity: 1; transform: translate(-50%, 0); filter: none; } }
 
 /* refs peek */
 .wt-refs { border-top: 1px solid var(--line-2); background: var(--bg-side); max-height: 34%; display: flex; flex-direction: column; min-height: 0; flex: none; }
 .wt-refs.in { animation: refsIn .35s var(--ease) both; }
-@keyframes refsIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes refsIn { from { opacity: 0; transform: translateY(8px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
 .wt-refs header { padding: 6px 14px; font-size: 12px; color: var(--fg-2); border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: baseline; }
 .wt-refs header b { color: var(--fg-strong); font-family: var(--mono); }
 .wt-refs ol { list-style: none; margin: 0; padding: 4px 0; overflow: auto; }
@@ -297,10 +356,10 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 
 /* graph: full-screen overview → docked structure map (overview + detail). Fixed layer; JS sets the box. */
 .wt-graph { position: fixed; z-index: 50; display: flex; flex-direction: column; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden;
-  transition: left .65s var(--ease), top .65s var(--ease), width .65s var(--ease), height .65s var(--ease), opacity .3s, border-radius .65s, box-shadow .65s; }
+  transition: left .6s var(--ease-drawer), top .6s var(--ease-drawer), width .6s var(--ease-drawer), height .6s var(--ease-drawer), opacity .25s var(--ease), border-radius .6s var(--ease-drawer), box-shadow .6s var(--ease-drawer); }
 .wt-graph.in { animation: graphIn .45s var(--ease) both; }
 .wt-graph.leaving { opacity: 0; }
-@keyframes graphIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes graphIn { from { opacity: 0; transform: scale(.96); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
 .wt-graph.mini { border-radius: 8px; box-shadow: none; background: var(--bg); }
 .gd-map { height: 168px; margin: 0 10px 8px; flex: none; border-radius: 8px; }
 .wt-graph header { display: flex; align-items: center; gap: 2px; padding: 5px 6px 5px 14px; font-size: 12px; color: var(--fg-2); border-bottom: 1px solid var(--line); flex: none; }
@@ -311,6 +370,8 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 .wt-graph svg { display: block; width: 100%; height: 100%; max-width: var(--w); }
 .wt-graph.full svg, .wt-graph.panel svg { max-width: 100%; max-height: 100%; }
 .wt-graph.mini svg { max-width: 100%; }
+.g-node.next rect { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 4 3; animation: nextPulse 1.2s var(--ease) infinite; }
+@keyframes nextPulse { 50% { fill: color-mix(in srgb, var(--accent) 18%, var(--bg)); } }
 .g-node.visited rect { stroke-width: 1.8; fill: color-mix(in srgb, var(--t-focus) 6%, var(--bg)); }
 .g-node, .g-edge { animation: gIn .45s var(--ease) both; animation-delay: calc(var(--i, 0) * 70ms); transition: opacity .35s var(--ease); }
 @keyframes gIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
@@ -376,6 +437,19 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 30%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent-strong) 0%, transparent); } }
 .gd-sc.cur .gd-sc-h { color: var(--fg-strong); font-weight: 600; background: var(--bg-hover); }
 .gd-sc .gd-inner { padding: 0 6px 0 2px; }
+/* tour segments: compact file rows with one dot per hunk */
+.gd-sc.auto .gd-sc-h { font-size: 12.5px; padding: 3px 8px 3px 2px; color: var(--fg-2); }
+.gd-sc.auto .bullet { width: 9px; height: 9px; left: -5px; top: 9px; border-width: 1.5px; }
+.gd-sc.auto .bullet svg { display: none; }
+.gd-sc.auto .fi { font: 700 9px var(--mono); flex: none; }
+.gd-sc.auto .t { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gd-sc.auto.st-added .t { color: var(--git-add); } .gd-sc.auto.st-modified .t { color: var(--git-mod); } .gd-sc.auto.st-deleted .t { color: var(--git-del); text-decoration: line-through; }
+.gd-sc.auto .hk { display: flex; gap: 3px; flex: none; }
+.gd-sc.auto .hk i { width: 7px; height: 7px; border-radius: 2px; background: var(--line-2); transition: background-color .25s var(--ease), transform .25s var(--ease); }
+.gd-sc.auto .hk i.cur { background: color-mix(in srgb, var(--accent) 55%, var(--line-2)); transform: scale(1.15); }
+.gd-sc.auto .hk i.on, .gd-sc.auto.done .hk i { background: var(--accent); }
+.gd-sc.auto.cur .gd-sc-h { color: var(--fg-strong); background: var(--bg-hover); font-weight: 400; }
+.gd-sc.auto.done .bullet { background: var(--accent); border-color: var(--accent); }
 .gd-sc.open .gd-inner { padding: 6px 6px 8px 2px; }
 .gd-goal { font-size: 12px; color: var(--fg-2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; margin-bottom: 8px; background: var(--bg); }
 .gd-goal b { color: var(--accent); font-weight: 600; margin-right: 6px; }
@@ -412,8 +486,8 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 .scrub .track { position: absolute; left: 0; right: 0; top: 11px; height: 4px; display: flex; gap: 2px; }
 .scrub .seg { height: 100%; background: var(--line-2); border-radius: 2px; position: relative; overflow: hidden; }
 .scrub .seg .fill { position: absolute; inset: 0; width: 0; background: var(--accent); }
-.scrub .tick { position: absolute; top: 9px; width: 2px; height: 8px; background: var(--bg-side); pointer-events: none; }
-.scrub .knob { position: absolute; top: 6px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--fg-strong); box-shadow: 0 1px 4px rgba(0,0,0,.4); pointer-events: none; }
+.scrub .tick { position: absolute; top: 9px; width: 2px; height: 8px; background: var(--bg-side); pointer-events: none; z-index: 1; }
+.scrub .knob { position: absolute; z-index: 2; top: 6px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--fg-strong); box-shadow: 0 1px 4px rgba(0,0,0,.4); pointer-events: none; }
 .scrub .tip { position: absolute; bottom: 24px; transform: translateX(-50%); background: var(--bg-2); border: 1px solid var(--line-2); padding: 2px 8px; border-radius: 4px; font-size: 11.5px; white-space: nowrap; pointer-events: none; display: none; box-shadow: var(--shadow); }
 .scrub:hover .tip { display: block; }
 .ctrl-right { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-2); }
@@ -457,8 +531,8 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 </head>
 <body>
 <div id="app" class="wt" aria-busy="true"></div>
-<script type="application/json" id="walkthrough-ir">{"version":1,"meta":{"title":"Retry idempotent requests with exponential backoff","summary":"`request()` now retries failed **idempotent (GET) requests** up to 3 times with exponential backoff. The retry logic lives in a new `retry.ts` module, and an `HttpError` type lets it retry only transient failures (5xx, 429).","intent":"feature","language":"en","strategy":{"order":"top-down","rationale":"Start from what callers see (what changed), then go down into the new module (how it works), and finish with the blast radius (existing callers) and tests."},"takeaways":["GET retries by default; other methods only with `idempotent: true`","Only `isTransient()` errors are retried: 5xx and 429","`fetchUser` gets retries without any code change; `renameUser` (PATCH) is unaffected"],"reviewFocus":["Are any PATCH/POST callers idempotent and should pass `idempotent: true`?","Does the total backoff (200+400+800 ms) fit within `timeoutMs`?"]},"source":{"base":"HEAD~1","head":"HEAD","baseSha":"0bf3d193b9","headSha":"861a432fbf"},"files":{"src/api/client.ts":{"status":"modified","role":"HTTP entry point","language":"typescript","before":"import { config } from '../config';\n\nexport interface RequestOptions {\n  method?: string;\n  body?: unknown;\n}\n\nexport async function request\u003cT>(path: string, opts: RequestOptions = {}): Promise\u003cT> {\n  const res = await fetch(config.baseUrl + path, {\n    method: opts.method ?? 'GET',\n    body: opts.body ? JSON.stringify(opts.body) : undefined,\n  });\n  if (!res.ok) {\n    throw new Error(`Request failed: ${res.status}`);\n  }\n  return (await res.json()) as T;\n}\n","after":"import { config } from '../config';\nimport { HttpError, withRetry } from './retry';\n\nexport interface RequestOptions {\n  method?: string;\n  body?: unknown;\n  idempotent?: boolean;\n}\n\nexport async function request\u003cT>(path: string, opts: RequestOptions = {}): Promise\u003cT> {\n  const method = opts.method ?? 'GET';\n  const send = async () => {\n    const res = await fetch(config.baseUrl + path, {\n      method,\n      body: opts.body ? JSON.stringify(opts.body) : undefined,\n    });\n    if (!res.ok) {\n      throw new HttpError(res.status);\n    }\n    return (await res.json()) as T;\n  };\n  const idempotent = opts.idempotent ?? method === 'GET';\n  return idempotent ? withRetry(send, config.retry) : send();\n}\n"},"src/api/retry.ts":{"status":"added","role":"retry policy","language":"typescript","before":null,"after":"export interface RetryPolicy {\n  retries: number;\n  baseDelayMs: number;\n}\n\nconst sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));\n\n/** Retries `fn` on transient failures with exponential backoff. */\nexport async function withRetry\u003cT>(fn: () => Promise\u003cT>, policy: RetryPolicy): Promise\u003cT> {\n  let attempt = 0;\n  for (;;) {\n    try {\n      return await fn();\n    } catch (err) {\n      if (!isTransient(err) || attempt >= policy.retries) throw err;\n      await sleep(policy.baseDelayMs * 2 ** attempt);\n      attempt++;\n    }\n  }\n}\n\nexport function isTransient(err: unknown): boolean {\n  return err instanceof HttpError && (err.status >= 500 || err.status === 429);\n}\n\nexport class HttpError extends Error {\n  constructor(public status: number) {\n    super(`Request failed: ${status}`);\n  }\n}\n"},"src/config.ts":{"status":"modified","role":"config","language":"typescript","before":"export const config = {\n  baseUrl: process.env.API_URL ?? 'http://localhost:3000',\n  timeoutMs: 5000,\n};\n","after":"export const config = {\n  baseUrl: process.env.API_URL ?? 'http://localhost:3000',\n  timeoutMs: 5000,\n  retry: { retries: 3, baseDelayMs: 200 },\n};\n"},"src/users/service.ts":{"status":"context","role":"existing caller","language":"typescript","before":"import { request } from '../api/client';\n\nexport interface User {\n  id: string;\n  name: string;\n}\n\nexport async function fetchUser(id: string): Promise\u003cUser> {\n  return request\u003cUser>(`/users/${id}`);\n}\n\nexport async function renameUser(id: string, name: string): Promise\u003cUser> {\n  return request\u003cUser>(`/users/${id}`, { method: 'PATCH', body: { name } });\n}\n","after":"import { request } from '../api/client';\n\nexport interface User {\n  id: string;\n  name: string;\n}\n\nexport async function fetchUser(id: string): Promise\u003cUser> {\n  return request\u003cUser>(`/users/${id}`);\n}\n\nexport async function renameUser(id: string, name: string): Promise\u003cUser> {\n  return request\u003cUser>(`/users/${id}`, { method: 'PATCH', body: { name } });\n}\n"},"test/retry.test.ts":{"status":"added","language":"typescript","before":null,"after":"import { HttpError, withRetry } from '../src/api/retry';\n\ntest('retries transient errors', async () => {\n  let calls = 0;\n  const v = await withRetry(async () => {\n    if (++calls \u003c 3) throw new HttpError(503);\n    return 'ok';\n  }, { retries: 3, baseDelayMs: 0 });\n  expect(v).toBe('ok');\n  expect(calls).toBe(3);\n});\n\ntest('does not retry 4xx', async () => {\n  await expect(withRetry(async () => { throw new HttpError(404); }, { retries: 3, baseDelayMs: 0 })).rejects.toThrow();\n});\n"}},"glossary":[{"term":"idempotent","definition":"A request whose effect is the same no matter how many times it runs, so retrying it is safe."},{"term":"exponential backoff","definition":"Waiting base × 2^n between retries to avoid hammering a struggling server."}],"chapters":[{"id":"overview","title":"The big picture","goal":"Get a map of what was added where","scenes":[{"id":"map","title":"Map of the change","goal":"Know the three files' roles and how they relate","narration":"The change has three parts. **client.ts** starts using the new **retry.ts** module, and the policy values come from **config.ts**. The existing caller `service.ts` inherits the new behaviour without any code change.","steps":[{"do":"graph","title":"Dependencies","nodes":[{"id":"svc","label":"users/service.ts","sub":"fetchUser · renameUser","file":"src/users/service.ts","status":"context"},{"id":"client","label":"api/client.ts","sub":"request()","file":"src/api/client.ts"},{"id":"retry","label":"api/retry.ts","sub":"withRetry · HttpError","file":"src/api/retry.ts"},{"id":"config","label":"config.ts","sub":"retry policy","file":"src/config.ts"}],"edges":[{"from":"svc","to":"client","label":"calls"},{"from":"client","to":"retry","label":"new import"},{"from":"client","to":"config","label":"reads policy"}]},{"do":"graph","highlight":["client","retry","config"],"hold":1500},{"do":"graph","highlight":["svc","client"],"hold":1200}]}]},{"id":"entry","title":"What callers see","goal":"Understand how request() behaves now","scenes":[{"id":"request-diff","title":"request() now wraps send","goal":"The request moved into a send closure that is retried conditionally","narration":"The old request logic moved, unchanged, into a `send` closure. Two things differ: on failure it throws **`HttpError`** instead of `Error`, and the last line wraps the call in `withRetry` **only for idempotent requests**.","steps":[{"do":"open","file":"src/api/client.ts","view":"diff","diff":{"mode":"unified","granularity":"word"},"_openKind":"tree","_reveal":true},{"do":"focus","range":{"symbol":"request"},"_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":10,"to":24}},{"do":"type","range":{"find":"const idempotent","span":2},"_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":22,"to":23},"_chars":114,"_dels":0},{"do":"highlight","range":{"find":"throw new HttpError"},"tone":"add","label":"HttpError","_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":18,"to":18}},{"do":"highlight","range":{"find":"return idempotent"},"tone":"focus","label":"key line","_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":23,"to":23}},{"do":"note","at":{"find":"const idempotent"},"text":"Unless `idempotent` is set explicitly, **only GET** is retried.","tone":"why","_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":22,"to":22}}]},{"id":"request-split","title":"Side by side","goal":"Tell moved code apart from new code","narration":"In the split view it is clear the `fetch` block **only changed indentation**. The real changes to review are `HttpError` and the final branch.","steps":[{"do":"diffView","mode":"split"},{"do":"reveal","at":{"find":"const send"},"_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":12,"to":12}},{"do":"highlight","range":{"find":"const res = await fetch","span":4},"tone":"info","label":"moved (re-indented)","_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":13,"to":16}},{"do":"wait","ms":1200},{"do":"diffView","mode":"unified"}]}]},{"id":"retry","title":"Inside the retry module","goal":"Know when, how often and how long it retries","scenes":[{"id":"goto-withretry","title":"Into withRetry","goal":"Know the loop's exit conditions","narration":"Jump to the definition of `withRetry`. The loop returns as soon as `fn` succeeds. On failure it waits `base × 2^attempt` and tries again **only if the error is transient and retries remain**.","steps":[{"do":"goto","from":{"at":{"find":"return idempotent"},"token":"withRetry"},"to":{"file":"src/api/retry.ts","at":{"symbol":"withRetry"}},"_pane":0,"_from":{"file":"src/api/client.ts","side":"after","line":23,"to":23},"_to":{"file":"src/api/retry.ts","pane":0,"view":"after","side":"after","line":9,"from":9,"to":20}},{"do":"highlight","range":{"find":"if (!isTransient(err)"},"tone":"warn","label":"exit condition","_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":15,"to":15}},{"do":"highlight","range":{"find":"await sleep"},"tone":"info","label":"backoff","_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":16,"to":16}},{"do":"note","at":{"find":"await sleep"},"text":"200 → 400 → 800 ms: up to ~1.4 s of extra waiting with 3 retries.","tone":"risk","_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":16,"to":16}}]},{"id":"transient","title":"What counts as transient","goal":"Know retries are limited to 5xx and 429","narration":"`isTransient` is true only for an `HttpError` with status **5xx or 429**, so client errors such as 404 fail immediately. That check is why `client.ts` now throws `HttpError` instead of a plain `Error`.","steps":[{"do":"focus","range":{"symbol":"isTransient"},"_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":22,"to":24}},{"do":"goto","from":{"at":{"find":"err instanceof HttpError"},"token":"HttpError"},"to":{"file":"src/api/retry.ts","at":{"symbol":"HttpError"}},"_pane":0,"_from":{"file":"src/api/retry.ts","side":"after","line":23,"to":23},"_to":{"file":"src/api/retry.ts","pane":0,"view":"after","side":"after","line":26,"from":26,"to":30}},{"do":"say","text":"Keeping `status` around is the reason `HttpError` exists."}]},{"id":"config","title":"Policy lives in config","goal":"Know where to tune retries","narration":"The policy values live in `config.retry`; tuning retries in production means changing this one place.","steps":[{"do":"layout","mode":"columns"},{"do":"open","pane":1,"file":"src/config.ts","view":"diff","_openKind":"tree","_reveal":true},{"do":"highlight","pane":1,"range":{"find":"retry:"},"tone":"add","_file":"src/config.ts","_pane":1,"_view":"diff","_r":{"side":"after","from":4,"to":4}},{"do":"highlight","pane":0,"range":{"find":"baseDelayMs * 2"},"tone":"info","_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":16,"to":16}}]}]},{"id":"impact","title":"Impact and verification","goal":"Check the effect on existing code and the tests","scenes":[{"id":"callers","title":"What about existing callers?","goal":"Tell which calls become retried","narration":"Find the callers of `request`. `fetchUser` is a GET, so it is **retried automatically**; `renameUser` is a PATCH and behaves **exactly as before**.","steps":[{"do":"layout","mode":"single"},{"do":"refs","pane":0,"symbol":"request","items":[{"file":"src/users/service.ts","at":{"find":"return request\u003cUser>(`/users/${id}`);"},"label":"GET → retried"},{"file":"src/users/service.ts","at":{"find":"method: 'PATCH'"},"label":"PATCH → unchanged"}],"_pane":0,"_items":[{"file":"src/users/service.ts","view":"after","side":"after","line":9,"label":"GET → retried","text":"return request\u003cUser>(`/users/${id}`);"},{"file":"src/users/service.ts","view":"after","side":"after","line":13,"label":"PATCH → unchanged","text":"return request\u003cUser>(`/users/${id}`, { method: 'PATCH', body: { name } });"}]},{"do":"note","at":{"find":"method: 'PATCH'"},"text":"If this PATCH is idempotent, pass `idempotent: true` to opt in.","tone":"tip","_file":"src/users/service.ts","_pane":0,"_view":"after","_r":{"side":"after","from":13,"to":13}}]},{"id":"tests","title":"What the tests pin down","goal":"Know both core behaviours are covered","narration":"The tests pin down two behaviours: a **503 is retried until it succeeds**, and a **404 fails without retrying**. Note that no test covers the idempotency branch in `request()` itself.","steps":[{"do":"open","file":"test/retry.test.ts","view":"after","_openKind":"tree","_reveal":true},{"do":"highlight","range":{"find":"retries transient errors","block":true},"tone":"add","label":"503 → success","_file":"test/retry.test.ts","_pane":0,"_view":"after","_r":{"side":"after","from":3,"to":11}},{"do":"highlight","range":{"find":"does not retry 4xx","block":true},"tone":"remove","label":"404 → failure","_file":"test/retry.test.ts","_pane":0,"_view":"after","_r":{"side":"after","from":13,"to":15}}]}]}],"tree":{"root":"retry-demo","dirs":["src/api","src","src/users","test"],"files":[[0,"client.ts"],[0,"retry.ts"],[1,"config.ts"],[2,"profile.ts"],[2,"service.ts"],[3,"retry.test.ts"],[3,"service.test.ts"]],"partial":[],"total":7},"compiled":{"engineIrVersion":1,"at":"2026-11-17T09:28:12.267Z"}}</script>
-<script>/* Walkthrough diff engine — shared by the player (browser) and build.mjs (Node).
+<script type="application/json" id="walkthrough-ir">{"version":1,"meta":{"title":"Retry idempotent requests with exponential backoff","summary":"`request()` now retries failed **idempotent (GET) requests** up to 3 times with exponential backoff. The retry logic lives in a new `retry.ts` module, and an `HttpError` type lets it retry only transient failures (5xx, 429).","intent":"feature","language":"en","strategy":{"order":"top-down","rationale":"Start from what callers see (what changed), then go down into the new module (how it works), and finish with the blast radius (existing callers) and tests."},"takeaways":["GET retries by default; other methods only with `idempotent: true`","Only `isTransient()` errors are retried: 5xx and 429","`fetchUser` gets retries without any code change; `renameUser` (PATCH) is unaffected"],"reviewFocus":["Are any PATCH/POST callers idempotent and should pass `idempotent: true`?","Does the total backoff (200+400+800 ms) fit within `timeoutMs`?"]},"source":{"base":"HEAD~1","head":"HEAD","baseSha":"8978885226","headSha":"de4ef4111c"},"tour":{"order":["src/api/client.ts","src/api/retry.ts","src/config.ts","test/retry.test.ts"]},"files":{"src/api/client.ts":{"status":"modified","role":"HTTP entry point","language":"typescript","before":"import { config } from '../config';\n\nexport interface RequestOptions {\n  method?: string;\n  body?: unknown;\n}\n\nexport async function request\u003cT>(path: string, opts: RequestOptions = {}): Promise\u003cT> {\n  const res = await fetch(config.baseUrl + path, {\n    method: opts.method ?? 'GET',\n    body: opts.body ? JSON.stringify(opts.body) : undefined,\n  });\n  if (!res.ok) {\n    throw new Error(`Request failed: ${res.status}`);\n  }\n  return (await res.json()) as T;\n}\n","after":"import { config } from '../config';\nimport { HttpError, withRetry } from './retry';\n\nexport interface RequestOptions {\n  method?: string;\n  body?: unknown;\n  idempotent?: boolean;\n}\n\nexport async function request\u003cT>(path: string, opts: RequestOptions = {}): Promise\u003cT> {\n  const method = opts.method ?? 'GET';\n  const send = async () => {\n    const res = await fetch(config.baseUrl + path, {\n      method,\n      body: opts.body ? JSON.stringify(opts.body) : undefined,\n    });\n    if (!res.ok) {\n      throw new HttpError(res.status);\n    }\n    return (await res.json()) as T;\n  };\n  const idempotent = opts.idempotent ?? method === 'GET';\n  return idempotent ? withRetry(send, config.retry) : send();\n}\n"},"src/api/retry.ts":{"status":"added","role":"retry policy","language":"typescript","before":null,"after":"export interface RetryPolicy {\n  retries: number;\n  baseDelayMs: number;\n}\n\nconst sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));\n\n/** Retries `fn` on transient failures with exponential backoff. */\nexport async function withRetry\u003cT>(fn: () => Promise\u003cT>, policy: RetryPolicy): Promise\u003cT> {\n  let attempt = 0;\n  for (;;) {\n    try {\n      return await fn();\n    } catch (err) {\n      if (!isTransient(err) || attempt >= policy.retries) throw err;\n      await sleep(policy.baseDelayMs * 2 ** attempt);\n      attempt++;\n    }\n  }\n}\n\nexport function isTransient(err: unknown): boolean {\n  return err instanceof HttpError && (err.status >= 500 || err.status === 429);\n}\n\nexport class HttpError extends Error {\n  constructor(public status: number) {\n    super(`Request failed: ${status}`);\n  }\n}\n"},"src/config.ts":{"status":"modified","role":"config","language":"typescript","before":"export const config = {\n  baseUrl: process.env.API_URL ?? 'http://localhost:3000',\n  timeoutMs: 5000,\n};\n","after":"export const config = {\n  baseUrl: process.env.API_URL ?? 'http://localhost:3000',\n  timeoutMs: 5000,\n  retry: { retries: 3, baseDelayMs: 200 },\n};\n"},"src/users/service.ts":{"status":"context","role":"existing caller","language":"typescript","before":"import { request } from '../api/client';\n\nexport interface User {\n  id: string;\n  name: string;\n}\n\nexport async function fetchUser(id: string): Promise\u003cUser> {\n  return request\u003cUser>(`/users/${id}`);\n}\n\nexport async function renameUser(id: string, name: string): Promise\u003cUser> {\n  return request\u003cUser>(`/users/${id}`, { method: 'PATCH', body: { name } });\n}\n","after":"import { request } from '../api/client';\n\nexport interface User {\n  id: string;\n  name: string;\n}\n\nexport async function fetchUser(id: string): Promise\u003cUser> {\n  return request\u003cUser>(`/users/${id}`);\n}\n\nexport async function renameUser(id: string, name: string): Promise\u003cUser> {\n  return request\u003cUser>(`/users/${id}`, { method: 'PATCH', body: { name } });\n}\n"},"test/retry.test.ts":{"status":"added","language":"typescript","before":null,"after":"import { HttpError, withRetry } from '../src/api/retry';\n\ntest('retries transient errors', async () => {\n  let calls = 0;\n  const v = await withRetry(async () => {\n    if (++calls \u003c 3) throw new HttpError(503);\n    return 'ok';\n  }, { retries: 3, baseDelayMs: 0 });\n  expect(v).toBe('ok');\n  expect(calls).toBe(3);\n});\n\ntest('does not retry 4xx', async () => {\n  await expect(withRetry(async () => { throw new HttpError(404); }, { retries: 3, baseDelayMs: 0 })).rejects.toThrow();\n});\n"}},"glossary":[{"term":"idempotent","definition":"A request whose effect is the same no matter how many times it runs, so retrying it is safe."},{"term":"exponential backoff","definition":"Waiting base × 2^n between retries to avoid hammering a struggling server."}],"chapters":[{"id":"overview","title":"The big picture","goal":"Get a map of what was added where","scenes":[{"id":"map","title":"Map of the change","goal":"Know the three files' roles and how they relate","narration":"The change has three parts. **client.ts** starts using the new **retry.ts** module, and the policy values come from **config.ts**. The existing caller `service.ts` inherits the new behaviour without any code change.","steps":[{"do":"graph","title":"Dependencies","nodes":[{"id":"svc","label":"users/service.ts","sub":"fetchUser · renameUser","file":"src/users/service.ts","status":"context"},{"id":"client","label":"api/client.ts","sub":"request()","file":"src/api/client.ts"},{"id":"retry","label":"api/retry.ts","sub":"withRetry · HttpError","file":"src/api/retry.ts"},{"id":"config","label":"config.ts","sub":"retry policy","file":"src/config.ts"}],"edges":[{"from":"svc","to":"client","label":"calls"},{"from":"client","to":"retry","label":"new import"},{"from":"client","to":"config","label":"reads policy"}]},{"do":"graph","highlight":["client","retry","config"],"hold":1500},{"do":"graph","highlight":["svc","client"],"hold":1200}],"question":"What does this change add, and where?"}]},{"id":"entry","title":"What callers see","goal":"Understand how request() behaves now","scenes":[{"id":"tour-1","auto":true,"title":"client.ts","question":"What changed in client.ts?","narration":"","tour":{"file":"src/api/client.ts","hunks":[1,2,3],"of":3},"steps":[{"do":"open","file":"src/api/client.ts","view":"diff","noReveal":true,"fast":false,"_openKind":"tree","_reveal":false,"_first":{"side":"after","from":2,"to":2},"_nav":1150},{"do":"replay","file":"src/api/client.ts","hunk":1,"tempo":"skim","range":{"hunk":1},"_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":2,"to":2},"_chars":47,"_dels":0,"_lines":1,"_mode":"block","_dp":0},{"do":"replay","file":"src/api/client.ts","hunk":2,"tempo":"normal","range":{"hunk":2},"_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":7,"to":7},"_chars":21,"_dels":0,"_lines":1,"_mode":"lines","_dp":0},{"do":"replay","file":"src/api/client.ts","hunk":3,"tempo":"normal","range":{"hunk":3},"_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":11,"to":23},"_chars":217,"_dels":2,"_lines":7,"_mode":"lines","_dp":0.3173076923076923}]},{"id":"request-diff","title":"request() now wraps send","goal":"The request moved into a send closure that is retried conditionally","narration":"The old request logic moved, unchanged, into a `send` closure. Two things differ: on failure it throws **`HttpError`** instead of `Error`, and the last line wraps the call in `withRetry` **only for idempotent requests**.","steps":[{"do":"open","file":"src/api/client.ts","view":"diff","diff":{"mode":"unified","granularity":"word"},"_openKind":"tab","_reveal":true,"_first":{"side":"after","from":2,"to":2},"_nav":650},{"do":"focus","range":{"symbol":"request"},"_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":10,"to":24}},{"do":"highlight","range":{"find":"throw new HttpError"},"tone":"add","label":"HttpError","_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":18,"to":18}},{"do":"highlight","range":{"find":"return idempotent"},"tone":"focus","label":"key line","_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":23,"to":23}},{"do":"note","at":{"find":"const idempotent"},"text":"Unless `idempotent` is set explicitly, **only GET** is retried.","tone":"why","_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":22,"to":22}}],"question":"What happens now when a request fails?","bridge":"The map has one entry point, request(), so start there.","at":{"file":"src/api/client.ts"}},{"id":"request-split","title":"Side by side","goal":"Tell moved code apart from new code","narration":"In the split view it is clear the `fetch` block **only changed indentation**. The real changes to review are `HttpError` and the final branch.","steps":[{"do":"diffView","mode":"split"},{"do":"reveal","at":{"find":"const send"},"_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":12,"to":12}},{"do":"highlight","range":{"find":"const res = await fetch","span":4},"tone":"info","label":"moved (re-indented)","_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":13,"to":16}},{"do":"wait","ms":1200},{"do":"diffView","mode":"unified"}],"question":"Which lines actually changed, and which only moved?","bridge":"The unified diff mixes moved and new code; side by side separates them."}]},{"id":"retry","title":"Inside the retry module","goal":"Know when, how often and how long it retries","scenes":[{"id":"tour-2","auto":true,"title":"retry.ts","question":"What changed in retry.ts?","narration":"","tour":{"file":"src/api/retry.ts","hunks":[1],"of":1},"steps":[{"do":"open","file":"src/api/retry.ts","view":"after","noReveal":true,"fast":false,"_openKind":"tree","_reveal":false,"_first":{"side":"after","from":1,"to":30},"_nav":1150},{"do":"replay","file":"src/api/retry.ts","hunk":1,"tempo":"normal","range":{"hunk":1},"_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":1,"to":30},"_chars":720,"_dels":0,"_lines":30,"_mode":"lines","_dp":0}]},{"id":"goto-withretry","title":"Into withRetry","goal":"Know the loop's exit conditions","narration":"Jump to the definition of `withRetry`. The loop returns as soon as `fn` succeeds. On failure it waits `base × 2^attempt` and tries again **only if the error is transient and retries remain**.","steps":[{"do":"goto","from":{"at":{"find":"return idempotent"},"token":"withRetry"},"to":{"file":"src/api/retry.ts","at":{"symbol":"withRetry"}},"_pane":0,"_from":{"file":"src/api/client.ts","side":"after","line":23,"to":23},"_to":{"file":"src/api/retry.ts","pane":0,"view":"after","side":"after","line":9,"from":9,"to":20}},{"do":"highlight","range":{"find":"if (!isTransient(err)"},"tone":"warn","label":"exit condition","_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":15,"to":15}},{"do":"highlight","range":{"find":"await sleep"},"tone":"info","label":"backoff","_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":16,"to":16}},{"do":"note","at":{"find":"await sleep"},"text":"200 → 400 → 800 ms: up to ~1.4 s of extra waiting with 3 retries.","tone":"risk","_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":16,"to":16}}],"question":"How does the retry loop decide to try again?","bridge":"request() hands failures to withRetry, so follow that call.","at":{"file":"src/api/retry.ts"}},{"id":"transient","title":"What counts as transient","goal":"Know retries are limited to 5xx and 429","narration":"`isTransient` is true only for an `HttpError` with status **5xx or 429**, so client errors such as 404 fail immediately. That check is why `client.ts` now throws `HttpError` instead of a plain `Error`.","steps":[{"do":"focus","range":{"symbol":"isTransient"},"_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":22,"to":24}},{"do":"goto","from":{"at":{"find":"err instanceof HttpError"},"token":"HttpError"},"to":{"file":"src/api/retry.ts","at":{"symbol":"HttpError"}},"_pane":0,"_from":{"file":"src/api/retry.ts","side":"after","line":23,"to":23},"_to":{"file":"src/api/retry.ts","pane":0,"view":"after","side":"after","line":26,"from":26,"to":30}},{"do":"say","text":"Keeping `status` around is the reason `HttpError` exists."}],"question":"Which failures count as worth retrying?","bridge":"The loop only retries transient errors, so what is transient?"},{"id":"tour-3","auto":true,"title":"config.ts","question":"What changed in config.ts?","narration":"","tour":{"file":"src/config.ts","hunks":[1],"of":1},"steps":[{"do":"open","file":"src/config.ts","view":"diff","noReveal":true,"fast":false,"_openKind":"tree","_reveal":false,"_first":{"side":"after","from":4,"to":4},"_nav":1150},{"do":"replay","file":"src/config.ts","hunk":1,"tempo":"normal","range":{"hunk":1},"_file":"src/config.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":4,"to":4},"_chars":40,"_dels":0,"_lines":1,"_mode":"lines","_dp":0}]},{"id":"config","title":"Policy lives in config","goal":"Know where to tune retries","narration":"The policy values live in `config.retry`; tuning retries in production means changing this one place.","steps":[{"do":"layout","mode":"columns"},{"do":"open","pane":1,"file":"src/config.ts","view":"diff","_openKind":"tree","_reveal":true,"_first":{"side":"after","from":4,"to":4},"_nav":1150},{"do":"highlight","pane":1,"range":{"find":"retry:"},"tone":"add","_file":"src/config.ts","_pane":1,"_view":"diff","_r":{"side":"after","from":4,"to":4}},{"do":"highlight","pane":0,"range":{"find":"baseDelayMs * 2"},"tone":"info","_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":16,"to":16}}],"question":"Where are the retry numbers set?","bridge":"The backoff uses policy values; they come from config.","at":{"file":"src/config.ts"}}]},{"id":"impact","title":"Impact and verification","goal":"Check the effect on existing code and the tests","scenes":[{"id":"callers","title":"What about existing callers?","goal":"Tell which calls become retried","narration":"Find the callers of `request`. `fetchUser` is a GET, so it is **retried automatically**; `renameUser` is a PATCH and behaves **exactly as before**.","steps":[{"do":"layout","mode":"single"},{"do":"refs","pane":0,"symbol":"request","items":[{"file":"src/users/service.ts","at":{"find":"return request\u003cUser>(`/users/${id}`);"},"label":"GET → retried"},{"file":"src/users/service.ts","at":{"find":"method: 'PATCH'"},"label":"PATCH → unchanged"}],"_pane":0,"_items":[{"file":"src/users/service.ts","view":"after","side":"after","line":9,"label":"GET → retried","text":"return request\u003cUser>(`/users/${id}`);"},{"file":"src/users/service.ts","view":"after","side":"after","line":13,"label":"PATCH → unchanged","text":"return request\u003cUser>(`/users/${id}`, { method: 'PATCH', body: { name } });"}]},{"do":"note","at":{"find":"method: 'PATCH'"},"text":"If this PATCH is idempotent, pass `idempotent: true` to opt in.","tone":"tip","_file":"src/users/service.ts","_pane":0,"_view":"after","_r":{"side":"after","from":13,"to":13}}],"question":"Which existing calls are affected?","bridge":"The behaviour is clear; now check who calls request()."},{"id":"tour-4","auto":true,"title":"retry.test.ts","question":"What changed in retry.test.ts?","narration":"","tour":{"file":"test/retry.test.ts","hunks":[1],"of":1},"steps":[{"do":"open","file":"test/retry.test.ts","view":"after","noReveal":true,"fast":false,"_openKind":"tree","_reveal":false,"_first":{"side":"after","from":1,"to":15},"_nav":1150},{"do":"replay","file":"test/retry.test.ts","hunk":1,"tempo":"normal","range":{"hunk":1},"_file":"test/retry.test.ts","_pane":0,"_view":"after","_r":{"side":"after","from":1,"to":15},"_chars":450,"_dels":0,"_lines":15,"_mode":"lines","_dp":0}]},{"id":"tests","title":"What the tests pin down","goal":"Know both core behaviours are covered","narration":"The tests pin down two behaviours: a **503 is retried until it succeeds**, and a **404 fails without retrying**. Note that no test covers the idempotency branch in `request()` itself.","steps":[{"do":"open","file":"test/retry.test.ts","view":"after","_openKind":"tab","_reveal":true,"_first":{"side":"after","from":1,"to":15},"_nav":650},{"do":"highlight","range":{"find":"retries transient errors","block":true},"tone":"add","label":"503 → success","_file":"test/retry.test.ts","_pane":0,"_view":"after","_r":{"side":"after","from":3,"to":11}},{"do":"highlight","range":{"find":"does not retry 4xx","block":true},"tone":"remove","label":"404 → failure","_file":"test/retry.test.ts","_pane":0,"_view":"after","_r":{"side":"after","from":13,"to":15}}],"question":"What do the tests guarantee?","bridge":"Finally, check which of these rules the tests pin down.","at":{"file":"test/retry.test.ts"}}]}],"tourStats":{"hunks":6,"files":4},"tree":{"root":"retry-demo","dirs":["src/api","src","src/users","test"],"files":[[0,"client.ts"],[0,"retry.ts"],[1,"config.ts"],[2,"profile.ts"],[2,"service.ts"],[3,"retry.test.ts"],[3,"service.test.ts"]],"partial":[],"total":7},"compiled":{"engineIrVersion":1,"at":"2026-11-17T09:57:43.917Z"}}</script>
+<script>/* Walkthrough diff engine: shared by the player (browser) and build.mjs (Node).
  * Algorithms: "myers" (minimal edit script) and "patience" (unique-line anchors,
  * better at keeping moved / re-ordered blocks and brace-heavy code readable).
  * Both are post-processed with a slider heuristic and line pairing for
@@ -757,7 +831,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
   root.WalkHL = { line, file, esc };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
-<script>/* Walkthrough timing model — shared by the player (browser) and the compiler
+<script>/* Walkthrough timing model: shared by the player (browser) and the compiler
  * (Node, for `check` duration estimates). Exposes globalThis.WalkTiming.
  * All values are milliseconds at 1x speed. */
 (function (root) {
@@ -777,11 +851,23 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     return Math.round(Math.min(7000, Math.max(900, 350 + chars * 26 + (dels ? 450 + dels * 60 : 0))));
   }
 
+  /** Replaying one hunk of the tour. Removed lines turn red first; then the new code arrives:
+   *  typed (key), line by line (normal), or as one block (skim, for wiring/boilerplate). */
+  const delMs = (st) => (st._dels ? 260 + Math.min(st._dels, 30) * 35 : 0);
+  function replayMs(st) {
+    if (st._mode === 'type') return typeMs(st);
+    if (st._mode === 'lines') return Math.max(450, delMs(st) + 150 + Math.min(st._lines || 0, 400) * 80);
+    return Math.max(420, delMs(st) + 380);
+  }
+  function delShare(st, dur) { const d = st._mode === 'type' || st.do === 'type' ? (st._dels ? 450 + st._dels * 60 : 0) : delMs(st); return dur ? Math.min(0.6, d / dur) : 0; }
+
   /** Opening a file is a procedure: find it (explorer or tab) → click → it opens → its changes sweep in. */
   const OPEN_NAV = { tree: 1150, tab: 650, same: 0 };
   const OPEN_REVEAL = 950;
   function openMs(st) {
-    const nav = OPEN_NAV[st._openKind || 'tree'];
+    // wiring-only files are not worth a slow walk to the explorer
+    const nav = st.fast ? Math.round(OPEN_NAV[st._openKind || 'tree'] * 0.55) : OPEN_NAV[st._openKind || 'tree'];
+    st._nav = nav;
     return Math.max(450, nav + 350 + (st._reveal ? OPEN_REVEAL : 0));
   }
 
@@ -812,13 +898,13 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
 
   /** When each narration item appears (ms, scene-local). Steps may pin an item with `cue: n`;
    *  the rest are spread between pins by text length over the span of the scene's steps. */
-  function cueTimes(sc, timed) {
+  function cueTimes(sc, timed, lead) {
     const items = narrationItems(sc.narration);
     const n = items.length;
     if (!n) return { items, times: [] };
     const starts = timed.map((x) => x.start), ends = timed.map((x) => x.start + x.dur);
     const spanEnd = ends.length ? Math.max(...ends) : 2000;
-    const anchors = new Map([[0, 0]]);
+    const anchors = new Map([[0, lead || 0]]);
     for (const x of timed) if (Number.isInteger(x.st.cue) && x.st.cue >= 1 && x.st.cue <= n && !anchors.has(x.st.cue - 1)) anchors.set(x.st.cue - 1, x.start);
     if (!anchors.has(n)) anchors.set(n, Math.max(spanEnd, (starts.length ? Math.max(...starts) : 0)));
     const keys = [...anchors.keys()].sort((a, b) => a - b);
@@ -833,15 +919,21 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     return { items, times };
   }
 
-  /** Lay out one scene: returns { timed: [{st, start, dur}], duration }. */
-  function scene(sc) {
-    let cursor = 350, prevStart = 0, maxEnd = 0;
+  /** Lead-in before every scene but the first: a bridge card says what comes next and why (event boundary). */
+  const BRIDGE = 1700;
+
+  /** Lay out one scene: returns { timed: [{st, start, dur}], cues, lead, duration }. */
+  function scene(sc, opts) {
+    const lead = (opts && opts.lead) || 0;
+    let cursor = (sc.auto ? 120 : 350) + lead, prevStart = 0, maxEnd = 0;
     const timed = (sc.steps || []).map((st) => {
       let dur = st.ms != null && st.do !== 'wait' ? st.ms : BASE[st.do] ?? 600;
       if (st.do === 'wait') dur = st.ms || 0;
       if (st.do === 'refs') dur = (st.ms || 700) + 1300 * ((st._items || st.items || []).length);
       if (st.do === 'type') dur = st.ms != null ? st.ms : typeMs(st);
       if (st.do === 'open' && st.ms == null) dur = openMs(st);
+      if (st.do === 'replay') { dur = st.ms != null ? st.ms : replayMs(st); st._dp = delShare(st, dur); }
+      if (st.do === 'type') st._dp = delShare(st, dur);
       let hold = st.hold || 0;
       if (st.do === 'note') hold += readMs(st.text) * 0.55;
       if (st.do === 'say') hold += readMs(st.text);
@@ -852,22 +944,25 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
       maxEnd = Math.max(maxEnd, cursor);
       return { st, start, dur };
     });
-    const cues = cueTimes(sc, timed);
+    const cues = cueTimes(sc, timed, lead);
     const lastCue = cues.times.length ? cues.times[cues.times.length - 1] + readMs(cues.items[cues.items.length - 1].text) * 0.8 : 0;
-    return { timed, cues, duration: Math.max(maxEnd + 700, readMs(sc.narration) * 0.9 + 600, lastCue + 400, 2500) };
+    // tour segments carry no narration: no reading time, no dwell (M17: don't spend time that carries nothing)
+    if (sc.auto) return { timed, cues, lead: 0, duration: maxEnd + 250 };
+    return { timed, cues, lead, duration: Math.max(maxEnd + 700, lead + readMs(sc.narration) * 0.9 + 600, lastCue + 400, lead + 2500) };
   }
 
   /** Total duration of an IR in ms. */
   function total(ir) {
     let t = 0;
-    for (const ch of ir.chapters || []) for (const sc of ch.scenes || []) t += scene(sc).duration;
+    let i = 0;
+    for (const ch of ir.chapters || []) for (const sc of ch.scenes || []) { t += scene(sc, { lead: i && !sc.auto ? BRIDGE : 0 }).duration; i++; }
     return t;
   }
 
-  root.WalkTiming = { BASE, readMs, typeMs, openMs, narrationItems, cueTimes, scene, total };
+  root.WalkTiming = { BASE, BRIDGE, readMs, typeMs, openMs, narrationItems, cueTimes, scene, total };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
-<script>/* Code Change Walkthrough — IR player.
+<script>/* Code Change Walkthrough: IR player.
  * Renders compiled Walkthrough IR (docs/ir-v1.md) as an IDE-like, seekable animation.
  *
  * Core rule: the visible walkthrough state is a pure function of time.
@@ -945,16 +1040,34 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
   const scenes = [];
   (IR.chapters || []).forEach((ch, ci) => (ch.scenes || []).forEach((sc, si) => scenes.push({ ...sc, ci, si, chapter: ch })));
   let total = 0;
-  for (const sc of scenes) {
-    const lay = TM.scene(sc);
+  scenes.forEach((sc, idx) => {
+    const lay = TM.scene(sc, { lead: idx && !sc.auto ? TM.BRIDGE : 0 });
+    sc.lead = lay.lead;
     sc.timed = lay.timed;
     sc.cues = lay.cues;
     sc.duration = lay.duration;
     sc.t0 = total;
     total += sc.duration;
-  }
+    // the first file this scene looks at (for the bridge card's "where")
+    const st0 = (sc.steps || []).find((x) => x.file || x._file || (x._to && x._to.file) || (x._items && x._items.length));
+    sc.where = st0 ? st0.file || st0._file || (st0._to && st0._to.file) || st0._items[0].file : null;
+  });
   let sid = 0;
-  for (const sc of scenes) for (const t of sc.timed) t.st._id = ++sid;
+  for (const sc of scenes) for (const t of sc.timed) { t.st._id = ++sid; t.st._start = t.start; }
+  // ---- the tour: global replay steps, each file's replay span, and when files appear / disappear
+  const replays = [];
+  const fileSpan = {}, fileBorn = {}, fileGone = {};
+  scenes.forEach((sc) => sc.timed.forEach((x) => {
+    const g = sc.t0 + x.start, st = x.st;
+    const targets = [st.file, st._file, st._to && st._to.file, ...((st._items || []).map((it) => it.file))].filter(Boolean);
+    for (const f of targets) if (fileBorn[f] == null) fileBorn[f] = g;
+    if (st.do === 'replay' && st._r) {
+      replays.push({ st, g, end: g + x.dur, file: st._file });
+      const sp = fileSpan[st._file] || (fileSpan[st._file] = { from: g, to: g + x.dur });
+      sp.from = Math.min(sp.from, g); sp.to = Math.max(sp.to, g + x.dur);
+      if (IR.files[st._file] && IR.files[st._file].after == null) fileGone[st._file] = Math.max(fileGone[st._file] || 0, g + x.dur);
+    }
+  }));
 
   // ================================================================== state
   const DIFF_DEFAULT = { mode: 'unified', algorithm: 'patience', granularity: 'word', context: 3, whitespace: 'collapse' };
@@ -997,7 +1110,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
       case 'open': {
         // Procedure (motion rules M3/M4): find the file → click → it opens → its changes sweep in.
         const kind = st._openKind || 'tree';
-        const navMs = { tree: 1150, tab: 650, same: 0 }[kind];
+        const navMs = st._nav != null ? st._nav : { tree: 1150, tab: 650, same: 0 }[kind];
         const ms = p >= 1 ? Infinity : p * (dur || 0);
         if (navMs && ms < navMs) {
           const navP = ms / navMs;
@@ -1013,6 +1126,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
         if (st.diff) Object.assign(pane.diff, st.diff);
         const after = Number.isFinite(ms) ? clamp((ms - navMs) / Math.max(1, (dur || 1) - navMs), 0, 1) : 1;
         if (st._r) { if (pane.scroll && pane.scroll.to !== st._r) setScroll(pane, st._r, 'center', ease(clamp(after / 0.4, 0, 1))); else pane.scroll.p = 1; }
+        else if (st._first && kind !== 'same' && !pane.mem[st.file + '#seen']) { setScroll(pane, st._first, 'center', 1); }
         if (st._reveal && after < 1) s.reveal = { file: st.file, p: clamp((after - 0.2) / 0.8, 0, 1) };
         break;
       }
@@ -1038,20 +1152,27 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
         showFile(s, pi, st._file, st._view);
         const r = st._r; if (!r) break;
         // highlights sweep in line by line over the first 60% of the step
-        if (st.do === 'highlight') pane.hl.push({ ...r, tone: st.tone || 'focus', label: st.label || null, p: clamp(p / 0.6, 0, 1), key: st._id });
-        if (st.do === 'focus') pane.focus = { ...r, p: clamp(p / 0.5, 0, 1) };
-        if (st.do === 'note') pane.notes.push({ side: r.side, line: r.to, text: st.text, tone: st.tone || 'info', key: st._id });
+        if (st.do === 'highlight') pane.hl.push({ ...r, tone: st.tone || 'focus', label: st.label || null, p: clamp(p / 0.6, 0, 1), key: st._id, t: st._start });
+        if (st.do === 'focus') pane.focus = { ...r, p: clamp(p / 0.5, 0, 1), t: st._start };
+        if (st.do === 'note') pane.notes.push({ side: r.side, line: r.to, text: st.text, tone: st.tone || 'info', key: st._id, t: st._start });
         const mode = st.do === 'reveal' ? st.align || 'center' : st.do === 'focus' ? 'center' : 'ensure';
         if (st.reveal !== false) setScroll(pane, r, mode, ease(clamp(p / 0.7, 0, 1)));
         break;
       }
-      case 'type': {
+      case 'type': case 'replay': {
         showFile(s, pi, st._file, st._view);
         const r = st._r; if (!r) break;
         let e = s.typing.find((x) => x.key === st._id);
-        if (!e) { e = { key: st._id, file: st._file, side: r.side, from: r.from, to: r.to, p: 0 }; s.typing.push(e); }
-        e.p = p;
-        setScroll(pane, r, 'ensure', ease(clamp(p / 0.12, 0, 1)));
+        if (!e) { e = { key: st._id, file: st._file, side: r.side, from: r.from, to: r.to, p: 0, t: st._start }; s.typing.push(e); }
+        e.t = st._start; e.p = p; e.mode = st._mode || 'type'; e.dp = st._dp;
+        if (e.mode === 'block' || r.to - r.from < 6) setScroll(pane, r, 'ensure', ease(clamp(p / 0.15, 0, 1)));
+        else {
+          // follow the line being written, like an editor keeping the caret in view
+          const dp = st._dp || 0;
+          const wp = clamp((p - dp) / Math.max(0.01, 1 - dp), 0, 1);
+          const cur = Math.round(r.from + (r.to - r.from) * wp);
+          setScroll(pane, { side: r.side, from: Math.max(r.from, cur - 1), to: cur }, p < dp ? 'ensure' : 'follow', 1);
+        }
         break;
       }
       case 'unfocus': for (const pn of st.pane != null ? [pane] : s.panes) pn.focus = null; break;
@@ -1062,6 +1183,8 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
         const P1 = 0.32, P2 = 0.56;
         if (p < P2) {
           showFile(s, pi, fr.file);
+          pane.focus = null; // never Cmd+Click into dimmed code
+          if (p > 0.06) pane.hl.push({ side: fr.side, from: fr.line, to: fr.line, tone: 'focus', label: null, p: 1, key: `g${st._id}` });
           setScroll(pane, { side: fr.side, from: fr.line, to: fr.line }, 'ensure', ease(clamp(p / 0.12, 0, 1)));
           const anchor = { pane: pi, side: fr.side, line: fr.line, token: (st.from || {}).token };
           s.pointer = { from: s.pointer && s.pointer.to ? s.pointer.to : null, to: anchor, p: ease(clamp((p - 0.1) / (P1 - 0.1), 0, 1)), click: p > 0.48 };
@@ -1139,7 +1262,12 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     // An edit that this scene will replay later is "not written yet" until then:
     // its added lines are hidden and its removed lines look unchanged.
     for (const x of sc.timed) {
-      if (x.st.do === 'type' && x.st._r && t < x.start) s.typing.push({ key: x.st._id, file: x.st._file, side: x.st._r.side, from: x.st._r.from, to: x.st._r.to, p: 0 });
+      if (x.st.do === 'type' && x.st._r && t < x.start) s.typing.push({ key: x.st._id, file: x.st._file, side: x.st._r.side, from: x.st._r.from, to: x.st._r.to, p: 0, mode: 'type', dp: x.st._dp });
+    }
+    for (const r of replays) {
+      if (r.g <= T) continue;
+      const sp = fileSpan[r.file];
+      if (sp && sp.from <= T + 1) s.typing.push({ key: r.st._id, file: r.file, side: r.st._r.side, from: r.st._r.from, to: r.st._r.to, p: 0, mode: r.st._mode, dp: r.st._dp });
     }
     for (const x of sc.timed) {
       if (t < x.start) continue;
@@ -1148,6 +1276,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     s.scene = k;
     s.sceneP = clamp(t / sc.duration, 0, 1);
     s.sceneT = t;
+    s.bridge = t < sc.lead ? { p: t / sc.lead } : null;
     return s;
   }
 
@@ -1340,10 +1469,12 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
         <div class="ex-body" role="tree"></div>
       </aside>
       <section class="wt-stage">
+        <div class="wt-orient" aria-live="polite"></div>
         <div class="wt-panes"></div>
         <div class="wt-refs" hidden></div>
         <div class="wt-toast" hidden></div>
 
+        <div class="wt-bridge" aria-live="polite"></div>
         <div class="wt-start"><button data-act="play" aria-label="play">${ICON.play}</button><div class="t">${esc(meta.title || '')}</div><div class="s">${scenes.length} ${T_('장면', 'scenes')} · ${T_('약', '~')} ${fmt(total)} · ${T_('Space로 시작', 'Space to start')}</div></div>
       </section>
       <aside class="wt-guide" aria-label="${T_('워크스루', 'Walkthrough')}">
@@ -1354,13 +1485,14 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
       </aside>
     </div>
     <div class="wt-graph" hidden></div>
+    <div class="wt-caption" aria-live="polite"></div>
     <div class="wt-pointer" hidden>${ICON.pointer}<span class="ripple"></span></div>
     <div class="wt-keys" hidden></div>
     <footer class="wt-ctrl">
       <div class="ctrl-btns">
-        <button class="icon-btn" data-act="prev" title="${T_('이전 장면', 'Previous scene')} (←)">${ICON.prev}</button>
+        <button class="icon-btn" data-act="prev" title="${T_('이전 장면', 'Previous scene')} (⇧←)">${ICON.prev}</button>
         <button class="play" data-act="play" title="${T_('재생/일시정지', 'Play/Pause')} (Space)">${ICON.play}</button>
-        <button class="icon-btn" data-act="next" title="${T_('다음 장면', 'Next scene')} (→)">${ICON.next}</button>
+        <button class="icon-btn" data-act="next" title="${T_('다음 장면', 'Next scene')} (⇧→)">${ICON.next}</button>
         <button class="icon-btn" data-act="restart" title="${T_('처음부터', 'Restart')}">${ICON.restart}</button>
       </div>
       <div class="scrub" role="slider" aria-label="${T_('타임라인', 'Timeline')}" tabindex="0"><div class="track"></div><div class="knob"></div><div class="tip"></div></div>
@@ -1431,7 +1563,9 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     const target = s.exFocus || activeFile; // a file being picked in the explorer, else the active file
     if (target && ex.revealed !== target) { for (const a of ancestors(target)) ex.expanded.add(a); }
     const open = new Set(s.panes.flatMap((p) => p.tabs));
-    const sig = [started, activeFile, s.exFocus, [...open].join(','), [...ex.expanded].length, ex.filter, ex.version || 0].join('|');
+    const born = started ? Object.keys(fileBorn).filter((f) => fileBorn[f] <= T).length : -1;
+    const gone = started ? Object.keys(fileGone).filter((f) => fileGone[f] <= T).length : -1;
+    const sig = [started, born, gone, activeFile, s.exFocus, [...open].join(','), [...ex.expanded].length, ex.filter, ex.version || 0].join('|');
     const body = $('.ex-body');
     if (sig === ex.sig) return;
     ex.sig = sig;
@@ -1449,6 +1583,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
       for (const f of node.files) {
         const st = changedStatus(f.path);
         if (ex.filter && !st) continue;
+        if (started && st === 'added' && fileBorn[f.path] != null && fileBorn[f.path] > T && f.path !== s.exFocus) continue; // not written yet
         visible.add(f.path);
         rows.push({ kind: 'file', path: f.path, label: f.name, depth, status: st, embedded: !!IR.files[f.path] });
       }
@@ -1466,8 +1601,8 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
         return `<div class="ex-row dir${r.changed ? ' has-changes' : ''}${onPath ? ' path' : ''}${isNew}" role="treeitem" aria-expanded="${r.open}" data-dir="${esc(r.path)}" ${pad} title="${esc(r.path)}">${guides(r.depth)}<span class="tw${r.open ? ' open' : ''}">${ICON.chevron}</span><span class="nm">${esc(r.label)}</span>${r.changed ? '<span class="dot"></span>' : ''}</div>`;
       }
       const [glyph, color] = fileIcon(r.label);
-      const cls = ['ex-row', 'file', r.status ? `st-${r.status}` : '', open.has(r.path) ? 'open' : '', r.path === activeFile && !s.exFocus ? 'active' : '', r.path === s.exFocus ? 'selecting' : '', r.path === target ? 'target' : '', r.embedded ? '' : 'stub', isNew].filter(Boolean).join(' ');
-      return `<div class="${cls}" role="treeitem" data-file="${esc(r.path)}" ${pad} title="${esc(r.path)}${r.embedded ? '' : ' — ' + T_('내용 미포함', 'content not embedded')}">${guides(r.depth)}<span class="tw"></span><span class="fi ${color}">${glyph}</span><span class="nm">${esc(r.label)}</span>${r.status ? `<span class="sb">${STATUS_LETTER[r.status] || ''}</span>` : ''}</div>`;
+      const cls = ['ex-row', 'file', r.status ? `st-${r.status}` : '', started && fileGone[r.path] != null && fileGone[r.path] <= T ? 'gone' : '', open.has(r.path) ? 'open' : '', r.path === activeFile && !s.exFocus ? 'active' : '', r.path === s.exFocus ? 'selecting' : '', r.path === target ? 'target' : '', r.embedded ? '' : 'stub', isNew].filter(Boolean).join(' ');
+      return `<div class="${cls}" role="treeitem" data-file="${esc(r.path)}" ${pad} title="${esc(r.path)}${r.embedded ? '' : ': ' + T_('내용 미포함', 'content not embedded')}">${guides(r.depth)}<span class="tw"></span><span class="fi ${color}">${glyph}</span><span class="nm">${esc(r.label)}</span>${r.status ? `<span class="sb">${STATUS_LETTER[r.status] || ''}</span>` : ''}</div>`;
     }).join('');
     ex.prevVisible = visible;
     body.classList.toggle('spot', !!target && started);
@@ -1514,6 +1649,14 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
       html += `<li class="gd-ch" data-ch="${ci}"><div class="gd-ch-h"><span class="no">${ci + 1}</span><span class="t">${esc(ch.title || '')}</span></div><ol class="gd-scenes">`;
       for (const sc of ch.scenes || []) {
         const S = scenes[k];
+        if (S.auto && S.tour) {
+          const name = S.tour.file.split('/').pop();
+          const [glyph, color] = fileIcon(name);
+          const f = IR.files[S.tour.file] || {};
+          html += `<li class="gd-sc auto st-${f.status}" data-scene="${k}"><button class="gd-sc-h" data-scene="${k}" title="${esc(S.tour.file)}"><span class="bullet"></span><span class="fi ${color}">${glyph}</span><span class="t">${esc(S.title)}</span><span class="hk">${S.tour.hunks.map(() => '<i></i>').join('')}</span><span class="dur">${fmt(S.duration)}</span></button></li>`;
+          k++;
+          continue;
+        }
         html += `<li class="gd-sc" data-scene="${k}"><button class="gd-sc-h" data-scene="${k}"><span class="bullet">${ICON.check}</span><span class="t">${esc(sc.title || sc.id)}</span><span class="dur">${fmt(S.duration)}</span></button>
           <div class="gd-detail"><div class="gd-inner">${sc.goal ? `<div class="gd-goal"><b>${T_('목표', 'Goal')}</b>${esc(sc.goal)}</div>` : ''}<div class="gd-text">${narrationHtml(S)}</div><div class="gd-say"></div></div></div>
           <div class="gd-prog"><i></i></div></li>`;
@@ -1557,7 +1700,17 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
       const target = cur < 0 ? guideBody.querySelector('.gd-overview') : cur >= scenes.length ? guideBody.querySelector('.gd-recap') : scItems[cur];
       if (target) setTimeout(() => target.scrollIntoView({ block: cur >= scenes.length ? 'start' : 'nearest', behavior: 'smooth' }), 60);
     }
-    if (cur >= 0 && cur < scenes.length) {
+    const seen = replays.filter((r) => started && r.end <= T).length;
+    if (seen !== guide.seen) {
+      guide.seen = seen;
+      $('.gd-meta').innerHTML = replays.length ? `${T_('변경', 'Changes')} <b>${seen}</b>/${replays.length} hunk · ${fmt(total)}` : `${scenes.length} ${T_('장면', 'scenes')} · ${fmt(total)}`;
+    }
+    if (cur >= 0 && cur < scenes.length && scenes[cur].auto) {
+      const li = scItems[cur];
+      const dots = li.querySelectorAll('.hk i');
+      let j = 0;
+      for (const x of scenes[cur].timed) if (x.st.do === 'replay') { if (dots[j]) { dots[j].classList.toggle('on', s.sceneT >= x.start + x.dur); dots[j].classList.toggle('cur', s.sceneT >= x.start && s.sceneT < x.start + x.dur); } j++; }
+    } else if (cur >= 0 && cur < scenes.length) {
       const li = scItems[cur];
       li.querySelector('.gd-prog i').style.width = `${(s.sceneP * 100).toFixed(1)}%`;
       const times = (scenes[cur].cues && scenes[cur].cues.times) || [];
@@ -1609,6 +1762,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
   function render() {
     const s = stateAt(T);
     for (const op of userOps) op(s);
+    s.voice = userOps.length ? null : computeVoice(s);
     panesEl.classList.toggle('columns', s.layout === 'columns');
     s.panes.forEach((ps, i) => renderPane(paneEls[i], ps, i === s.active, s));
     renderPointer(s);
@@ -1618,8 +1772,112 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     if (!!s.toast !== !toast.hidden || (s.toast && toast.textContent !== s.toast)) { toast.hidden = !s.toast; if (s.toast) { toast.textContent = s.toast; restart(toast, 'in'); } }
     renderExplorer(s);
     renderGuide(s);
+    renderOrient(s);
     renderChrome(s);
     $('.wt-start').classList.toggle('gone', started);
+  }
+
+  // ================================================================== orientation: where am I, why this, why now
+  const orient = { key: '', capKey: '', bridgeKey: '' };
+  const fileChip = (file) => {
+    if (!file) return '';
+    const name = file.split('/').pop();
+    const [glyph, color] = fileIcon(name);
+    const f = IR.files[file];
+    return `<span class="o-file" title="${esc(file)}"><span class="fi ${color}">${glyph}</span><span class="nm">${esc(name)}</span>${f && f.role ? `<span class="role">${esc(f.role)}</span>` : ''}</span>`;
+  };
+  function voiceHtml(v) {
+    const tag = v.kind === 'note' ? `<span class="tag">${esc({ info: T_('메모', 'note'), why: T_('왜', 'why'), risk: T_('주의', 'risk'), tip: T_('팁', 'tip') }[v.tone] || v.tone)}</span>` : `<span class="cap-dots">${Array.from({ length: v.n }, (_, i) => `<i class="${i < v.k ? 'past' : i === v.k ? 'cur' : ''}"></i>`).join('')}</span>`;
+    return `${tag}<span class="cap-text">${mdInline(v.text)}</span>`;
+  }
+  function currentItem(s) {
+    const sc = scenes[s.scene];
+    const times = (sc.cues && sc.cues.times) || [];
+    let k = -1;
+    times.forEach((t0, i) => { if (s.sceneT >= t0) k = i; });
+    return { k, n: times.length, item: k >= 0 ? sc.cues.items[k] : null };
+  }
+  /** The single explanation shown right now (M15): the current narration item or the latest note,
+   *  whichever is newer, anchored under the newest code range in the active pane. */
+  function computeVoice(s) {
+    if (!started || s.bridge || (T >= total - 1 && !playing)) return null;
+    const sc = scenes[s.scene];
+    const { k, n, item } = currentItem(s);
+    const itemT = k >= 0 ? sc.cues.times[k] : -Infinity;
+    const pane = s.panes[s.active];
+    const note = pane.notes[pane.notes.length - 1];
+    if (note && note.t >= itemT) return { kind: 'note', key: `n${note.key}`, text: note.text, tone: note.tone, anchor: { side: note.side, line: note.line } };
+    if (!item) return null;
+    const cands = pane.hl.filter((h) => h.p > 0 && !h.ref && !String(h.key).startsWith('g')).map((h) => ({ side: h.side, line: h.to, t: h.t || 0 }));
+    for (const ty of s.typing) if (ty.file === pane.file && ty.p > 0) cands.push({ side: ty.side, line: ty.to, t: ty.t || 0 });
+    if (pane.focus && !cands.length) cands.push({ side: pane.focus.side, line: Math.min(pane.focus.to, pane.focus.from + 12), t: pane.focus.t || 0 });
+    cands.sort((a, b) => a.t - b.t);
+    const a = cands[cands.length - 1] || null;
+    // the lead sentence frames the scene: it stays a caption until code is in play
+    const anchor = a && (k > 0 || a.t >= itemT) ? a : null;
+    return { kind: 'item', key: `i${s.scene}:${k}`, text: item.text, k, n, anchor };
+  }
+  function renderOrient(s) {
+    const strip = $('.wt-orient'), cap = $('.wt-caption'), card = $('.wt-bridge');
+    const live = started && !(T >= total - 1 && !playing);
+    app.classList.toggle('oriented', live);
+    if (!live) { strip.innerHTML = ''; cap.innerHTML = ''; orient.key = orient.capKey = ''; card.classList.remove('show'); $('.wt-stage').classList.remove('bridging'); return; }
+    const sc = scenes[s.scene];
+    const file = s.panes[s.active].file;
+    // strip: position in the story + the file in view (one line, two chunks)
+    let hunkNote = '';
+    if (sc.auto && sc.tour) {
+      let h = null;
+      for (const x of sc.timed) if (x.st.do === 'replay' && s.sceneT >= x.start) h = x.st.hunk;
+      hunkNote = `<span class="o-hunk">hunk ${h || sc.tour.hunks[0]}/${sc.tour.of}</span>`;
+    }
+    const key = `${s.scene}|${file}|${hunkNote}`;
+    if (key !== orient.key) {
+      const sceneChanged = !orient.key || orient.key.split('|')[0] !== String(s.scene);
+      orient.key = key;
+      strip.innerHTML = `<span class="o-pos"><b>${s.scene + 1}</b>/${scenes.length}</span><span class="o-q">${sc.question ? `<span class="q">Q</span>${mdInline(sc.question)}` : esc(sc.title || '')}</span><span class="o-spacer"></span>${hunkNote}${fileChip(file)}`;
+      restart(strip, sceneChanged ? 'swap' : 'swap-soft');
+    }
+    // caption: the voice when it has no code to sit next to (scene lead, graph scenes)
+    const v = s.voice;
+    const capKey = v && !v.placed ? v.key : '';
+    if (capKey !== orient.capKey) {
+      orient.capKey = capKey;
+      if (!capKey) { cap.classList.remove('show'); }
+      else {
+        cap.innerHTML = `<div class="cap-in">${voiceHtml(v)}</div>`;
+        cap.classList.add('show');
+        restart(cap.firstChild, 'swap'); // animate the content; the container only fades (so hiding always wins)
+      }
+    }
+    if (capKey) {
+      const pr = $('.wt-panes').getBoundingClientRect();
+      Object.assign(cap.style, { left: `${pr.left + 24}px`, width: `${pr.width - 48}px`, top: `${pr.bottom - 24}px` });
+    }
+    // bridge card at a scene boundary: what comes next, why in this order, and where
+    const stage = $('.wt-stage');
+    if (s.bridge) {
+      const bk = String(s.scene);
+      if (bk !== orient.bridgeKey) {
+        orient.bridgeKey = bk;
+        const prev = scenes[s.scene - 1];
+        const newChapter = sc.si === 0;
+        card.innerHTML = `<div class="br-card">
+          <div class="br-eyebrow">${newChapter ? `<span class="br-ch">${T_('챕터', 'Chapter')} ${sc.ci + 1} · ${esc(sc.chapter.title || '')}</span>` : `<span>${esc(sc.chapter.title || '')}</span>`}<span class="br-n">${s.scene + 1}/${scenes.length}</span></div>
+          ${prev ? `<div class="br-from">${T_('방금', 'Just saw')}: ${esc(prev.title || '')}</div>` : ''}
+          ${sc.bridge ? `<div class="br-why">${mdInline(sc.bridge)}</div>` : ''}
+          <div class="br-title">${mdInline(sc.question || sc.title || '')}</div>
+          ${sc.question && sc.title ? `<div class="br-sub">${esc(sc.title)}</div>` : ''}
+          ${sc.where ? `<div class="br-where">${fileChip(sc.where)}</div>` : ''}
+        </div>`;
+      }
+      card.classList.add('show');
+      stage.classList.add('bridging');
+    } else {
+      card.classList.remove('show');
+      stage.classList.remove('bridging');
+      orient.bridgeKey = '';
+    }
   }
 
   function rangeRows(P, r) {
@@ -1677,7 +1935,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
       for (const n of ps.notes) refs.push({ side: n.side, from: n.line, to: n.line });
       if (ps.flash) refs.push(ps.flash);
       if (ps.tokline) refs.push({ side: ps.tokline.side, from: ps.tokline.line, to: ps.tokline.line });
-      if (ps.scroll && ps.scroll.to) refs.push({ side: ps.scroll.to.side, from: ps.scroll.to.from ?? ps.scroll.to.line, to: ps.scroll.to.to ?? ps.scroll.to.line });
+      if (ps.scroll && ps.scroll.to && ps.scroll.mode !== 'top') refs.push({ side: ps.scroll.to.side, from: ps.scroll.to.from ?? ps.scroll.to.line, to: ps.scroll.to.to ?? ps.scroll.to.line });
       for (const t of s.typing) if (t.file === ps.file) refs.push(t);
       for (const r of refs) {
         const span = modelRowsOf(m, r);
@@ -1721,12 +1979,15 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     const deco = new Array(V.rows.length).fill('');
     const add = (i, c) => { deco[i] = deco[i] ? deco[i] + ' ' + c : c; };
     const labels = [];
+    // Attention budget (M14): only the two most recent highlights are fully salient.
+    const fresh = new Set(ps.hl.filter((h) => !String(h.key).startsWith('g')).slice(-2).map((h) => h.key));
     for (const h of ps.hl) {
       const rs = rangeRows(P, h);
       if (!rs.length || h.p <= 0) continue;
+      const old = !fresh.has(h.key) && !String(h.key).startsWith('g');
       const shown = Math.max(1, Math.ceil(rs.length * h.p));
-      rs.slice(0, shown).forEach((i, k) => { add(i, `hl hl-${h.tone}`); if (k === 0) add(i, 'hl-first'); if (k === shown - 1) add(i, 'hl-last'); });
-      if (h.label) labels.push([rs[0], h.label, h.tone]);
+      rs.slice(0, shown).forEach((i, k) => { add(i, old ? 'hl hl-old' : `hl hl-${h.tone}`); if (k === 0) add(i, 'hl-first'); if (k === shown - 1) add(i, 'hl-last'); });
+      if (h.label && !old) labels.push([rs[0], h.label, h.tone]);
     }
     if (ps.focus) {
       const keep = new Set(rangeRows(P, ps.focus));
@@ -1754,9 +2015,19 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
       }
       const dels = items.filter((x) => x.del);
       const addsList = items.filter((x) => x.add != null);
-      const delP = dels.length ? clamp(t.p / 0.28, 0, 1) : 1;
-      const typeP = dels.length ? clamp((t.p - 0.28) / 0.72, 0, 1) : t.p;
+      const dp = dels.length ? (t.dp != null ? t.dp : 0.28) : 0;
+      const delP = dels.length ? clamp(t.p / Math.max(0.01, dp), 0, 1) : 1;
+      const typeP = dels.length ? clamp((t.p - dp) / Math.max(0.01, 1 - dp), 0, 1) : t.p;
       dels.forEach((x, k) => { if (t.p <= 0 || delP * dels.length <= k) add(x.vi, 'typ-del-pend'); });
+      const pend = (x) => add(x.vi, x.onlyAdd && !m.split ? 'typ-hidden' : 'typ-add-pend');
+      if (t.mode === 'lines' || t.mode === 'block') {
+        const shown = t.p <= 0 || typeP <= 0 ? 0 : t.mode === 'block' ? addsList.length : Math.min(addsList.length, Math.floor(typeP * addsList.length) + 1);
+        addsList.forEach((x, idx) => {
+          if (idx >= shown) pend(x);
+          else if (typeP < 1 && (t.mode === 'block' || idx === shown - 1)) add(x.vi, 'ln-new');
+        });
+        continue;
+      }
       const len = (x) => x.add.replace(/^\s+/, '').length;
       const totalChars = addsList.reduce((a, x) => a + len(x), 0) || 1;
       let budget = typeP * totalChars;
@@ -1814,23 +2085,27 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
       lastFlash[P.idx] = fk;
     }
     // ---- inline notes (expand in)
-    const noteSig = JSON.stringify(ps.notes.map((n) => [n.key, n.side, n.line])) + viewKey;
-    if (noteSig !== P.noteSig) {
-      const had = new Set(Array.from(P.code.querySelectorAll('.note')).map((x) => x.dataset.key));
-      P.noteSig = noteSig;
-      P.code.querySelectorAll('.note').forEach((x) => x.remove());
-      for (const n of ps.notes) {
-        const i = V.idx[n.side].get(n.line);
-        if (i == null) continue;
-        const tag = { info: T_('메모', 'note'), why: T_('왜', 'why'), risk: T_('주의', 'risk'), tip: T_('팁', 'tip') }[n.tone] || n.tone;
-        const ne = el('div', `note tone-${n.tone}${had.has(String(n.key)) ? '' : ' in'}`, `<div class="note-in"><span class="tag">${esc(tag)}</span>${mdInline(n.text)}</div>`);
-        ne.dataset.key = n.key;
-        P.rowEls[i].after(ne);
+    // one explanation at a time, at the point of focus (M14/M15)
+    const v = active && s.voice && s.voice.anchor ? s.voice : null;
+    const vi = v ? V.idx[v.anchor.side] && V.idx[v.anchor.side].get(v.anchor.line) : null;
+    if (s.voice && active) s.voice.placed = vi != null;
+    const voiceSig = (v && vi != null ? `${v.key}@${vi}` : '') + viewKey;
+    if (voiceSig !== P.noteSig) {
+      P.noteSig = voiceSig;
+      P.code.querySelectorAll('.note').forEach((x) => {
+        if (v && x.dataset.key === v.key && !x.classList.contains('out') && Number(x.dataset.vi) === vi) return;
+        x.classList.add('out'); setTimeout(() => x.remove(), 200);
+      });
+      if (v && vi != null && !P.code.querySelector(`.note[data-key="${CSS.escape(v.key)}"]:not(.out)`)) {
+        const ne = el('div', `note callout${v.kind === 'note' ? ` tone-${v.tone}` : ''} in`, `<div class="note-in">${voiceHtml(v)}</div>`);
+        ne.dataset.key = v.key; ne.dataset.vi = vi;
+        P.rowEls[vi].after(ne);
       }
     }
+    const notes = v && vi != null ? [v] : [];
     // ---- scroll
     if (ps.scroll) {
-      const sig = JSON.stringify([ps.scroll.to, ps.scroll.mode, ps.scroll.p, viewKey, ps.notes.length, typSig]);
+      const sig = JSON.stringify([ps.scroll.to, ps.scroll.mode, ps.scroll.p, viewKey, notes.length, typSig]);
       if (sig !== P.scrollSig || playing) {
         P.scrollSig = sig;
         const y = scrollPx(P, ps.scroll);
@@ -1867,6 +2142,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     let y;
     if (scroll.mode === 'top') y = top - rh * 3;
     else if (scroll.mode === 'ensure' && fromPx != null && top >= fromPx + rh * 2 && bottom <= fromPx + H - rh * 2) y = fromPx;
+    else if (scroll.mode === 'follow' && fromPx != null) y = bottom > fromPx + H * 0.7 ? bottom - H * 0.7 : top < fromPx + rh ? top - rh * 2 : fromPx;
     else y = bottom - top > H - rh * 4 ? top - rh * 2 : Math.min((top + bottom) / 2 - H * 0.45, top - rh * 2);
     return clamp(y, 0, max);
   }
@@ -1996,7 +2272,8 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     const activeFile = s.panes[s.active].file;
     const open = new Set(s.panes.flatMap((p) => p.tabs));
     const hlList = s.graph ? s.graph.highlight || [] : content.nodes.filter((n) => n.file && n.file === activeFile).map((n) => n.id);
-    const hlSig = JSON.stringify([hlList, mode, s.graph ? '' : [...open].join(',')]);
+    const nextFile = !s.graph && s.bridge ? scenes[s.scene].where : null;
+    const hlSig = JSON.stringify([hlList, mode, s.graph ? '' : [...open].join(','), nextFile]);
     if (hlSig !== lastGraphHl) {
       lastGraphHl = hlSig;
       const hl = new Set(hlList);
@@ -2006,6 +2283,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
         n.classList.toggle('on', on);
         n.classList.toggle('off', dimOthers && !on);
         n.classList.toggle('visited', !s.graph && !!n.dataset.file && open.has(n.dataset.file) && !on);
+        n.classList.toggle('next', !!nextFile && n.dataset.file === nextFile && !on);
       });
       box.querySelectorAll('.g-edge').forEach((e) => { const on = hl.has(`${e.dataset.from}->${e.dataset.to}`) || (hl.has(e.dataset.from) && hl.has(e.dataset.to)); e.classList.toggle('on', on); e.classList.toggle('off', dimOthers && !on); });
     }
@@ -2017,9 +2295,9 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     const slot = $('.gd-map');
     const guideVisible = !app.classList.contains('hide-guide') && $('.wt-guide').getBoundingClientRect().width > 120;
     slot.hidden = !(mode === 'mini' && guideVisible);
-    const st = $('.wt-stage').getBoundingClientRect();
+    const st = $('.wt-panes').getBoundingClientRect();
     let r;
-    if (mode === 'full') r = { left: st.left + 14, top: st.top + 14, width: st.width - 28, height: st.height - 28 };
+    if (mode === 'full') r = { left: st.left + 14, top: st.top + 14, width: st.width - 28, height: st.height - 28 - 64 };
     else if (mode === 'mini' && guideVisible) { const g = slot.getBoundingClientRect(); r = { left: g.left, top: g.top, width: g.width, height: g.height }; }
     else if (mode === 'mini') r = { left: st.right - 254, top: st.top + 66, width: 240, height: 150 };
     else { const w = Math.min(620, st.width - 28); r = { left: st.right - 14 - w, top: st.top + 70, width: w, height: Math.min(340, st.height - 90) }; }
@@ -2139,11 +2417,11 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     $('.scrub .knob').style.left = `${(T / total) * 100}%`;
     $('.scrub').setAttribute('aria-valuenow', String(Math.round((T / total) * 100)));
     const hint = $('.ctrl-hint');
-    const msg = atSceneEnd && !playing ? `<span class="cont">${T_('장면 끝 — Space로 다음 장면', 'End of scene — Space to continue')}</span>` : '';
+    const msg = atSceneEnd && !playing ? `<span class="cont">${T_('장면 끝: Space로 다음 장면', 'End of scene: Space to continue')}</span>` : '';
     const sig = msg + (userOps.length ? 'u' : '');
     if (hint.dataset.sig !== sig) {
       hint.dataset.sig = sig;
-      hint.innerHTML = `${msg}<span><kbd>Space</kbd> ${T_('재생/정지', 'play/pause')}</span><span><kbd>←</kbd><kbd>→</kbd> ${T_('장면 이동', 'scene')}</span><span><kbd>⇧</kbd>+<kbd>←</kbd><kbd>→</kbd> ±5s</span><span><kbd>[</kbd><kbd>]</kbd> ${T_('배속', 'speed')}</span><span>⌘/Ctrl+${T_('클릭: 정의로 이동', 'Click: definition')}</span>${userOps.length ? `<span class="cont">${T_('탐색 모드 — 재생하면 장면으로 돌아갑니다', 'Exploring — play to return to the walkthrough')}</span>` : ''}`;
+      hint.innerHTML = `${msg}<span><kbd>Space</kbd> ${T_('재생/정지', 'play/pause')}</span><span><kbd>←</kbd><kbd>→</kbd> ±5s</span><span><kbd>⇧</kbd>+<kbd>←</kbd><kbd>→</kbd> ${T_('장면 이동', 'scene')}</span><span><kbd>[</kbd><kbd>]</kbd> ${T_('배속', 'speed')}</span><span>⌘/Ctrl+${T_('클릭: 정의로 이동', 'Click: definition')}</span>${userOps.length ? `<span class="cont">${T_('탐색 모드: 재생하면 장면으로 돌아갑니다', 'Exploring: play to return to the walkthrough')}</span>` : ''}`;
     }
   }
 
@@ -2156,7 +2434,7 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     const k = sceneAt(T);
     const end = scenes[k].t0 + scenes[k].duration;
     const next = T + dt * speed;
-    if (segPause && T < end && next >= end && k < scenes.length - 1) { T = end - 0.5; playing = false; atSceneEnd = true; render(); return; }
+    if (segPause && !scenes[k].auto && T < end && next >= end && k < scenes.length - 1) { T = end - 0.5; playing = false; atSceneEnd = true; render(); return; }
     if (next >= total) { T = total; playing = false; render(); return; }
     T = next;
     render();
@@ -2304,8 +2582,8 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     if (exi) { exi.remove(); return; }
     const box = el('div', 'help', `<div role="dialog" aria-label="shortcuts"><h2>${T_('단축키', 'Keyboard shortcuts')}</h2><table>
       <tr><td><kbd>Space</kbd> / <kbd>K</kbd></td><td>${T_('재생 / 일시정지', 'Play / pause')}</td></tr>
-      <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>${T_('이전 / 다음 장면', 'Previous / next scene')}</td></tr>
-      <tr><td><kbd>⇧</kbd>+<kbd>←</kbd> <kbd>→</kbd></td><td>${T_('5초 뒤로 / 앞으로', 'Seek ±5s')}</td></tr>
+      <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>${T_('5초 뒤로 / 앞으로', 'Seek ±5s')}</td></tr>
+      <tr><td><kbd>⇧</kbd>+<kbd>←</kbd> <kbd>→</kbd></td><td>${T_('이전 / 다음 장면', 'Previous / next scene')}</td></tr>
       <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>${T_('배속 낮추기 / 높이기', 'Slower / faster')}</td></tr>
       <tr><td><kbd>P</kbd></td><td>${T_('장면마다 멈춤 켜기/끄기', 'Toggle pause per scene')}</td></tr>
       <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>${T_('N번째 챕터로 이동', 'Jump to chapter N')}</td></tr>
@@ -2320,10 +2598,10 @@ code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padd
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key;
     if (k === ' ' || k === 'k' || k === 'K') { e.preventDefault(); playing ? pause() : play(); }
-    else if (k === 'ArrowRight' && e.shiftKey) seek(T + 5000, playing);
-    else if (k === 'ArrowLeft' && e.shiftKey) seek(T - 5000, playing);
-    else if (k === 'ArrowRight') gotoScene(sceneAt(T) + 1, playing);
-    else if (k === 'ArrowLeft') gotoScene(sceneAt(T) - (T - scenes[sceneAt(T)].t0 < 1500 ? 1 : 0), playing);
+    else if (k === 'ArrowRight' && e.shiftKey) gotoScene(sceneAt(T) + 1, playing);
+    else if (k === 'ArrowLeft' && e.shiftKey) gotoScene(sceneAt(T) - (T - scenes[sceneAt(T)].t0 < 1500 ? 1 : 0), playing);
+    else if (k === 'ArrowRight') { e.preventDefault(); seek(T + 5000, playing); }
+    else if (k === 'ArrowLeft') { e.preventDefault(); seek(T - 5000, playing); }
     else if (k === ']') setSpeed(1);
     else if (k === '[') setSpeed(-1);
     else if (k === 'p' || k === 'P') { segPause = !segPause; $('[data-act="segpause"]').checked = segPause; }

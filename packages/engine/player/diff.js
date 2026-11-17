@@ -1,4 +1,4 @@
-/* Walkthrough diff engine — shared by the player (browser) and build.mjs (Node).
+/* Walkthrough diff engine: shared by the player (browser) and build.mjs (Node).
  * Algorithms: "myers" (minimal edit script) and "patience" (unique-line anchors,
  * better at keeping moved / re-ordered blocks and brace-heavy code readable).
  * Both are post-processed with a slider heuristic and line pairing for

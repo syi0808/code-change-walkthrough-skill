@@ -15,7 +15,7 @@ const LIVE = `<script>(function(){
     if(!b){ b = document.createElement('div'); b.id='__wt_diag';
       b.style.cssText='position:fixed;left:12px;right:12px;bottom:12px;z-index:9999;max-height:40vh;overflow:auto;background:#3b1219;color:#ffd8d8;border:1px solid #ff7b72;border-radius:8px;padding:10px 14px;font:12px/1.5 ui-monospace,Menlo,monospace;box-shadow:0 8px 30px rgba(0,0,0,.4)';
       document.body.appendChild(b); }
-    b.innerHTML = '<b>IR has ' + d.errors.length + ' error(s) — showing the last valid build</b><br>' +
+    b.innerHTML = '<b>IR has ' + d.errors.length + ' error(s): showing the last valid build</b><br>' +
       d.errors.slice(0, 12).map(function(e){ return (e.path + ': ' + e.message).replace(/[&<]/g, function(c){ return c === '&' ? '&amp;' : '&lt;'; }); }).join('<br>');
   }
   es.onmessage = function(m){
@@ -30,9 +30,9 @@ const LIVE = `<script>(function(){
 
 function errorPage(diag, file) {
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Walkthrough — errors</title>
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Walkthrough: errors</title>
 <style>:root{color-scheme:light dark}body{margin:0;padding:24px 16px;font:13px/1.6 ui-monospace,Menlo,monospace;background:#1b1d23;color:#d7dae0}@media (prefers-color-scheme:light){body{background:#fff;color:#1f2328}}h1{font:600 16px system-ui;margin:0 0 12px}li{margin:4px 0}.e{color:#ff7b72}.w{color:#d29922}</style></head>
-<body><h1>${esc(path.basename(file))}: ${diag.errors.length} error(s)</h1><ul>${diag.errors.map((e) => `<li class="e">${esc(e.path)}: ${esc(e.message)}</li>`).join('')}${diag.warnings.map((w) => `<li class="w">warn ${esc(w.path)}: ${esc(w.message)}</li>`).join('')}</ul><p>Fix the IR and save — this page reloads automatically.</p>${LIVE}</body></html>`;
+<body><h1>${esc(path.basename(file))}: ${diag.errors.length} error(s)</h1><ul>${diag.errors.map((e) => `<li class="e">${esc(e.path)}: ${esc(e.message)}</li>`).join('')}${diag.warnings.map((w) => `<li class="w">warn ${esc(w.path)}: ${esc(w.message)}</li>`).join('')}</ul><p>Fix the IR and save: this page reloads automatically.</p>${LIVE}</body></html>`;
 }
 
 /**
@@ -57,7 +57,7 @@ export function serve(o) {
     else state = { ...state, diag };
     for (const w of res.warnings) log(`warn  ${w.path}: ${w.message}`);
     for (const e of res.errors) log(`error ${e.path}: ${e.message}`);
-    log(res.ok ? `✓ compiled ${path.basename(file)} — ${res.stats.scenes} scenes, ${res.stats.files} files` : `✗ ${res.errors.length} error(s)`);
+    log(res.ok ? `✓ compiled ${path.basename(file)}: ${res.stats.scenes} scenes, ${res.stats.files} files` : `✗ ${res.errors.length} error(s)`);
     return res.ok;
   }
   build();

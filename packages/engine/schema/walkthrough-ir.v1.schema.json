@@ -47,6 +47,15 @@
         }
       }
     },
+    "tour": {
+      "oneOf": [
+        { "const": false },
+        { "type": "object", "properties": {
+          "order": { "type": "array", "items": { "type": "string" } },
+          "tempo": { "type": "object", "additionalProperties": { "enum": ["key", "normal", "skim"] } },
+          "questions": { "type": "object", "additionalProperties": { "type": "string" } } } }
+      ]
+    },
     "glossary": {
       "type": "array",
       "items": { "type": "object", "required": ["term", "definition"], "properties": { "term": { "type": "string" }, "definition": { "type": "string" } } }
@@ -71,6 +80,9 @@
         "id": { "type": "string" },
         "title": { "type": "string" },
         "goal": { "type": "string" },
+        "question": { "type": "string", "description": "the question the viewer has at this point; this scene answers it" },
+        "at": { "type": "object", "required": ["file"], "properties": { "file": { "type": "string" }, "hunk": { "type": "integer", "minimum": 1 } }, "description": "play right after the tour replays this hunk / file" },
+        "bridge": { "type": "string", "description": "why this scene follows the previous one (transition card)" },
         "narration": { "type": "string" },
         "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } }
       }
@@ -106,7 +118,7 @@
       "type": "object",
       "required": ["do"],
       "properties": {
-        "do": { "enum": ["open", "close", "layout", "diffView", "reveal", "highlight", "focus", "unfocus", "note", "type", "goto", "refs", "graph", "say", "wait", "clear"] },
+        "do": { "enum": ["open", "close", "layout", "diffView", "reveal", "highlight", "focus", "unfocus", "note", "type", "replay", "goto", "refs", "graph", "say", "wait", "clear"] },
         "pane": { "$ref": "#/$defs/pane" },
         "file": { "type": "string" },
         "view": { "$ref": "#/$defs/view" },

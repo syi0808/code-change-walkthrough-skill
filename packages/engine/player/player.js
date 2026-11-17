@@ -1,4 +1,4 @@
-/* Code Change Walkthrough — IR player.
+/* Code Change Walkthrough: IR player.
  * Renders compiled Walkthrough IR (docs/ir-v1.md) as an IDE-like, seekable animation.
  *
  * Core rule: the visible walkthrough state is a pure function of time.
@@ -76,16 +76,34 @@
   const scenes = [];
   (IR.chapters || []).forEach((ch, ci) => (ch.scenes || []).forEach((sc, si) => scenes.push({ ...sc, ci, si, chapter: ch })));
   let total = 0;
-  for (const sc of scenes) {
-    const lay = TM.scene(sc);
+  scenes.forEach((sc, idx) => {
+    const lay = TM.scene(sc, { lead: idx && !sc.auto ? TM.BRIDGE : 0 });
+    sc.lead = lay.lead;
     sc.timed = lay.timed;
     sc.cues = lay.cues;
     sc.duration = lay.duration;
     sc.t0 = total;
     total += sc.duration;
-  }
+    // the first file this scene looks at (for the bridge card's "where")
+    const st0 = (sc.steps || []).find((x) => x.file || x._file || (x._to && x._to.file) || (x._items && x._items.length));
+    sc.where = st0 ? st0.file || st0._file || (st0._to && st0._to.file) || st0._items[0].file : null;
+  });
   let sid = 0;
-  for (const sc of scenes) for (const t of sc.timed) t.st._id = ++sid;
+  for (const sc of scenes) for (const t of sc.timed) { t.st._id = ++sid; t.st._start = t.start; }
+  // ---- the tour: global replay steps, each file's replay span, and when files appear / disappear
+  const replays = [];
+  const fileSpan = {}, fileBorn = {}, fileGone = {};
+  scenes.forEach((sc) => sc.timed.forEach((x) => {
+    const g = sc.t0 + x.start, st = x.st;
+    const targets = [st.file, st._file, st._to && st._to.file, ...((st._items || []).map((it) => it.file))].filter(Boolean);
+    for (const f of targets) if (fileBorn[f] == null) fileBorn[f] = g;
+    if (st.do === 'replay' && st._r) {
+      replays.push({ st, g, end: g + x.dur, file: st._file });
+      const sp = fileSpan[st._file] || (fileSpan[st._file] = { from: g, to: g + x.dur });
+      sp.from = Math.min(sp.from, g); sp.to = Math.max(sp.to, g + x.dur);
+      if (IR.files[st._file] && IR.files[st._file].after == null) fileGone[st._file] = Math.max(fileGone[st._file] || 0, g + x.dur);
+    }
+  }));
 
   // ================================================================== state
   const DIFF_DEFAULT = { mode: 'unified', algorithm: 'patience', granularity: 'word', context: 3, whitespace: 'collapse' };
@@ -128,7 +146,7 @@
       case 'open': {
         // Procedure (motion rules M3/M4): find the file → click → it opens → its changes sweep in.
         const kind = st._openKind || 'tree';
-        const navMs = { tree: 1150, tab: 650, same: 0 }[kind];
+        const navMs = st._nav != null ? st._nav : { tree: 1150, tab: 650, same: 0 }[kind];
         const ms = p >= 1 ? Infinity : p * (dur || 0);
         if (navMs && ms < navMs) {
           const navP = ms / navMs;
@@ -144,6 +162,7 @@
         if (st.diff) Object.assign(pane.diff, st.diff);
         const after = Number.isFinite(ms) ? clamp((ms - navMs) / Math.max(1, (dur || 1) - navMs), 0, 1) : 1;
         if (st._r) { if (pane.scroll && pane.scroll.to !== st._r) setScroll(pane, st._r, 'center', ease(clamp(after / 0.4, 0, 1))); else pane.scroll.p = 1; }
+        else if (st._first && kind !== 'same' && !pane.mem[st.file + '#seen']) { setScroll(pane, st._first, 'center', 1); }
         if (st._reveal && after < 1) s.reveal = { file: st.file, p: clamp((after - 0.2) / 0.8, 0, 1) };
         break;
       }
@@ -169,20 +188,27 @@
         showFile(s, pi, st._file, st._view);
         const r = st._r; if (!r) break;
         // highlights sweep in line by line over the first 60% of the step
-        if (st.do === 'highlight') pane.hl.push({ ...r, tone: st.tone || 'focus', label: st.label || null, p: clamp(p / 0.6, 0, 1), key: st._id });
-        if (st.do === 'focus') pane.focus = { ...r, p: clamp(p / 0.5, 0, 1) };
-        if (st.do === 'note') pane.notes.push({ side: r.side, line: r.to, text: st.text, tone: st.tone || 'info', key: st._id });
+        if (st.do === 'highlight') pane.hl.push({ ...r, tone: st.tone || 'focus', label: st.label || null, p: clamp(p / 0.6, 0, 1), key: st._id, t: st._start });
+        if (st.do === 'focus') pane.focus = { ...r, p: clamp(p / 0.5, 0, 1), t: st._start };
+        if (st.do === 'note') pane.notes.push({ side: r.side, line: r.to, text: st.text, tone: st.tone || 'info', key: st._id, t: st._start });
         const mode = st.do === 'reveal' ? st.align || 'center' : st.do === 'focus' ? 'center' : 'ensure';
         if (st.reveal !== false) setScroll(pane, r, mode, ease(clamp(p / 0.7, 0, 1)));
         break;
       }
-      case 'type': {
+      case 'type': case 'replay': {
         showFile(s, pi, st._file, st._view);
         const r = st._r; if (!r) break;
         let e = s.typing.find((x) => x.key === st._id);
-        if (!e) { e = { key: st._id, file: st._file, side: r.side, from: r.from, to: r.to, p: 0 }; s.typing.push(e); }
-        e.p = p;
-        setScroll(pane, r, 'ensure', ease(clamp(p / 0.12, 0, 1)));
+        if (!e) { e = { key: st._id, file: st._file, side: r.side, from: r.from, to: r.to, p: 0, t: st._start }; s.typing.push(e); }
+        e.t = st._start; e.p = p; e.mode = st._mode || 'type'; e.dp = st._dp;
+        if (e.mode === 'block' || r.to - r.from < 6) setScroll(pane, r, 'ensure', ease(clamp(p / 0.15, 0, 1)));
+        else {
+          // follow the line being written, like an editor keeping the caret in view
+          const dp = st._dp || 0;
+          const wp = clamp((p - dp) / Math.max(0.01, 1 - dp), 0, 1);
+          const cur = Math.round(r.from + (r.to - r.from) * wp);
+          setScroll(pane, { side: r.side, from: Math.max(r.from, cur - 1), to: cur }, p < dp ? 'ensure' : 'follow', 1);
+        }
         break;
       }
       case 'unfocus': for (const pn of st.pane != null ? [pane] : s.panes) pn.focus = null; break;
@@ -193,6 +219,8 @@
         const P1 = 0.32, P2 = 0.56;
         if (p < P2) {
           showFile(s, pi, fr.file);
+          pane.focus = null; // never Cmd+Click into dimmed code
+          if (p > 0.06) pane.hl.push({ side: fr.side, from: fr.line, to: fr.line, tone: 'focus', label: null, p: 1, key: `g${st._id}` });
           setScroll(pane, { side: fr.side, from: fr.line, to: fr.line }, 'ensure', ease(clamp(p / 0.12, 0, 1)));
           const anchor = { pane: pi, side: fr.side, line: fr.line, token: (st.from || {}).token };
           s.pointer = { from: s.pointer && s.pointer.to ? s.pointer.to : null, to: anchor, p: ease(clamp((p - 0.1) / (P1 - 0.1), 0, 1)), click: p > 0.48 };
@@ -270,7 +298,12 @@
     // An edit that this scene will replay later is "not written yet" until then:
     // its added lines are hidden and its removed lines look unchanged.
     for (const x of sc.timed) {
-      if (x.st.do === 'type' && x.st._r && t < x.start) s.typing.push({ key: x.st._id, file: x.st._file, side: x.st._r.side, from: x.st._r.from, to: x.st._r.to, p: 0 });
+      if (x.st.do === 'type' && x.st._r && t < x.start) s.typing.push({ key: x.st._id, file: x.st._file, side: x.st._r.side, from: x.st._r.from, to: x.st._r.to, p: 0, mode: 'type', dp: x.st._dp });
+    }
+    for (const r of replays) {
+      if (r.g <= T) continue;
+      const sp = fileSpan[r.file];
+      if (sp && sp.from <= T + 1) s.typing.push({ key: r.st._id, file: r.file, side: r.st._r.side, from: r.st._r.from, to: r.st._r.to, p: 0, mode: r.st._mode, dp: r.st._dp });
     }
     for (const x of sc.timed) {
       if (t < x.start) continue;
@@ -279,6 +312,7 @@
     s.scene = k;
     s.sceneP = clamp(t / sc.duration, 0, 1);
     s.sceneT = t;
+    s.bridge = t < sc.lead ? { p: t / sc.lead } : null;
     return s;
   }
 
@@ -471,10 +505,12 @@
         <div class="ex-body" role="tree"></div>
       </aside>
       <section class="wt-stage">
+        <div class="wt-orient" aria-live="polite"></div>
         <div class="wt-panes"></div>
         <div class="wt-refs" hidden></div>
         <div class="wt-toast" hidden></div>
 
+        <div class="wt-bridge" aria-live="polite"></div>
         <div class="wt-start"><button data-act="play" aria-label="play">${ICON.play}</button><div class="t">${esc(meta.title || '')}</div><div class="s">${scenes.length} ${T_('장면', 'scenes')} · ${T_('약', '~')} ${fmt(total)} · ${T_('Space로 시작', 'Space to start')}</div></div>
       </section>
       <aside class="wt-guide" aria-label="${T_('워크스루', 'Walkthrough')}">
@@ -485,13 +521,14 @@
       </aside>
     </div>
     <div class="wt-graph" hidden></div>
+    <div class="wt-caption" aria-live="polite"></div>
     <div class="wt-pointer" hidden>${ICON.pointer}<span class="ripple"></span></div>
     <div class="wt-keys" hidden></div>
     <footer class="wt-ctrl">
       <div class="ctrl-btns">
-        <button class="icon-btn" data-act="prev" title="${T_('이전 장면', 'Previous scene')} (←)">${ICON.prev}</button>
+        <button class="icon-btn" data-act="prev" title="${T_('이전 장면', 'Previous scene')} (⇧←)">${ICON.prev}</button>
         <button class="play" data-act="play" title="${T_('재생/일시정지', 'Play/Pause')} (Space)">${ICON.play}</button>
-        <button class="icon-btn" data-act="next" title="${T_('다음 장면', 'Next scene')} (→)">${ICON.next}</button>
+        <button class="icon-btn" data-act="next" title="${T_('다음 장면', 'Next scene')} (⇧→)">${ICON.next}</button>
         <button class="icon-btn" data-act="restart" title="${T_('처음부터', 'Restart')}">${ICON.restart}</button>
       </div>
       <div class="scrub" role="slider" aria-label="${T_('타임라인', 'Timeline')}" tabindex="0"><div class="track"></div><div class="knob"></div><div class="tip"></div></div>
@@ -562,7 +599,9 @@
     const target = s.exFocus || activeFile; // a file being picked in the explorer, else the active file
     if (target && ex.revealed !== target) { for (const a of ancestors(target)) ex.expanded.add(a); }
     const open = new Set(s.panes.flatMap((p) => p.tabs));
-    const sig = [started, activeFile, s.exFocus, [...open].join(','), [...ex.expanded].length, ex.filter, ex.version || 0].join('|');
+    const born = started ? Object.keys(fileBorn).filter((f) => fileBorn[f] <= T).length : -1;
+    const gone = started ? Object.keys(fileGone).filter((f) => fileGone[f] <= T).length : -1;
+    const sig = [started, born, gone, activeFile, s.exFocus, [...open].join(','), [...ex.expanded].length, ex.filter, ex.version || 0].join('|');
     const body = $('.ex-body');
     if (sig === ex.sig) return;
     ex.sig = sig;
@@ -580,6 +619,7 @@
       for (const f of node.files) {
         const st = changedStatus(f.path);
         if (ex.filter && !st) continue;
+        if (started && st === 'added' && fileBorn[f.path] != null && fileBorn[f.path] > T && f.path !== s.exFocus) continue; // not written yet
         visible.add(f.path);
         rows.push({ kind: 'file', path: f.path, label: f.name, depth, status: st, embedded: !!IR.files[f.path] });
       }
@@ -597,8 +637,8 @@
         return `<div class="ex-row dir${r.changed ? ' has-changes' : ''}${onPath ? ' path' : ''}${isNew}" role="treeitem" aria-expanded="${r.open}" data-dir="${esc(r.path)}" ${pad} title="${esc(r.path)}">${guides(r.depth)}<span class="tw${r.open ? ' open' : ''}">${ICON.chevron}</span><span class="nm">${esc(r.label)}</span>${r.changed ? '<span class="dot"></span>' : ''}</div>`;
       }
       const [glyph, color] = fileIcon(r.label);
-      const cls = ['ex-row', 'file', r.status ? `st-${r.status}` : '', open.has(r.path) ? 'open' : '', r.path === activeFile && !s.exFocus ? 'active' : '', r.path === s.exFocus ? 'selecting' : '', r.path === target ? 'target' : '', r.embedded ? '' : 'stub', isNew].filter(Boolean).join(' ');
-      return `<div class="${cls}" role="treeitem" data-file="${esc(r.path)}" ${pad} title="${esc(r.path)}${r.embedded ? '' : ' — ' + T_('내용 미포함', 'content not embedded')}">${guides(r.depth)}<span class="tw"></span><span class="fi ${color}">${glyph}</span><span class="nm">${esc(r.label)}</span>${r.status ? `<span class="sb">${STATUS_LETTER[r.status] || ''}</span>` : ''}</div>`;
+      const cls = ['ex-row', 'file', r.status ? `st-${r.status}` : '', started && fileGone[r.path] != null && fileGone[r.path] <= T ? 'gone' : '', open.has(r.path) ? 'open' : '', r.path === activeFile && !s.exFocus ? 'active' : '', r.path === s.exFocus ? 'selecting' : '', r.path === target ? 'target' : '', r.embedded ? '' : 'stub', isNew].filter(Boolean).join(' ');
+      return `<div class="${cls}" role="treeitem" data-file="${esc(r.path)}" ${pad} title="${esc(r.path)}${r.embedded ? '' : ': ' + T_('내용 미포함', 'content not embedded')}">${guides(r.depth)}<span class="tw"></span><span class="fi ${color}">${glyph}</span><span class="nm">${esc(r.label)}</span>${r.status ? `<span class="sb">${STATUS_LETTER[r.status] || ''}</span>` : ''}</div>`;
     }).join('');
     ex.prevVisible = visible;
     body.classList.toggle('spot', !!target && started);
@@ -645,6 +685,14 @@
       html += `<li class="gd-ch" data-ch="${ci}"><div class="gd-ch-h"><span class="no">${ci + 1}</span><span class="t">${esc(ch.title || '')}</span></div><ol class="gd-scenes">`;
       for (const sc of ch.scenes || []) {
         const S = scenes[k];
+        if (S.auto && S.tour) {
+          const name = S.tour.file.split('/').pop();
+          const [glyph, color] = fileIcon(name);
+          const f = IR.files[S.tour.file] || {};
+          html += `<li class="gd-sc auto st-${f.status}" data-scene="${k}"><button class="gd-sc-h" data-scene="${k}" title="${esc(S.tour.file)}"><span class="bullet"></span><span class="fi ${color}">${glyph}</span><span class="t">${esc(S.title)}</span><span class="hk">${S.tour.hunks.map(() => '<i></i>').join('')}</span><span class="dur">${fmt(S.duration)}</span></button></li>`;
+          k++;
+          continue;
+        }
         html += `<li class="gd-sc" data-scene="${k}"><button class="gd-sc-h" data-scene="${k}"><span class="bullet">${ICON.check}</span><span class="t">${esc(sc.title || sc.id)}</span><span class="dur">${fmt(S.duration)}</span></button>
           <div class="gd-detail"><div class="gd-inner">${sc.goal ? `<div class="gd-goal"><b>${T_('목표', 'Goal')}</b>${esc(sc.goal)}</div>` : ''}<div class="gd-text">${narrationHtml(S)}</div><div class="gd-say"></div></div></div>
           <div class="gd-prog"><i></i></div></li>`;
@@ -688,7 +736,17 @@
       const target = cur < 0 ? guideBody.querySelector('.gd-overview') : cur >= scenes.length ? guideBody.querySelector('.gd-recap') : scItems[cur];
       if (target) setTimeout(() => target.scrollIntoView({ block: cur >= scenes.length ? 'start' : 'nearest', behavior: 'smooth' }), 60);
     }
-    if (cur >= 0 && cur < scenes.length) {
+    const seen = replays.filter((r) => started && r.end <= T).length;
+    if (seen !== guide.seen) {
+      guide.seen = seen;
+      $('.gd-meta').innerHTML = replays.length ? `${T_('변경', 'Changes')} <b>${seen}</b>/${replays.length} hunk · ${fmt(total)}` : `${scenes.length} ${T_('장면', 'scenes')} · ${fmt(total)}`;
+    }
+    if (cur >= 0 && cur < scenes.length && scenes[cur].auto) {
+      const li = scItems[cur];
+      const dots = li.querySelectorAll('.hk i');
+      let j = 0;
+      for (const x of scenes[cur].timed) if (x.st.do === 'replay') { if (dots[j]) { dots[j].classList.toggle('on', s.sceneT >= x.start + x.dur); dots[j].classList.toggle('cur', s.sceneT >= x.start && s.sceneT < x.start + x.dur); } j++; }
+    } else if (cur >= 0 && cur < scenes.length) {
       const li = scItems[cur];
       li.querySelector('.gd-prog i').style.width = `${(s.sceneP * 100).toFixed(1)}%`;
       const times = (scenes[cur].cues && scenes[cur].cues.times) || [];
@@ -740,6 +798,7 @@
   function render() {
     const s = stateAt(T);
     for (const op of userOps) op(s);
+    s.voice = userOps.length ? null : computeVoice(s);
     panesEl.classList.toggle('columns', s.layout === 'columns');
     s.panes.forEach((ps, i) => renderPane(paneEls[i], ps, i === s.active, s));
     renderPointer(s);
@@ -749,8 +808,112 @@
     if (!!s.toast !== !toast.hidden || (s.toast && toast.textContent !== s.toast)) { toast.hidden = !s.toast; if (s.toast) { toast.textContent = s.toast; restart(toast, 'in'); } }
     renderExplorer(s);
     renderGuide(s);
+    renderOrient(s);
     renderChrome(s);
     $('.wt-start').classList.toggle('gone', started);
+  }
+
+  // ================================================================== orientation: where am I, why this, why now
+  const orient = { key: '', capKey: '', bridgeKey: '' };
+  const fileChip = (file) => {
+    if (!file) return '';
+    const name = file.split('/').pop();
+    const [glyph, color] = fileIcon(name);
+    const f = IR.files[file];
+    return `<span class="o-file" title="${esc(file)}"><span class="fi ${color}">${glyph}</span><span class="nm">${esc(name)}</span>${f && f.role ? `<span class="role">${esc(f.role)}</span>` : ''}</span>`;
+  };
+  function voiceHtml(v) {
+    const tag = v.kind === 'note' ? `<span class="tag">${esc({ info: T_('메모', 'note'), why: T_('왜', 'why'), risk: T_('주의', 'risk'), tip: T_('팁', 'tip') }[v.tone] || v.tone)}</span>` : `<span class="cap-dots">${Array.from({ length: v.n }, (_, i) => `<i class="${i < v.k ? 'past' : i === v.k ? 'cur' : ''}"></i>`).join('')}</span>`;
+    return `${tag}<span class="cap-text">${mdInline(v.text)}</span>`;
+  }
+  function currentItem(s) {
+    const sc = scenes[s.scene];
+    const times = (sc.cues && sc.cues.times) || [];
+    let k = -1;
+    times.forEach((t0, i) => { if (s.sceneT >= t0) k = i; });
+    return { k, n: times.length, item: k >= 0 ? sc.cues.items[k] : null };
+  }
+  /** The single explanation shown right now (M15): the current narration item or the latest note,
+   *  whichever is newer, anchored under the newest code range in the active pane. */
+  function computeVoice(s) {
+    if (!started || s.bridge || (T >= total - 1 && !playing)) return null;
+    const sc = scenes[s.scene];
+    const { k, n, item } = currentItem(s);
+    const itemT = k >= 0 ? sc.cues.times[k] : -Infinity;
+    const pane = s.panes[s.active];
+    const note = pane.notes[pane.notes.length - 1];
+    if (note && note.t >= itemT) return { kind: 'note', key: `n${note.key}`, text: note.text, tone: note.tone, anchor: { side: note.side, line: note.line } };
+    if (!item) return null;
+    const cands = pane.hl.filter((h) => h.p > 0 && !h.ref && !String(h.key).startsWith('g')).map((h) => ({ side: h.side, line: h.to, t: h.t || 0 }));
+    for (const ty of s.typing) if (ty.file === pane.file && ty.p > 0) cands.push({ side: ty.side, line: ty.to, t: ty.t || 0 });
+    if (pane.focus && !cands.length) cands.push({ side: pane.focus.side, line: Math.min(pane.focus.to, pane.focus.from + 12), t: pane.focus.t || 0 });
+    cands.sort((a, b) => a.t - b.t);
+    const a = cands[cands.length - 1] || null;
+    // the lead sentence frames the scene: it stays a caption until code is in play
+    const anchor = a && (k > 0 || a.t >= itemT) ? a : null;
+    return { kind: 'item', key: `i${s.scene}:${k}`, text: item.text, k, n, anchor };
+  }
+  function renderOrient(s) {
+    const strip = $('.wt-orient'), cap = $('.wt-caption'), card = $('.wt-bridge');
+    const live = started && !(T >= total - 1 && !playing);
+    app.classList.toggle('oriented', live);
+    if (!live) { strip.innerHTML = ''; cap.innerHTML = ''; orient.key = orient.capKey = ''; card.classList.remove('show'); $('.wt-stage').classList.remove('bridging'); return; }
+    const sc = scenes[s.scene];
+    const file = s.panes[s.active].file;
+    // strip: position in the story + the file in view (one line, two chunks)
+    let hunkNote = '';
+    if (sc.auto && sc.tour) {
+      let h = null;
+      for (const x of sc.timed) if (x.st.do === 'replay' && s.sceneT >= x.start) h = x.st.hunk;
+      hunkNote = `<span class="o-hunk">hunk ${h || sc.tour.hunks[0]}/${sc.tour.of}</span>`;
+    }
+    const key = `${s.scene}|${file}|${hunkNote}`;
+    if (key !== orient.key) {
+      const sceneChanged = !orient.key || orient.key.split('|')[0] !== String(s.scene);
+      orient.key = key;
+      strip.innerHTML = `<span class="o-pos"><b>${s.scene + 1}</b>/${scenes.length}</span><span class="o-q">${sc.question ? `<span class="q">Q</span>${mdInline(sc.question)}` : esc(sc.title || '')}</span><span class="o-spacer"></span>${hunkNote}${fileChip(file)}`;
+      restart(strip, sceneChanged ? 'swap' : 'swap-soft');
+    }
+    // caption: the voice when it has no code to sit next to (scene lead, graph scenes)
+    const v = s.voice;
+    const capKey = v && !v.placed ? v.key : '';
+    if (capKey !== orient.capKey) {
+      orient.capKey = capKey;
+      if (!capKey) { cap.classList.remove('show'); }
+      else {
+        cap.innerHTML = `<div class="cap-in">${voiceHtml(v)}</div>`;
+        cap.classList.add('show');
+        restart(cap.firstChild, 'swap'); // animate the content; the container only fades (so hiding always wins)
+      }
+    }
+    if (capKey) {
+      const pr = $('.wt-panes').getBoundingClientRect();
+      Object.assign(cap.style, { left: `${pr.left + 24}px`, width: `${pr.width - 48}px`, top: `${pr.bottom - 24}px` });
+    }
+    // bridge card at a scene boundary: what comes next, why in this order, and where
+    const stage = $('.wt-stage');
+    if (s.bridge) {
+      const bk = String(s.scene);
+      if (bk !== orient.bridgeKey) {
+        orient.bridgeKey = bk;
+        const prev = scenes[s.scene - 1];
+        const newChapter = sc.si === 0;
+        card.innerHTML = `<div class="br-card">
+          <div class="br-eyebrow">${newChapter ? `<span class="br-ch">${T_('챕터', 'Chapter')} ${sc.ci + 1} · ${esc(sc.chapter.title || '')}</span>` : `<span>${esc(sc.chapter.title || '')}</span>`}<span class="br-n">${s.scene + 1}/${scenes.length}</span></div>
+          ${prev ? `<div class="br-from">${T_('방금', 'Just saw')}: ${esc(prev.title || '')}</div>` : ''}
+          ${sc.bridge ? `<div class="br-why">${mdInline(sc.bridge)}</div>` : ''}
+          <div class="br-title">${mdInline(sc.question || sc.title || '')}</div>
+          ${sc.question && sc.title ? `<div class="br-sub">${esc(sc.title)}</div>` : ''}
+          ${sc.where ? `<div class="br-where">${fileChip(sc.where)}</div>` : ''}
+        </div>`;
+      }
+      card.classList.add('show');
+      stage.classList.add('bridging');
+    } else {
+      card.classList.remove('show');
+      stage.classList.remove('bridging');
+      orient.bridgeKey = '';
+    }
   }
 
   function rangeRows(P, r) {
@@ -808,7 +971,7 @@
       for (const n of ps.notes) refs.push({ side: n.side, from: n.line, to: n.line });
       if (ps.flash) refs.push(ps.flash);
       if (ps.tokline) refs.push({ side: ps.tokline.side, from: ps.tokline.line, to: ps.tokline.line });
-      if (ps.scroll && ps.scroll.to) refs.push({ side: ps.scroll.to.side, from: ps.scroll.to.from ?? ps.scroll.to.line, to: ps.scroll.to.to ?? ps.scroll.to.line });
+      if (ps.scroll && ps.scroll.to && ps.scroll.mode !== 'top') refs.push({ side: ps.scroll.to.side, from: ps.scroll.to.from ?? ps.scroll.to.line, to: ps.scroll.to.to ?? ps.scroll.to.line });
       for (const t of s.typing) if (t.file === ps.file) refs.push(t);
       for (const r of refs) {
         const span = modelRowsOf(m, r);
@@ -852,12 +1015,15 @@
     const deco = new Array(V.rows.length).fill('');
     const add = (i, c) => { deco[i] = deco[i] ? deco[i] + ' ' + c : c; };
     const labels = [];
+    // Attention budget (M14): only the two most recent highlights are fully salient.
+    const fresh = new Set(ps.hl.filter((h) => !String(h.key).startsWith('g')).slice(-2).map((h) => h.key));
     for (const h of ps.hl) {
       const rs = rangeRows(P, h);
       if (!rs.length || h.p <= 0) continue;
+      const old = !fresh.has(h.key) && !String(h.key).startsWith('g');
       const shown = Math.max(1, Math.ceil(rs.length * h.p));
-      rs.slice(0, shown).forEach((i, k) => { add(i, `hl hl-${h.tone}`); if (k === 0) add(i, 'hl-first'); if (k === shown - 1) add(i, 'hl-last'); });
-      if (h.label) labels.push([rs[0], h.label, h.tone]);
+      rs.slice(0, shown).forEach((i, k) => { add(i, old ? 'hl hl-old' : `hl hl-${h.tone}`); if (k === 0) add(i, 'hl-first'); if (k === shown - 1) add(i, 'hl-last'); });
+      if (h.label && !old) labels.push([rs[0], h.label, h.tone]);
     }
     if (ps.focus) {
       const keep = new Set(rangeRows(P, ps.focus));
@@ -885,9 +1051,19 @@
       }
       const dels = items.filter((x) => x.del);
       const addsList = items.filter((x) => x.add != null);
-      const delP = dels.length ? clamp(t.p / 0.28, 0, 1) : 1;
-      const typeP = dels.length ? clamp((t.p - 0.28) / 0.72, 0, 1) : t.p;
+      const dp = dels.length ? (t.dp != null ? t.dp : 0.28) : 0;
+      const delP = dels.length ? clamp(t.p / Math.max(0.01, dp), 0, 1) : 1;
+      const typeP = dels.length ? clamp((t.p - dp) / Math.max(0.01, 1 - dp), 0, 1) : t.p;
       dels.forEach((x, k) => { if (t.p <= 0 || delP * dels.length <= k) add(x.vi, 'typ-del-pend'); });
+      const pend = (x) => add(x.vi, x.onlyAdd && !m.split ? 'typ-hidden' : 'typ-add-pend');
+      if (t.mode === 'lines' || t.mode === 'block') {
+        const shown = t.p <= 0 || typeP <= 0 ? 0 : t.mode === 'block' ? addsList.length : Math.min(addsList.length, Math.floor(typeP * addsList.length) + 1);
+        addsList.forEach((x, idx) => {
+          if (idx >= shown) pend(x);
+          else if (typeP < 1 && (t.mode === 'block' || idx === shown - 1)) add(x.vi, 'ln-new');
+        });
+        continue;
+      }
       const len = (x) => x.add.replace(/^\s+/, '').length;
       const totalChars = addsList.reduce((a, x) => a + len(x), 0) || 1;
       let budget = typeP * totalChars;
@@ -945,23 +1121,27 @@
       lastFlash[P.idx] = fk;
     }
     // ---- inline notes (expand in)
-    const noteSig = JSON.stringify(ps.notes.map((n) => [n.key, n.side, n.line])) + viewKey;
-    if (noteSig !== P.noteSig) {
-      const had = new Set(Array.from(P.code.querySelectorAll('.note')).map((x) => x.dataset.key));
-      P.noteSig = noteSig;
-      P.code.querySelectorAll('.note').forEach((x) => x.remove());
-      for (const n of ps.notes) {
-        const i = V.idx[n.side].get(n.line);
-        if (i == null) continue;
-        const tag = { info: T_('메모', 'note'), why: T_('왜', 'why'), risk: T_('주의', 'risk'), tip: T_('팁', 'tip') }[n.tone] || n.tone;
-        const ne = el('div', `note tone-${n.tone}${had.has(String(n.key)) ? '' : ' in'}`, `<div class="note-in"><span class="tag">${esc(tag)}</span>${mdInline(n.text)}</div>`);
-        ne.dataset.key = n.key;
-        P.rowEls[i].after(ne);
+    // one explanation at a time, at the point of focus (M14/M15)
+    const v = active && s.voice && s.voice.anchor ? s.voice : null;
+    const vi = v ? V.idx[v.anchor.side] && V.idx[v.anchor.side].get(v.anchor.line) : null;
+    if (s.voice && active) s.voice.placed = vi != null;
+    const voiceSig = (v && vi != null ? `${v.key}@${vi}` : '') + viewKey;
+    if (voiceSig !== P.noteSig) {
+      P.noteSig = voiceSig;
+      P.code.querySelectorAll('.note').forEach((x) => {
+        if (v && x.dataset.key === v.key && !x.classList.contains('out') && Number(x.dataset.vi) === vi) return;
+        x.classList.add('out'); setTimeout(() => x.remove(), 200);
+      });
+      if (v && vi != null && !P.code.querySelector(`.note[data-key="${CSS.escape(v.key)}"]:not(.out)`)) {
+        const ne = el('div', `note callout${v.kind === 'note' ? ` tone-${v.tone}` : ''} in`, `<div class="note-in">${voiceHtml(v)}</div>`);
+        ne.dataset.key = v.key; ne.dataset.vi = vi;
+        P.rowEls[vi].after(ne);
       }
     }
+    const notes = v && vi != null ? [v] : [];
     // ---- scroll
     if (ps.scroll) {
-      const sig = JSON.stringify([ps.scroll.to, ps.scroll.mode, ps.scroll.p, viewKey, ps.notes.length, typSig]);
+      const sig = JSON.stringify([ps.scroll.to, ps.scroll.mode, ps.scroll.p, viewKey, notes.length, typSig]);
       if (sig !== P.scrollSig || playing) {
         P.scrollSig = sig;
         const y = scrollPx(P, ps.scroll);
@@ -998,6 +1178,7 @@
     let y;
     if (scroll.mode === 'top') y = top - rh * 3;
     else if (scroll.mode === 'ensure' && fromPx != null && top >= fromPx + rh * 2 && bottom <= fromPx + H - rh * 2) y = fromPx;
+    else if (scroll.mode === 'follow' && fromPx != null) y = bottom > fromPx + H * 0.7 ? bottom - H * 0.7 : top < fromPx + rh ? top - rh * 2 : fromPx;
     else y = bottom - top > H - rh * 4 ? top - rh * 2 : Math.min((top + bottom) / 2 - H * 0.45, top - rh * 2);
     return clamp(y, 0, max);
   }
@@ -1127,7 +1308,8 @@
     const activeFile = s.panes[s.active].file;
     const open = new Set(s.panes.flatMap((p) => p.tabs));
     const hlList = s.graph ? s.graph.highlight || [] : content.nodes.filter((n) => n.file && n.file === activeFile).map((n) => n.id);
-    const hlSig = JSON.stringify([hlList, mode, s.graph ? '' : [...open].join(',')]);
+    const nextFile = !s.graph && s.bridge ? scenes[s.scene].where : null;
+    const hlSig = JSON.stringify([hlList, mode, s.graph ? '' : [...open].join(','), nextFile]);
     if (hlSig !== lastGraphHl) {
       lastGraphHl = hlSig;
       const hl = new Set(hlList);
@@ -1137,6 +1319,7 @@
         n.classList.toggle('on', on);
         n.classList.toggle('off', dimOthers && !on);
         n.classList.toggle('visited', !s.graph && !!n.dataset.file && open.has(n.dataset.file) && !on);
+        n.classList.toggle('next', !!nextFile && n.dataset.file === nextFile && !on);
       });
       box.querySelectorAll('.g-edge').forEach((e) => { const on = hl.has(`${e.dataset.from}->${e.dataset.to}`) || (hl.has(e.dataset.from) && hl.has(e.dataset.to)); e.classList.toggle('on', on); e.classList.toggle('off', dimOthers && !on); });
     }
@@ -1148,9 +1331,9 @@
     const slot = $('.gd-map');
     const guideVisible = !app.classList.contains('hide-guide') && $('.wt-guide').getBoundingClientRect().width > 120;
     slot.hidden = !(mode === 'mini' && guideVisible);
-    const st = $('.wt-stage').getBoundingClientRect();
+    const st = $('.wt-panes').getBoundingClientRect();
     let r;
-    if (mode === 'full') r = { left: st.left + 14, top: st.top + 14, width: st.width - 28, height: st.height - 28 };
+    if (mode === 'full') r = { left: st.left + 14, top: st.top + 14, width: st.width - 28, height: st.height - 28 - 64 };
     else if (mode === 'mini' && guideVisible) { const g = slot.getBoundingClientRect(); r = { left: g.left, top: g.top, width: g.width, height: g.height }; }
     else if (mode === 'mini') r = { left: st.right - 254, top: st.top + 66, width: 240, height: 150 };
     else { const w = Math.min(620, st.width - 28); r = { left: st.right - 14 - w, top: st.top + 70, width: w, height: Math.min(340, st.height - 90) }; }
@@ -1270,11 +1453,11 @@
     $('.scrub .knob').style.left = `${(T / total) * 100}%`;
     $('.scrub').setAttribute('aria-valuenow', String(Math.round((T / total) * 100)));
     const hint = $('.ctrl-hint');
-    const msg = atSceneEnd && !playing ? `<span class="cont">${T_('장면 끝 — Space로 다음 장면', 'End of scene — Space to continue')}</span>` : '';
+    const msg = atSceneEnd && !playing ? `<span class="cont">${T_('장면 끝: Space로 다음 장면', 'End of scene: Space to continue')}</span>` : '';
     const sig = msg + (userOps.length ? 'u' : '');
     if (hint.dataset.sig !== sig) {
       hint.dataset.sig = sig;
-      hint.innerHTML = `${msg}<span><kbd>Space</kbd> ${T_('재생/정지', 'play/pause')}</span><span><kbd>←</kbd><kbd>→</kbd> ${T_('장면 이동', 'scene')}</span><span><kbd>⇧</kbd>+<kbd>←</kbd><kbd>→</kbd> ±5s</span><span><kbd>[</kbd><kbd>]</kbd> ${T_('배속', 'speed')}</span><span>⌘/Ctrl+${T_('클릭: 정의로 이동', 'Click: definition')}</span>${userOps.length ? `<span class="cont">${T_('탐색 모드 — 재생하면 장면으로 돌아갑니다', 'Exploring — play to return to the walkthrough')}</span>` : ''}`;
+      hint.innerHTML = `${msg}<span><kbd>Space</kbd> ${T_('재생/정지', 'play/pause')}</span><span><kbd>←</kbd><kbd>→</kbd> ±5s</span><span><kbd>⇧</kbd>+<kbd>←</kbd><kbd>→</kbd> ${T_('장면 이동', 'scene')}</span><span><kbd>[</kbd><kbd>]</kbd> ${T_('배속', 'speed')}</span><span>⌘/Ctrl+${T_('클릭: 정의로 이동', 'Click: definition')}</span>${userOps.length ? `<span class="cont">${T_('탐색 모드: 재생하면 장면으로 돌아갑니다', 'Exploring: play to return to the walkthrough')}</span>` : ''}`;
     }
   }
 
@@ -1287,7 +1470,7 @@
     const k = sceneAt(T);
     const end = scenes[k].t0 + scenes[k].duration;
     const next = T + dt * speed;
-    if (segPause && T < end && next >= end && k < scenes.length - 1) { T = end - 0.5; playing = false; atSceneEnd = true; render(); return; }
+    if (segPause && !scenes[k].auto && T < end && next >= end && k < scenes.length - 1) { T = end - 0.5; playing = false; atSceneEnd = true; render(); return; }
     if (next >= total) { T = total; playing = false; render(); return; }
     T = next;
     render();
@@ -1435,8 +1618,8 @@
     if (exi) { exi.remove(); return; }
     const box = el('div', 'help', `<div role="dialog" aria-label="shortcuts"><h2>${T_('단축키', 'Keyboard shortcuts')}</h2><table>
       <tr><td><kbd>Space</kbd> / <kbd>K</kbd></td><td>${T_('재생 / 일시정지', 'Play / pause')}</td></tr>
-      <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>${T_('이전 / 다음 장면', 'Previous / next scene')}</td></tr>
-      <tr><td><kbd>⇧</kbd>+<kbd>←</kbd> <kbd>→</kbd></td><td>${T_('5초 뒤로 / 앞으로', 'Seek ±5s')}</td></tr>
+      <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>${T_('5초 뒤로 / 앞으로', 'Seek ±5s')}</td></tr>
+      <tr><td><kbd>⇧</kbd>+<kbd>←</kbd> <kbd>→</kbd></td><td>${T_('이전 / 다음 장면', 'Previous / next scene')}</td></tr>
       <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>${T_('배속 낮추기 / 높이기', 'Slower / faster')}</td></tr>
       <tr><td><kbd>P</kbd></td><td>${T_('장면마다 멈춤 켜기/끄기', 'Toggle pause per scene')}</td></tr>
       <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>${T_('N번째 챕터로 이동', 'Jump to chapter N')}</td></tr>
@@ -1451,10 +1634,10 @@
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key;
     if (k === ' ' || k === 'k' || k === 'K') { e.preventDefault(); playing ? pause() : play(); }
-    else if (k === 'ArrowRight' && e.shiftKey) seek(T + 5000, playing);
-    else if (k === 'ArrowLeft' && e.shiftKey) seek(T - 5000, playing);
-    else if (k === 'ArrowRight') gotoScene(sceneAt(T) + 1, playing);
-    else if (k === 'ArrowLeft') gotoScene(sceneAt(T) - (T - scenes[sceneAt(T)].t0 < 1500 ? 1 : 0), playing);
+    else if (k === 'ArrowRight' && e.shiftKey) gotoScene(sceneAt(T) + 1, playing);
+    else if (k === 'ArrowLeft' && e.shiftKey) gotoScene(sceneAt(T) - (T - scenes[sceneAt(T)].t0 < 1500 ? 1 : 0), playing);
+    else if (k === 'ArrowRight') { e.preventDefault(); seek(T + 5000, playing); }
+    else if (k === 'ArrowLeft') { e.preventDefault(); seek(T - 5000, playing); }
     else if (k === ']') setSpeed(1);
     else if (k === '[') setSpeed(-1);
     else if (k === 'p' || k === 'P') { segPause = !segPause; $('[data-act="segpause"]').checked = segPause; }

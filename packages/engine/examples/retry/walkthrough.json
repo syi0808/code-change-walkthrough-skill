@@ -23,6 +23,14 @@
     "base": "HEAD~1",
     "head": "HEAD"
   },
+  "tour": {
+    "order": [
+      "src/api/client.ts",
+      "src/api/retry.ts",
+      "src/config.ts",
+      "test/retry.test.ts"
+    ]
+  },
   "files": {
     "src/api/client.ts": {
       "status": "modified",
@@ -131,7 +139,8 @@
               ],
               "hold": 1200
             }
-          ]
+          ],
+          "question": "What does this change add, and where?"
         }
       ]
     },
@@ -162,13 +171,6 @@
               }
             },
             {
-              "do": "type",
-              "range": {
-                "find": "const idempotent",
-                "span": 2
-              }
-            },
-            {
               "do": "highlight",
               "range": {
                 "find": "throw new HttpError"
@@ -192,7 +194,12 @@
               "text": "Unless `idempotent` is set explicitly, **only GET** is retried.",
               "tone": "why"
             }
-          ]
+          ],
+          "question": "What happens now when a request fails?",
+          "bridge": "The map has one entry point, request(), so start there.",
+          "at": {
+            "file": "src/api/client.ts"
+          }
         },
         {
           "id": "request-split",
@@ -227,7 +234,9 @@
               "do": "diffView",
               "mode": "unified"
             }
-          ]
+          ],
+          "question": "Which lines actually changed, and which only moved?",
+          "bridge": "The unified diff mixes moved and new code; side by side separates them."
         }
       ]
     },
@@ -281,7 +290,12 @@
               "text": "200 → 400 → 800 ms: up to ~1.4 s of extra waiting with 3 retries.",
               "tone": "risk"
             }
-          ]
+          ],
+          "question": "How does the retry loop decide to try again?",
+          "bridge": "request() hands failures to withRetry, so follow that call.",
+          "at": {
+            "file": "src/api/retry.ts"
+          }
         },
         {
           "id": "transient",
@@ -314,7 +328,9 @@
               "do": "say",
               "text": "Keeping `status` around is the reason `HttpError` exists."
             }
-          ]
+          ],
+          "question": "Which failures count as worth retrying?",
+          "bridge": "The loop only retries transient errors, so what is transient?"
         },
         {
           "id": "config",
@@ -348,7 +364,12 @@
               },
               "tone": "info"
             }
-          ]
+          ],
+          "question": "Where are the retry numbers set?",
+          "bridge": "The backoff uses policy values; they come from config.",
+          "at": {
+            "file": "src/config.ts"
+          }
         }
       ]
     },
@@ -396,7 +417,9 @@
               "text": "If this PATCH is idempotent, pass `idempotent: true` to opt in.",
               "tone": "tip"
             }
-          ]
+          ],
+          "question": "Which existing calls are affected?",
+          "bridge": "The behaviour is clear; now check who calls request()."
         },
         {
           "id": "tests",
@@ -427,7 +450,12 @@
               "tone": "remove",
               "label": "404 → failure"
             }
-          ]
+          ],
+          "question": "What do the tests guarantee?",
+          "bridge": "Finally, check which of these rules the tests pin down.",
+          "at": {
+            "file": "test/retry.test.ts"
+          }
         }
       ]
     }

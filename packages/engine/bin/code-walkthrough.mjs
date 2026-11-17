@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// code-walkthrough — the Walkthrough engine CLI.
+// code-walkthrough: the Walkthrough engine CLI.
 // Executes Walkthrough IR v1: validate it, compile it into a standalone HTML
 // player, or serve that player on localhost. It does not analyse code or
 // plan explanations; producing the IR is the job of an authoring agent/skill.
@@ -12,7 +12,7 @@ import { serve } from '../src/serve.mjs';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
-const HELP = `code-walkthrough ${PKG.version} — Walkthrough IR v${IR_VERSION} engine
+const HELP = `code-walkthrough ${PKG.version}: Walkthrough IR v${IR_VERSION} engine
 
 Usage
   code-walkthrough check  <ir.json> [--repo DIR] [--json] [--resolve]
@@ -59,7 +59,7 @@ async function main() {
         if (!res.ok) console.error(`\n✗ ${res.errors.length} error(s), ${res.warnings.length} warning(s)`);
         else {
           const m = Math.floor(res.stats.estimatedSeconds / 60), sec = res.stats.estimatedSeconds % 60;
-          console.error(`✓ IR valid — ${res.stats.chapters} chapters, ${res.stats.scenes} scenes, ${res.stats.files} files, ~${m}:${String(sec).padStart(2, '0')} at 1x, ${res.warnings.length} warning(s)`);
+          console.error(`✓ IR valid: ${res.stats.chapters} chapters, ${res.stats.scenes} scenes, ${res.stats.files} files, ~${m}:${String(sec).padStart(2, '0')} at 1x, ${res.warnings.length} warning(s)`);
           if (res.stats.unnarratedFiles.length) console.error(`  un-narrated changed files: ${res.stats.unnarratedFiles.join(', ')}`);
         }
         if (out) console.error(`→ ${out} (${(fs.statSync(out).size / 1024).toFixed(0)} KB)`);

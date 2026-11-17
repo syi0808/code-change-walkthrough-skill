@@ -1,4 +1,4 @@
-/* Walkthrough timing model — shared by the player (browser) and the compiler
+/* Walkthrough timing model: shared by the player (browser) and the compiler
  * (Node, for `check` duration estimates). Exposes globalThis.WalkTiming.
  * All values are milliseconds at 1x speed. */
 (function (root) {
@@ -18,11 +18,23 @@
     return Math.round(Math.min(7000, Math.max(900, 350 + chars * 26 + (dels ? 450 + dels * 60 : 0))));
   }
 
+  /** Replaying one hunk of the tour. Removed lines turn red first; then the new code arrives:
+   *  typed (key), line by line (normal), or as one block (skim, for wiring/boilerplate). */
+  const delMs = (st) => (st._dels ? 260 + Math.min(st._dels, 30) * 35 : 0);
+  function replayMs(st) {
+    if (st._mode === 'type') return typeMs(st);
+    if (st._mode === 'lines') return Math.max(450, delMs(st) + 150 + Math.min(st._lines || 0, 400) * 80);
+    return Math.max(420, delMs(st) + 380);
+  }
+  function delShare(st, dur) { const d = st._mode === 'type' || st.do === 'type' ? (st._dels ? 450 + st._dels * 60 : 0) : delMs(st); return dur ? Math.min(0.6, d / dur) : 0; }
+
   /** Opening a file is a procedure: find it (explorer or tab) → click → it opens → its changes sweep in. */
   const OPEN_NAV = { tree: 1150, tab: 650, same: 0 };
   const OPEN_REVEAL = 950;
   function openMs(st) {
-    const nav = OPEN_NAV[st._openKind || 'tree'];
+    // wiring-only files are not worth a slow walk to the explorer
+    const nav = st.fast ? Math.round(OPEN_NAV[st._openKind || 'tree'] * 0.55) : OPEN_NAV[st._openKind || 'tree'];
+    st._nav = nav;
     return Math.max(450, nav + 350 + (st._reveal ? OPEN_REVEAL : 0));
   }
 
@@ -53,13 +65,13 @@
 
   /** When each narration item appears (ms, scene-local). Steps may pin an item with `cue: n`;
    *  the rest are spread between pins by text length over the span of the scene's steps. */
-  function cueTimes(sc, timed) {
+  function cueTimes(sc, timed, lead) {
     const items = narrationItems(sc.narration);
     const n = items.length;
     if (!n) return { items, times: [] };
     const starts = timed.map((x) => x.start), ends = timed.map((x) => x.start + x.dur);
     const spanEnd = ends.length ? Math.max(...ends) : 2000;
-    const anchors = new Map([[0, 0]]);
+    const anchors = new Map([[0, lead || 0]]);
     for (const x of timed) if (Number.isInteger(x.st.cue) && x.st.cue >= 1 && x.st.cue <= n && !anchors.has(x.st.cue - 1)) anchors.set(x.st.cue - 1, x.start);
     if (!anchors.has(n)) anchors.set(n, Math.max(spanEnd, (starts.length ? Math.max(...starts) : 0)));
     const keys = [...anchors.keys()].sort((a, b) => a - b);
@@ -74,15 +86,21 @@
     return { items, times };
   }
 
-  /** Lay out one scene: returns { timed: [{st, start, dur}], duration }. */
-  function scene(sc) {
-    let cursor = 350, prevStart = 0, maxEnd = 0;
+  /** Lead-in before every scene but the first: a bridge card says what comes next and why (event boundary). */
+  const BRIDGE = 1700;
+
+  /** Lay out one scene: returns { timed: [{st, start, dur}], cues, lead, duration }. */
+  function scene(sc, opts) {
+    const lead = (opts && opts.lead) || 0;
+    let cursor = (sc.auto ? 120 : 350) + lead, prevStart = 0, maxEnd = 0;
     const timed = (sc.steps || []).map((st) => {
       let dur = st.ms != null && st.do !== 'wait' ? st.ms : BASE[st.do] ?? 600;
       if (st.do === 'wait') dur = st.ms || 0;
       if (st.do === 'refs') dur = (st.ms || 700) + 1300 * ((st._items || st.items || []).length);
       if (st.do === 'type') dur = st.ms != null ? st.ms : typeMs(st);
       if (st.do === 'open' && st.ms == null) dur = openMs(st);
+      if (st.do === 'replay') { dur = st.ms != null ? st.ms : replayMs(st); st._dp = delShare(st, dur); }
+      if (st.do === 'type') st._dp = delShare(st, dur);
       let hold = st.hold || 0;
       if (st.do === 'note') hold += readMs(st.text) * 0.55;
       if (st.do === 'say') hold += readMs(st.text);
@@ -93,17 +111,20 @@
       maxEnd = Math.max(maxEnd, cursor);
       return { st, start, dur };
     });
-    const cues = cueTimes(sc, timed);
+    const cues = cueTimes(sc, timed, lead);
     const lastCue = cues.times.length ? cues.times[cues.times.length - 1] + readMs(cues.items[cues.items.length - 1].text) * 0.8 : 0;
-    return { timed, cues, duration: Math.max(maxEnd + 700, readMs(sc.narration) * 0.9 + 600, lastCue + 400, 2500) };
+    // tour segments carry no narration: no reading time, no dwell (M17: don't spend time that carries nothing)
+    if (sc.auto) return { timed, cues, lead: 0, duration: maxEnd + 250 };
+    return { timed, cues, lead, duration: Math.max(maxEnd + 700, lead + readMs(sc.narration) * 0.9 + 600, lastCue + 400, lead + 2500) };
   }
 
   /** Total duration of an IR in ms. */
   function total(ir) {
     let t = 0;
-    for (const ch of ir.chapters || []) for (const sc of ch.scenes || []) t += scene(sc).duration;
+    let i = 0;
+    for (const ch of ir.chapters || []) for (const sc of ch.scenes || []) { t += scene(sc, { lead: i && !sc.auto ? BRIDGE : 0 }).duration; i++; }
     return t;
   }
 
-  root.WalkTiming = { BASE, readMs, typeMs, openMs, narrationItems, cueTimes, scene, total };
+  root.WalkTiming = { BASE, BRIDGE, readMs, typeMs, openMs, narrationItems, cueTimes, scene, total };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
