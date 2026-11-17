@@ -1,0 +1,2348 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retry idempotent requests with exponential backoff</title>
+<style>/* ================================================================ tokens
+ * IDE chrome follows VS Code (Dark Modern / Light Modern); diff colours follow
+ * GitHub's diff palette so additions and deletions read at a glance. */
+:root {
+  --bg: #1f1f1f; --bg-side: #181818; --bg-2: #252526; --bg-3: #2d2d2d; --bg-hover: #2a2d2e; --bg-sel: #37373d; --bg-active: #04395e;
+  --line: #2b2b2b; --line-2: #3c3c3c; --fg: #cccccc; --fg-strong: #e7e7e7; --fg-2: #9d9d9d; --fg-3: #6e7681;
+  --accent: #4daafc; --accent-strong: #0078d4; --focus-ring: #0078d4;
+  /* GitHub diff (dark) */
+  --add-line: rgba(46, 160, 67, .15); --add-num: rgba(63, 185, 80, .30); --add-word: rgba(46, 160, 67, .40); --add-fg: #3fb950;
+  --del-line: rgba(248, 81, 73, .10); --del-num: rgba(248, 81, 73, .30); --del-word: rgba(248, 81, 73, .40); --del-fg: #f85149;
+  --hunk-bg: rgba(56, 139, 253, .10); --hunk-num: rgba(56, 139, 253, .22); --hunk-fg: #9198a1;
+  /* git decorations (VS Code) */
+  --git-mod: #e2c08d; --git-add: #73c991; --git-del: #c74e39; --git-ren: #73c991;
+  /* walkthrough tones */
+  --t-focus: #4daafc; --t-info: #b392f0; --t-warn: #e3b341; --t-add: #3fb950; --t-remove: #f85149;
+  --flash: rgba(227, 179, 65, .35);
+  --note-bg: #252a33;
+  --tk-kw: #569cd6; --tk-ctrl: #c586c0; --tk-str: #ce9178; --tk-num: #b5cea8; --tk-com: #6a9955; --tk-fn: #dcdcaa; --tk-type: #4ec9b0; --tk-const: #4fc1ff; --tk-meta: #9cdcfe; --tk-p: #d4d4d4;
+  --shadow: 0 8px 28px rgba(0, 0, 0, .5);
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "D2Coding", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Segoe UI", "Noto Sans KR", sans-serif;
+  --row-h: 20px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #ffffff; --bg-side: #f8f8f8; --bg-2: #f3f3f3; --bg-3: #e8e8e8; --bg-hover: #f0f0f0; --bg-sel: #e4e6f1; --bg-active: #cfe4fa;
+    --line: #e5e5e5; --line-2: #d4d4d4; --fg: #3b3b3b; --fg-strong: #1f1f1f; --fg-2: #616161; --fg-3: #8b949e;
+    --accent: #005fb8; --accent-strong: #005fb8; --focus-ring: #005fb8;
+    --add-line: #dafbe1; --add-num: #aceebb; --add-word: #aceebb; --add-fg: #1a7f37;
+    --del-line: #ffebe9; --del-num: #ffcecb; --del-word: #ffcecb; --del-fg: #cf222e;
+    --hunk-bg: #ddf4ff; --hunk-num: #b6e3ff; --hunk-fg: #59636e;
+    --git-mod: #895503; --git-add: #587c0c; --git-del: #ad0707; --git-ren: #587c0c;
+    --t-focus: #0969da; --t-info: #8250df; --t-warn: #9a6700; --t-add: #1a7f37; --t-remove: #cf222e;
+    --flash: rgba(212, 167, 44, .38);
+    --note-bg: #f6f8fa;
+    --tk-kw: #0000ff; --tk-ctrl: #af00db; --tk-str: #a31515; --tk-num: #098658; --tk-com: #008000; --tk-fn: #795e26; --tk-type: #267f99; --tk-const: #0070c1; --tk-meta: #001080; --tk-p: #3b3b3b;
+    --shadow: 0 8px 28px rgba(31, 35, 40, .16);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #ffffff; --bg-side: #f8f8f8; --bg-2: #f3f3f3; --bg-3: #e8e8e8; --bg-hover: #f0f0f0; --bg-sel: #e4e6f1; --bg-active: #cfe4fa;
+  --line: #e5e5e5; --line-2: #d4d4d4; --fg: #3b3b3b; --fg-strong: #1f1f1f; --fg-2: #616161; --fg-3: #8b949e;
+  --accent: #005fb8; --accent-strong: #005fb8; --focus-ring: #005fb8;
+  --add-line: #dafbe1; --add-num: #aceebb; --add-word: #aceebb; --add-fg: #1a7f37;
+  --del-line: #ffebe9; --del-num: #ffcecb; --del-word: #ffcecb; --del-fg: #cf222e;
+  --hunk-bg: #ddf4ff; --hunk-num: #b6e3ff; --hunk-fg: #59636e;
+  --git-mod: #895503; --git-add: #587c0c; --git-del: #ad0707; --git-ren: #587c0c;
+  --t-focus: #0969da; --t-info: #8250df; --t-warn: #9a6700; --t-add: #1a7f37; --t-remove: #cf222e;
+  --flash: rgba(212, 167, 44, .38);
+  --note-bg: #f6f8fa;
+  --tk-kw: #0000ff; --tk-ctrl: #af00db; --tk-str: #a31515; --tk-num: #098658; --tk-com: #008000; --tk-fn: #795e26; --tk-type: #267f99; --tk-const: #0070c1; --tk-meta: #001080; --tk-p: #3b3b3b;
+  --shadow: 0 8px 28px rgba(31, 35, 40, .16);
+  color-scheme: light;
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--sans); }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: -1px; }
+kbd { font: 11px var(--mono); padding: 0 4px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; background: var(--bg-2); }
+code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padding: 0 4px; border-radius: 4px; }
+.muted { color: var(--fg-3); }
+
+/* syntax tokens */
+.tk-kw { color: var(--tk-kw); } .tk-str { color: var(--tk-str); } .tk-num { color: var(--tk-num); } .tk-com { color: var(--tk-com); font-style: italic; }
+.tk-fn { color: var(--tk-fn); } .tk-type { color: var(--tk-type); } .tk-const { color: var(--tk-const); } .tk-meta { color: var(--tk-meta); } .tk-p { color: var(--tk-p); }
+
+/* ================================================================ frame */
+.wt { display: grid; grid-template-rows: 36px 1fr auto; height: 100vh; height: 100dvh; overflow: hidden; }
+.wt-top { display: flex; align-items: center; gap: 10px; padding: 0 8px; border-bottom: 1px solid var(--line); background: var(--bg-side); min-width: 0; }
+.wt-top .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; color: var(--fg-strong); }
+.wt-top .range { font: 12px var(--mono); color: var(--fg-2); white-space: nowrap; }
+.wt-top .badge { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--bg-3); color: var(--fg-2); white-space: nowrap; }
+.wt-top .spacer { flex: 1; }
+.icon-btn { width: 28px; height: 28px; border-radius: 5px; display: inline-grid; place-items: center; color: var(--fg-2); transition: background-color .15s, color .15s; }
+.icon-btn:hover { background: var(--bg-hover); color: var(--fg); }
+.icon-btn.on { color: var(--accent); background: var(--bg-sel); }
+.icon-btn svg { width: 16px; height: 16px; }
+.icon-btn.sm { width: 22px; height: 22px; } .icon-btn.sm svg { width: 14px; height: 14px; }
+
+.wt-main { display: grid; grid-template-columns: 264px minmax(0, 1fr) 360px; min-height: 0; transition: grid-template-columns .3s var(--ease); }
+.wt.hide-explorer .wt-main { grid-template-columns: 0 minmax(0, 1fr) 360px; }
+.wt.hide-guide .wt-main { grid-template-columns: 264px minmax(0, 1fr) 0; }
+.wt.hide-explorer.hide-guide .wt-main { grid-template-columns: 0 minmax(0, 1fr) 0; }
+.wt.hide-explorer .wt-explorer, .wt.hide-guide .wt-guide { visibility: hidden; }
+
+/* ================================================================ explorer */
+.wt-explorer { background: var(--bg-side); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
+.ex-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 20px; height: 35px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--fg-2); flex: none; }
+.ex-head .ex-actions { display: flex; gap: 2px; opacity: .7; }
+.wt-explorer:hover .ex-head .ex-actions { opacity: 1; }
+.ex-root { display: flex; align-items: center; gap: 2px; height: 22px; padding: 0 8px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 700; letter-spacing: .02em; color: var(--fg); flex: none; }
+.ex-body { overflow: auto; flex: 1; padding-bottom: 16px; font-size: 13px; scrollbar-width: thin; }
+.ex-row { position: relative; display: flex; align-items: center; gap: 4px; height: 22px; padding-right: 10px; white-space: nowrap; cursor: pointer; color: var(--fg); }
+.ex-row:hover { background: var(--bg-hover); }
+.ex-row .ig { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-2); opacity: .55; }
+.ex-row .tw { width: 16px; height: 16px; flex: none; display: grid; place-items: center; color: var(--fg-2); }
+.ex-row .tw svg, .ex-root .tw svg { width: 14px; height: 14px; transition: transform .2s var(--ease); }
+.tw.open svg { transform: rotate(90deg); }
+.ex-root .tw { width: 16px; display: grid; place-items: center; }
+.ex-row .nm { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.ex-row .fi { flex: none; width: 18px; text-align: center; font: 700 9px/1 var(--mono); letter-spacing: -.02em; }
+.ex-row .sb { flex: none; font: 600 11px var(--mono); margin-left: 6px; }
+.ex-row .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--git-mod); opacity: .8; margin-left: 6px; }
+.ex-row.dir.has-changes .nm { color: var(--git-mod); }
+.ex-row.st-modified .nm, .ex-row.st-modified .sb { color: var(--git-mod); }
+.ex-row.st-added .nm, .ex-row.st-added .sb, .ex-row.st-renamed .nm, .ex-row.st-renamed .sb, .ex-row.st-copied .nm, .ex-row.st-copied .sb { color: var(--git-add); }
+.ex-row.st-deleted .nm { color: var(--git-del); text-decoration: line-through; } .ex-row.st-deleted .sb { color: var(--git-del); }
+.ex-row.stub .nm { opacity: .8; }
+.ex-row.active, .ex-row.selecting { background: color-mix(in srgb, var(--bg-sel) 70%, transparent); }
+.ex-row.active .nm, .ex-row.selecting .nm { font-weight: 600; }
+/* spotlight: everything but the file in focus (and its folder path) recedes; hover brings it all back */
+.ex-body .ex-row { transition: opacity .45s var(--ease), background-color .3s; }
+.ex-body.spot .ex-row { opacity: .24; }
+.ex-body.spot .ex-row.path { opacity: .72; }
+.ex-body.spot .ex-row.target { opacity: 1; }
+.wt-explorer:hover .ex-body.spot .ex-row { opacity: 1; transition-delay: .12s; }
+.ex-row.more { color: var(--fg-3); font-style: italic; cursor: default; }
+.ex-row.appear { animation: exIn .28s var(--ease) both; }
+@keyframes exIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.i-blue { color: #519aba; } .i-yellow { color: #cbcb41; } .i-green { color: #8dc149; } .i-red { color: #cc3e44; } .i-orange { color: #e37933; } .i-purple { color: #a074c4; } .i-pink { color: #f55385; } .i-cyan { color: #519aba; } .i-gray { color: #8b949e; }
+
+/* ================================================================ stage & panes */
+.wt-stage { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; isolation: isolate; }
+.wt-panes { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 0fr; min-height: 0; transition: grid-template-columns .35s var(--ease); }
+.wt-panes.columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.wt-panes .pane + .pane { border-left: 1px solid var(--line); }
+.wt-panes:not(.columns) .pane:nth-child(2) { visibility: hidden; border: 0; }
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; overflow: hidden; }
+.tabs { display: flex; background: var(--bg-side); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; min-height: 35px; flex: none; }
+.tab { display: flex; align-items: center; gap: 6px; padding: 0 12px 0 10px; height: 35px; font-size: 13px; color: var(--fg-2); border-right: 1px solid var(--line); white-space: nowrap; position: relative; max-width: 240px; transition: background-color .2s, color .2s; }
+.tab .nm { overflow: hidden; text-overflow: ellipsis; }
+.tab .fi { font: 700 9px var(--mono); }
+.tab.on { background: var(--bg); color: var(--fg-strong); }
+.tab.on::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--accent-strong); }
+.pane:not(.active) .tab.on::after { background: var(--fg-3); }
+.wt-panes:not(.columns) .pane .tab.on::after { background: var(--accent-strong); }
+.tab .mode { font: 10px var(--mono); color: var(--fg-3); border: 1px solid var(--line-2); border-radius: 3px; padding: 0 4px; }
+.tab .sb { font: 600 11px var(--mono); }
+.tab.st-modified .nm, .tab.st-modified .sb { color: var(--git-mod); }
+.tab.st-added .nm, .tab.st-added .sb { color: var(--git-add); }
+.tab.st-deleted .nm { color: var(--git-del); text-decoration: line-through; } .tab.st-deleted .sb { color: var(--git-del); }
+.tab-new { animation: tabIn .3s var(--ease) both; }
+@keyframes tabIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.crumbs { display: flex; align-items: center; gap: 10px; padding: 2px 8px 2px 14px; font-size: 12.5px; color: var(--fg-2); min-height: 26px; white-space: nowrap; overflow: hidden; flex: none; box-shadow: 0 2px 4px -3px rgba(0,0,0,.4); position: relative; z-index: 4; background: var(--bg); }
+.crumbs .path { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.crumbs .path i { font-style: normal; color: var(--fg-3); margin: 0 5px; }
+.crumbs .sym { color: var(--fg-3); }
+.crumbs .vbtns { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.crumbs .vbtns button { font: 11px var(--sans); padding: 1px 8px; border-radius: 4px; color: var(--fg-2); transition: background-color .15s; }
+.crumbs .vbtns button:hover { background: var(--bg-hover); }
+.crumbs .vbtns button.on { background: var(--bg-sel); color: var(--fg-strong); }
+.dstat { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--mono); margin-right: 8px; }
+.dstat .pa { color: var(--add-fg); } .dstat .pd { color: var(--del-fg); }
+.dstat .sq { display: inline-flex; gap: 1px; }
+.dstat .sq i { width: 8px; height: 8px; border-radius: 1px; }
+.dstat .sq i.a { background: var(--add-fg); } .dstat .sq i.d { background: var(--del-fg); }
+.editor { flex: 1; overflow: auto; position: relative; font: 12.5px/var(--row-h) var(--mono); tab-size: 4; }
+.code { position: relative; min-width: max-content; padding-bottom: 40vh; }
+.code.enter { animation: codeIn .32s var(--ease) both; }
+@keyframes codeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.empty-pane { display: grid; place-items: center; align-content: center; gap: 6px; height: 100%; min-height: 240px; color: var(--fg-3); text-align: center; padding: 24px; font-family: var(--sans); }
+
+/* ---------------------------------------------------------------- rows (GitHub diff) */
+.row { display: flex; min-height: var(--row-h); position: relative; transition: opacity .35s var(--ease), background-color .45s var(--ease); }
+.row .gn { flex: none; width: 50px; padding: 0 10px 0 6px; text-align: right; color: var(--fg-3); user-select: none; background: var(--bg); position: sticky; left: 0; z-index: 1; transition: background-color .45s var(--ease), color .45s; }
+.row .gn.n { left: 50px; }
+.row .mk { flex: none; width: 18px; text-align: center; user-select: none; color: var(--fg-3); }
+.row .txt { white-space: pre; padding-right: 24px; flex: 1; position: relative; }
+.row.plain .gn { width: 56px; }
+.row.plain .cg { flex: none; width: 4px; margin-right: 10px; }
+/* unified */
+.row.add { background: var(--add-line); } .row.add .gn { background: var(--add-num); color: var(--fg); } .row.add .mk { color: var(--add-fg); }
+.row.del { background: var(--del-line); } .row.del .gn { background: var(--del-num); color: var(--fg); } .row.del .mk { color: var(--del-fg); }
+.row .wd-add { background: var(--add-word); border-radius: 3px; }
+.row .wd-del { background: var(--del-word); border-radius: 3px; }
+.row.ws .mk::before { content: "⇥"; color: var(--fg-3); }
+/* after-view change gutter (VS Code) */
+.row.ch-add .cg { background: var(--git-add); }
+.row.ch-mod .cg { background: #1b81a8; }
+.row.ch-delpt .cg::after { content: ""; position: absolute; left: 56px; bottom: -4px; border: 4px solid transparent; border-left-color: var(--git-del); z-index: 2; }
+/* split */
+.row.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.row.split .half { display: flex; min-width: 0; overflow: hidden; transition: background-color .45s var(--ease); }
+.row.split .half + .half { border-left: 1px solid var(--line); }
+.row.split .gn { position: static; width: 46px; }
+.row.split .half.add { background: var(--add-line); } .row.split .half.add .gn { background: var(--add-num); color: var(--fg); } .row.split .half.add .mk { color: var(--add-fg); }
+.row.split .half.del { background: var(--del-line); } .row.split .half.del .gn { background: var(--del-num); color: var(--fg); } .row.split .half.del .mk { color: var(--del-fg); }
+.row.split .half.empty { background: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--line-2) 55%, transparent) 5px 6px); }
+.code.split-mode { min-width: 0; }
+.code.split-mode .txt { white-space: pre-wrap; word-break: break-all; }
+/* hunk header / fold */
+.row.fold { background: var(--hunk-bg); color: var(--hunk-fg); cursor: pointer; }
+.row.fold .fold-gut { flex: none; width: 118px; display: grid; place-items: center; background: var(--hunk-num); color: var(--hunk-fg); position: sticky; left: 0; z-index: 1; }
+.code.split-mode .row.fold .fold-gut { width: 64px; }
+.code.plain-mode .row.fold .fold-gut { width: 70px; }
+.row.fold .fold-gut svg { width: 14px; height: 14px; }
+.row.fold:hover .fold-gut { color: var(--accent); }
+.row.fold .txt { padding-left: 10px; display: flex; gap: 12px; }
+.row.fold .fold-n { font-family: var(--sans); font-size: 11.5px; opacity: .8; }
+.row.unfold { animation: unfold .35s var(--ease) both; }
+@keyframes unfold { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+/* ---------------------------------------------------------------- walkthrough highlight: a ring + accent bar that keeps diff colours visible */
+.row.hl { --t: var(--t-focus); }
+.row.hl-info { --t: var(--t-info); } .row.hl-warn { --t: var(--t-warn); } .row.hl-add { --t: var(--t-add); } .row.hl-remove { --t: var(--t-remove); }
+.row.hl::before { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2;
+  background: color-mix(in srgb, var(--t) 9%, transparent);
+  box-shadow: inset 3px 0 var(--t), inset -1px 0 color-mix(in srgb, var(--t) 55%, transparent);
+  animation: hlIn .38s var(--ease) both; }
+.row.hl.hl-first::before { box-shadow: inset 3px 0 var(--t), inset -1px 0 color-mix(in srgb, var(--t) 55%, transparent), inset 0 1px color-mix(in srgb, var(--t) 70%, transparent); }
+.row.hl.hl-last::before { box-shadow: inset 3px 0 var(--t), inset -1px 0 color-mix(in srgb, var(--t) 55%, transparent), inset 0 -1px color-mix(in srgb, var(--t) 70%, transparent); }
+.row.hl.hl-first.hl-last::before { box-shadow: inset 3px 0 var(--t), inset 0 0 0 1px color-mix(in srgb, var(--t) 60%, transparent); }
+@keyframes hlIn { from { opacity: 0; transform: scaleX(.985); transform-origin: left; } to { opacity: 1; transform: none; } }
+.row.dim { opacity: .3; }
+.row.flash::after { content: ""; position: absolute; inset: 0; background: var(--flash); pointer-events: none; animation: flash 1.2s ease-out forwards; z-index: 2; }
+@keyframes flash { from { opacity: 1; } to { opacity: 0; } }
+.hl-label { position: absolute; left: calc(var(--vw, 100%) - 12px); transform: translateX(-100%); top: 1px; white-space: nowrap; z-index: 3; font: 600 10.5px/17px var(--sans); padding: 0 7px; border-radius: 9px; color: #fff; pointer-events: none; box-shadow: 0 1px 3px rgba(0,0,0,.25); background: var(--t-focus); }
+.hl-label.tone-info { background: var(--t-info); } .hl-label.tone-warn { background: var(--t-warn); color: #1f1f1f; } .hl-label.tone-add { background: var(--t-add); } .hl-label.tone-remove { background: var(--t-remove); }
+.hl-label.in { animation: labelIn .35s var(--ease) both; }
+@keyframes labelIn { from { opacity: 0; transform: translateX(calc(-100% + 8px)); } to { opacity: 1; transform: translateX(-100%); } }
+
+/* ---------------------------------------------------------------- diff reveal (changes sweep in after a file opens) */
+.row.chg-pend, .row.chg-pend .gn, .row.split.chg-pend .half, .row.split.chg-pend .half .gn { background: transparent !important; }
+.row.chg-pend .gn, .row.split.chg-pend .half .gn { background: var(--bg) !important; color: var(--fg-3); }
+.row.chg-pend .mk { visibility: hidden; }
+.row.chg-pend .wd-add, .row.chg-pend .wd-del { background: transparent; }
+.row.chg-pend .cg { background: transparent !important; }
+.row.chg-pend.ch-delpt .cg::after { display: none; }
+
+/* ---------------------------------------------------------------- typing replay */
+.row.typ-hidden { display: none; }
+.row.typ-del-pend, .row.typ-del-pend .gn, .row.split.typ-del-pend .half.del, .row.split.typ-del-pend .half.del .gn { background: transparent; }
+.row.typ-del-pend .gn { background: var(--bg); color: var(--fg-3); }
+.row.typ-del-pend .mk, .row.split.typ-del-pend .half.del .mk { visibility: hidden; }
+.row.typ-del-pend .wd-del { background: transparent; }
+.row.typ-add-pend:not(.split) .txt, .row.split.typ-add-pend .half:last-child .txt { visibility: hidden; }
+.row.split.typ-add-pend .half:last-child, .row.split.typ-add-pend .half:last-child .gn { background: transparent; }
+.row.split.typ-add-pend .half:last-child .mk, .row.split.typ-add-pend .half:last-child .gn { visibility: hidden; }
+.txt.clip { clip-path: inset(-2px calc(100% - var(--clipx, 0px) - 3px) -2px -2px); }
+.txt.clip::after { content: ""; position: absolute; left: var(--clipx, 0px); top: 2px; bottom: 2px; width: 2px; background: var(--accent); animation: caret .9s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+
+/* ---------------------------------------------------------------- notes */
+.note { display: grid; grid-template-rows: 1fr; margin: 0 12px 0 74px; position: relative; z-index: 3; }
+.note-in { margin: 3px 0 8px; padding: 7px 11px; background: var(--note-bg); border: 1px solid var(--line-2); border-left: 3px solid var(--note-edge, var(--t-focus)); border-radius: 6px; font: 13px/1.55 var(--sans); white-space: normal; max-width: 660px; box-shadow: 0 2px 8px rgba(0,0,0,.12); color: var(--fg-strong); }
+.note.in { animation: noteIn .42s var(--ease) both; }
+@keyframes noteIn { from { opacity: 0; transform: translateY(-6px) scaleY(.92); transform-origin: top; } to { opacity: 1; transform: none; } }
+.note .tag { font: 700 10px var(--sans); text-transform: uppercase; letter-spacing: .05em; color: var(--note-edge, var(--t-focus)); margin-right: 7px; }
+.note.tone-why { --note-edge: var(--t-info); } .note.tone-risk { --note-edge: var(--t-remove); } .note.tone-tip { --note-edge: var(--t-add); }
+.tokline { position: absolute; height: 2px; background: var(--accent); pointer-events: none; z-index: 5; border-radius: 1px; animation: fadeIn .2s; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ================================================================ overlays */
+.wt-start { position: absolute; inset: 0; z-index: 40; display: grid; place-content: center; justify-items: center; gap: 10px; background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(3px); text-align: center; padding: 16px; transition: opacity .45s var(--ease), visibility .45s; }
+.wt-start.gone { opacity: 0; visibility: hidden; pointer-events: none; }
+.wt-start button { width: 64px; height: 64px; border-radius: 50%; background: var(--accent-strong); color: #fff; display: grid; place-items: center; box-shadow: var(--shadow); transition: transform .2s var(--ease); }
+.wt-start button:hover { transform: scale(1.06); }
+.wt-start button svg { width: 26px; height: 26px; margin-left: 3px; }
+.wt-start .t { font-size: 18px; font-weight: 650; max-width: 560px; color: var(--fg-strong); }
+.wt-start .s { color: var(--fg-2); font-size: 13px; }
+.wt-pointer { position: fixed; left: 0; top: 0; width: 22px; height: 22px; pointer-events: none; z-index: 200; transition: opacity .25s; filter: drop-shadow(0 2px 3px rgba(0,0,0,.4)); }
+.wt-pointer .ripple { position: absolute; left: -10px; top: -10px; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; }
+.wt-pointer.click .ripple { animation: ripple .45s ease-out; }
+@keyframes ripple { from { opacity: 1; transform: scale(.3); } to { opacity: 0; transform: scale(1.6); } }
+.wt-keys { position: fixed; z-index: 201; pointer-events: none; display: flex; gap: 4px; transform: translate(14px, 18px); animation: fadeIn .2s; }
+.wt-keys kbd { font-size: 12px; padding: 1px 6px; background: var(--bg-3); color: var(--fg); box-shadow: var(--shadow); }
+.wt-toast { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); z-index: 25; background: var(--bg-2); border: 1px solid var(--line-2); box-shadow: var(--shadow); border-radius: 6px; padding: 5px 12px; font: 12px var(--mono); color: var(--fg); pointer-events: none; white-space: nowrap; max-width: 90%; overflow: hidden; text-overflow: ellipsis; }
+.wt-toast.in { animation: toastIn .3s var(--ease) both; }
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* refs peek */
+.wt-refs { border-top: 1px solid var(--line-2); background: var(--bg-side); max-height: 34%; display: flex; flex-direction: column; min-height: 0; flex: none; }
+.wt-refs.in { animation: refsIn .35s var(--ease) both; }
+@keyframes refsIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.wt-refs header { padding: 6px 14px; font-size: 12px; color: var(--fg-2); border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: baseline; }
+.wt-refs header b { color: var(--fg-strong); font-family: var(--mono); }
+.wt-refs ol { list-style: none; margin: 0; padding: 4px 0; overflow: auto; }
+.wt-refs li button { display: grid; grid-template-columns: minmax(120px, 30%) 1fr; gap: 12px; width: 100%; text-align: left; padding: 3px 14px; font: 12px var(--mono); color: var(--fg-2); transition: background-color .25s; }
+.wt-refs li button:hover { background: var(--bg-hover); }
+.wt-refs li.on button { background: var(--bg-active); color: var(--fg-strong); box-shadow: inset 2px 0 var(--accent); }
+.wt-refs li.seen button { color: var(--fg-3); }
+.wt-refs .loc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .wt-refs .loc i { font-style: normal; color: var(--fg-3); }
+.wt-refs .snip { white-space: pre; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
+.wt-refs .lbl { font-family: var(--sans); color: var(--fg-3); margin-left: 10px; }
+
+/* graph: full-screen overview → docked structure map (overview + detail). Fixed layer; JS sets the box. */
+.wt-graph { position: fixed; z-index: 50; display: flex; flex-direction: column; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden;
+  transition: left .65s var(--ease), top .65s var(--ease), width .65s var(--ease), height .65s var(--ease), opacity .3s, border-radius .65s, box-shadow .65s; }
+.wt-graph.in { animation: graphIn .45s var(--ease) both; }
+.wt-graph.leaving { opacity: 0; }
+@keyframes graphIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+.wt-graph.mini { border-radius: 8px; box-shadow: none; background: var(--bg); }
+.gd-map { height: 168px; margin: 0 10px 8px; flex: none; border-radius: 8px; }
+.wt-graph header { display: flex; align-items: center; gap: 2px; padding: 5px 6px 5px 14px; font-size: 12px; color: var(--fg-2); border-bottom: 1px solid var(--line); flex: none; }
+.wt-graph.mini header { padding: 2px 4px 2px 10px; font-size: 11px; }
+.wt-graph header .t { flex: 1; font-weight: 600; color: var(--fg-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wt-graph .gbody { overflow: hidden; padding: 10px; flex: 1; min-height: 0; display: grid; place-items: center; }
+.wt-graph.mini .gbody { padding: 6px; }
+.wt-graph svg { display: block; width: 100%; height: 100%; max-width: var(--w); }
+.wt-graph.full svg, .wt-graph.panel svg { max-width: 100%; max-height: 100%; }
+.wt-graph.mini svg { max-width: 100%; }
+.g-node.visited rect { stroke-width: 1.8; fill: color-mix(in srgb, var(--t-focus) 6%, var(--bg)); }
+.g-node, .g-edge { animation: gIn .45s var(--ease) both; animation-delay: calc(var(--i, 0) * 70ms); transition: opacity .35s var(--ease); }
+@keyframes gIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.g-edge path { stroke-dasharray: 1; stroke-dashoffset: 0; animation: draw .6s var(--ease) both; animation-delay: calc(var(--i, 0) * 70ms); }
+@keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.g-node rect { fill: var(--bg); stroke: var(--line-2); stroke-width: 1.2; transition: fill .3s, stroke .3s, stroke-width .3s; }
+.g-node text { fill: var(--fg-strong); font: 12px var(--mono); }
+.g-node .sub { fill: var(--fg-3); font: 10px var(--sans); }
+.g-node.added rect { stroke: var(--git-add); } .g-node.modified rect { stroke: var(--git-mod); } .g-node.deleted rect { stroke: var(--git-del); stroke-dasharray: 4 3; }
+.g-node.context rect { stroke-dasharray: 2 3; }
+.g-node.on rect { fill: color-mix(in srgb, var(--t-focus) 14%, var(--bg)); stroke: var(--t-focus); stroke-width: 2.2; }
+.g-node.off { opacity: .32; }
+.g-node[data-file] { cursor: pointer; }
+.g-edge { color: var(--fg-3); }
+.g-edge path { fill: none; stroke: currentColor; stroke-width: 1.3; transition: stroke .3s, stroke-width .3s; }
+.g-edge .lbl rect { fill: var(--bg-2); stroke: currentColor; stroke-opacity: .35; stroke-width: 1; transition: stroke .3s, fill .3s; }
+.g-edge .lbl text { fill: var(--fg-2); font: 600 10px var(--sans); transition: fill .3s; }
+.wt-graph.mini .g-edge .lbl { display: none; }
+.wt-graph.mini .g-node .sub { display: none; }
+.g-edge.on { color: var(--t-focus); } .g-edge.on path { stroke-width: 2.2; } .g-edge.on .lbl text { fill: var(--t-focus); } .g-edge.on .lbl rect { stroke-opacity: .9; fill: color-mix(in srgb, var(--t-focus) 10%, var(--bg-2)); }
+.g-edge.off { opacity: .22; }
+.g-edge.dashed path { stroke-dasharray: 5 4; animation: none; }
+
+/* ================================================================ walkthrough guide (right panel) */
+.wt-guide { background: var(--bg-side); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
+.gd-head { display: flex; align-items: center; justify-content: space-between; padding: 0 14px 0 18px; height: 35px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--fg-2); flex: none; }
+.gd-meta { text-transform: none; letter-spacing: 0; color: var(--fg-3); font-size: 11.5px; }
+.gd-body { overflow: auto; flex: 1; padding: 4px 0 24px; scroll-behavior: smooth; scrollbar-width: thin; }
+.gd-detail { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .4s var(--ease), opacity .35s var(--ease); opacity: 0; }
+.gd-inner { overflow: hidden; min-height: 0; }
+.open > .gd-detail { grid-template-rows: 1fr; opacity: 1; }
+.gd-sec { margin: 0 10px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.gd-sec-h { width: 100%; text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--fg-2); }
+.gd-sec .gd-inner { padding: 0 12px; }
+.gd-sec.open .gd-inner { padding-bottom: 10px; }
+.gd-sec.cur { border-color: var(--accent-strong); box-shadow: 0 0 0 1px var(--accent-strong); }
+.gd-text { font-size: 13.5px; line-height: 1.7; color: var(--fg-strong); }
+.gd-text p { margin: 0 0 8px; } .gd-text ul { margin: 0 0 8px; padding-left: 18px; }
+.gd-strategy { margin-top: 8px; font-size: 12.5px; line-height: 1.6; color: var(--fg-2); }
+.gd-strategy b { display: block; color: var(--fg); font-size: 12px; margin-bottom: 2px; }
+.gd-strategy p { margin: 0; }
+.gd-recap h4 { margin: 10px 0 4px; font-size: 12.5px; color: var(--fg-strong); }
+.gd-recap ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+.gd-recap ul.rf li::marker { content: "? "; color: var(--t-warn); font-weight: 700; }
+.gd-recap .muted { font-size: 12px; margin: 10px 0 0; }
+.gd-chapters, .gd-scenes { list-style: none; margin: 0; padding: 0; }
+.gd-ch { padding: 2px 10px 6px; }
+.gd-ch-h { display: flex; align-items: center; gap: 8px; padding: 8px 4px 4px; font-size: 12px; font-weight: 700; color: var(--fg-2); }
+.gd-ch-h .no { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; background: var(--bg-3); color: var(--fg-2); flex: none; transition: background-color .3s, color .3s; }
+.gd-ch.cur .gd-ch-h { color: var(--fg-strong); } .gd-ch.cur .gd-ch-h .no { background: var(--accent-strong); color: #fff; }
+.gd-ch.done .gd-ch-h .no { background: color-mix(in srgb, var(--t-add) 30%, var(--bg-3)); color: var(--fg); }
+.gd-sc { position: relative; margin-left: 12px; padding-left: 16px; border-left: 1px solid var(--line-2); }
+.gd-sc-h { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 5px 8px 5px 2px; border-radius: 5px; font-size: 13px; color: var(--fg); transition: background-color .2s, color .2s; }
+.gd-sc-h:hover { background: var(--bg-hover); }
+.gd-sc-h .t { flex: 1; min-width: 0; }
+.gd-sc-h .dur { font: 11px var(--mono); color: var(--fg-3); }
+.gd-sc .bullet { position: absolute; left: -7px; top: 8px; width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--line-2); background: var(--bg-side); display: grid; place-items: center; transition: background-color .3s, border-color .3s; }
+.gd-sc .bullet svg { width: 8px; height: 8px; opacity: 0; color: #fff; transition: opacity .3s; }
+.gd-sc.done .gd-sc-h { color: var(--fg-2); }
+.gd-sc.done .bullet { background: var(--t-add); border-color: var(--t-add); } .gd-sc.done .bullet svg { opacity: 1; }
+.gd-sc.cur .bullet { background: var(--accent-strong); border-color: var(--accent-strong); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-strong) 25%, transparent); }
+.wt.playing .gd-sc.cur .bullet { animation: pulse 1.8s infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 30%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent-strong) 0%, transparent); } }
+.gd-sc.cur .gd-sc-h { color: var(--fg-strong); font-weight: 600; background: var(--bg-hover); }
+.gd-sc .gd-inner { padding: 0 6px 0 2px; }
+.gd-sc.open .gd-inner { padding: 6px 6px 8px 2px; }
+.gd-goal { font-size: 12px; color: var(--fg-2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; margin-bottom: 8px; background: var(--bg); }
+.gd-goal b { color: var(--accent); font-weight: 600; margin-right: 6px; }
+.gd-text .sn, .gd-text .sn-li { transition: opacity .45s var(--ease), color .45s var(--ease), background-color .45s var(--ease); border-radius: 3px; }
+.gd-sc.cur .gd-text .sn-next { opacity: .22; }
+.gd-sc.cur .gd-text .sn-past { opacity: .62; }
+.gd-sc.cur .gd-text .sn-cur { opacity: 1; }
+.gd-sc.cur .gd-text span.sn-cur { background: color-mix(in srgb, var(--accent) 12%, transparent); box-decoration-break: clone; -webkit-box-decoration-break: clone; padding: 1px 2px; }
+.gd-sc.cur .gd-text li.sn-cur { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.gd-text ul { list-style: none; padding-left: 0; }
+.gd-text li { position: relative; padding: 2px 6px 2px 18px; margin: 2px 0; }
+.gd-text li::before { content: ""; position: absolute; left: 6px; top: .78em; width: 5px; height: 5px; border-radius: 50%; background: var(--fg-3); transition: background-color .4s; }
+.gd-sc.cur .gd-text li.sn-cur::before { background: var(--accent); }
+.gd-say:empty { display: none; }
+.gd-say { margin-top: 6px; padding: 7px 10px; border-radius: 6px; background: var(--bg-3); font-size: 13px; line-height: 1.6; }
+.gd-say p { margin: 0; }
+.gd-say.in { animation: noteIn .35s var(--ease) both; }
+.gd-prog { height: 2px; margin: 0 6px 0 2px; background: transparent; border-radius: 1px; overflow: hidden; }
+.gd-sc.cur .gd-prog { background: var(--line); }
+.gd-prog i { display: block; height: 100%; width: 0; background: var(--accent); }
+.gd-sc:not(.cur) .gd-prog i { width: 0 !important; }
+.gd-foot { border-top: 1px solid var(--line); padding: 8px 16px; font-size: 12px; color: var(--fg-3); flex: none; }
+.gd-foot:empty { display: none; }
+.gd-foot summary { cursor: pointer; color: var(--fg-2); }
+.gd-foot dl { margin: 6px 0 0; max-height: 30vh; overflow: auto; } .gd-foot dt { font-family: var(--mono); color: var(--fg); } .gd-foot dd { margin: 0 0 6px 0; }
+
+/* ================================================================ controls */
+.wt-ctrl { border-top: 1px solid var(--line); background: var(--bg-side); padding: 6px 12px 8px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
+.ctrl-btns { display: flex; align-items: center; gap: 2px; }
+.ctrl-btns .play { width: 34px; height: 34px; border-radius: 50%; background: var(--accent-strong); color: #fff; display: grid; place-items: center; transition: transform .15s; }
+.ctrl-btns .play:active { transform: scale(.94); }
+.ctrl-btns .play svg { width: 16px; height: 16px; }
+.scrub { position: relative; height: 26px; cursor: pointer; touch-action: none; }
+.scrub .track { position: absolute; left: 0; right: 0; top: 11px; height: 4px; display: flex; gap: 2px; }
+.scrub .seg { height: 100%; background: var(--line-2); border-radius: 2px; position: relative; overflow: hidden; }
+.scrub .seg .fill { position: absolute; inset: 0; width: 0; background: var(--accent); }
+.scrub .tick { position: absolute; top: 9px; width: 2px; height: 8px; background: var(--bg-side); pointer-events: none; }
+.scrub .knob { position: absolute; top: 6px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--fg-strong); box-shadow: 0 1px 4px rgba(0,0,0,.4); pointer-events: none; }
+.scrub .tip { position: absolute; bottom: 24px; transform: translateX(-50%); background: var(--bg-2); border: 1px solid var(--line-2); padding: 2px 8px; border-radius: 4px; font-size: 11.5px; white-space: nowrap; pointer-events: none; display: none; box-shadow: var(--shadow); }
+.scrub:hover .tip { display: block; }
+.ctrl-right { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-2); }
+.ctrl-right .time { font: 12px var(--mono); min-width: 92px; text-align: right; }
+.ctrl-right select { background: var(--bg-3); color: var(--fg); border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 4px; font-size: 12px; }
+.ctrl-right label { display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+.ctrl-hint { grid-column: 1 / -1; font-size: 11px; color: var(--fg-3); display: flex; gap: 14px; flex-wrap: wrap; }
+.ctrl-hint .cont { color: var(--accent); font-weight: 600; }
+.paused-at-end .ctrl-btns .play { animation: pulse 1.6s infinite; }
+
+.help { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: grid; place-items: center; z-index: 100; animation: fadeIn .2s; }
+.help > div { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 18px 22px; min-width: 300px; max-width: 92vw; box-shadow: var(--shadow); }
+.help h2 { margin: 0 0 10px; font-size: 15px; }
+.help table { border-collapse: collapse; font-size: 13px; } .help td { padding: 3px 12px 3px 0; }
+
+/* ================================================================ responsive */
+@media (max-width: 1200px) { .wt-main { grid-template-columns: 220px minmax(0, 1fr) 320px; } }
+@media (max-width: 1000px) {
+  .wt-main, .wt.hide-guide .wt-main { grid-template-columns: 0 minmax(0, 1fr) 300px; }
+  .wt-explorer { position: absolute; z-index: 60; top: 36px; bottom: 0; left: 0; width: 280px; box-shadow: var(--shadow); transform: translateX(-100%); transition: transform .3s var(--ease); visibility: visible; }
+  .wt.show-explorer .wt-explorer { transform: none; }
+  .wt.hide-guide .wt-main { grid-template-columns: 0 minmax(0, 1fr) 0; }
+}
+@media (max-width: 760px) {
+  .wt { grid-template-rows: 36px 1fr auto; }
+  .wt-main, .wt.hide-guide .wt-main, .wt.hide-explorer .wt-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(140px, 40%); }
+  .wt-guide { border-left: 0; border-top: 1px solid var(--line); }
+  .wt-top .range, .wt-top .badge { display: none; }
+  .wt-panes.columns { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr 1fr; }
+  .wt-panes.columns .pane + .pane { border-left: 0; border-top: 1px solid var(--line); }
+  .row .gn { width: 40px; padding-right: 6px; } .row .gn.n { left: 40px; }
+  .row.fold .fold-gut { width: 98px; }
+  .note { margin-left: 16px; }
+  .wt-ctrl { grid-template-columns: auto minmax(0, 1fr); padding: 6px 16px 8px; }
+  .ctrl-right { grid-column: 1 / -1; justify-content: space-between; }
+  .ctrl-hint { display: none; }
+  .crumbs .vbtns button:not(.on) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="app" class="wt" aria-busy="true"></div>
+<script type="application/json" id="walkthrough-ir">{"version":1,"meta":{"title":"Retry idempotent requests with exponential backoff","summary":"`request()` now retries failed **idempotent (GET) requests** up to 3 times with exponential backoff. The retry logic lives in a new `retry.ts` module, and an `HttpError` type lets it retry only transient failures (5xx, 429).","intent":"feature","language":"en","strategy":{"order":"top-down","rationale":"Start from what callers see (what changed), then go down into the new module (how it works), and finish with the blast radius (existing callers) and tests."},"takeaways":["GET retries by default; other methods only with `idempotent: true`","Only `isTransient()` errors are retried: 5xx and 429","`fetchUser` gets retries without any code change; `renameUser` (PATCH) is unaffected"],"reviewFocus":["Are any PATCH/POST callers idempotent and should pass `idempotent: true`?","Does the total backoff (200+400+800 ms) fit within `timeoutMs`?"]},"source":{"base":"HEAD~1","head":"HEAD","baseSha":"0bf3d193b9","headSha":"861a432fbf"},"files":{"src/api/client.ts":{"status":"modified","role":"HTTP entry point","language":"typescript","before":"import { config } from '../config';\n\nexport interface RequestOptions {\n  method?: string;\n  body?: unknown;\n}\n\nexport async function request\u003cT>(path: string, opts: RequestOptions = {}): Promise\u003cT> {\n  const res = await fetch(config.baseUrl + path, {\n    method: opts.method ?? 'GET',\n    body: opts.body ? JSON.stringify(opts.body) : undefined,\n  });\n  if (!res.ok) {\n    throw new Error(`Request failed: ${res.status}`);\n  }\n  return (await res.json()) as T;\n}\n","after":"import { config } from '../config';\nimport { HttpError, withRetry } from './retry';\n\nexport interface RequestOptions {\n  method?: string;\n  body?: unknown;\n  idempotent?: boolean;\n}\n\nexport async function request\u003cT>(path: string, opts: RequestOptions = {}): Promise\u003cT> {\n  const method = opts.method ?? 'GET';\n  const send = async () => {\n    const res = await fetch(config.baseUrl + path, {\n      method,\n      body: opts.body ? JSON.stringify(opts.body) : undefined,\n    });\n    if (!res.ok) {\n      throw new HttpError(res.status);\n    }\n    return (await res.json()) as T;\n  };\n  const idempotent = opts.idempotent ?? method === 'GET';\n  return idempotent ? withRetry(send, config.retry) : send();\n}\n"},"src/api/retry.ts":{"status":"added","role":"retry policy","language":"typescript","before":null,"after":"export interface RetryPolicy {\n  retries: number;\n  baseDelayMs: number;\n}\n\nconst sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));\n\n/** Retries `fn` on transient failures with exponential backoff. */\nexport async function withRetry\u003cT>(fn: () => Promise\u003cT>, policy: RetryPolicy): Promise\u003cT> {\n  let attempt = 0;\n  for (;;) {\n    try {\n      return await fn();\n    } catch (err) {\n      if (!isTransient(err) || attempt >= policy.retries) throw err;\n      await sleep(policy.baseDelayMs * 2 ** attempt);\n      attempt++;\n    }\n  }\n}\n\nexport function isTransient(err: unknown): boolean {\n  return err instanceof HttpError && (err.status >= 500 || err.status === 429);\n}\n\nexport class HttpError extends Error {\n  constructor(public status: number) {\n    super(`Request failed: ${status}`);\n  }\n}\n"},"src/config.ts":{"status":"modified","role":"config","language":"typescript","before":"export const config = {\n  baseUrl: process.env.API_URL ?? 'http://localhost:3000',\n  timeoutMs: 5000,\n};\n","after":"export const config = {\n  baseUrl: process.env.API_URL ?? 'http://localhost:3000',\n  timeoutMs: 5000,\n  retry: { retries: 3, baseDelayMs: 200 },\n};\n"},"src/users/service.ts":{"status":"context","role":"existing caller","language":"typescript","before":"import { request } from '../api/client';\n\nexport interface User {\n  id: string;\n  name: string;\n}\n\nexport async function fetchUser(id: string): Promise\u003cUser> {\n  return request\u003cUser>(`/users/${id}`);\n}\n\nexport async function renameUser(id: string, name: string): Promise\u003cUser> {\n  return request\u003cUser>(`/users/${id}`, { method: 'PATCH', body: { name } });\n}\n","after":"import { request } from '../api/client';\n\nexport interface User {\n  id: string;\n  name: string;\n}\n\nexport async function fetchUser(id: string): Promise\u003cUser> {\n  return request\u003cUser>(`/users/${id}`);\n}\n\nexport async function renameUser(id: string, name: string): Promise\u003cUser> {\n  return request\u003cUser>(`/users/${id}`, { method: 'PATCH', body: { name } });\n}\n"},"test/retry.test.ts":{"status":"added","language":"typescript","before":null,"after":"import { HttpError, withRetry } from '../src/api/retry';\n\ntest('retries transient errors', async () => {\n  let calls = 0;\n  const v = await withRetry(async () => {\n    if (++calls \u003c 3) throw new HttpError(503);\n    return 'ok';\n  }, { retries: 3, baseDelayMs: 0 });\n  expect(v).toBe('ok');\n  expect(calls).toBe(3);\n});\n\ntest('does not retry 4xx', async () => {\n  await expect(withRetry(async () => { throw new HttpError(404); }, { retries: 3, baseDelayMs: 0 })).rejects.toThrow();\n});\n"}},"glossary":[{"term":"idempotent","definition":"A request whose effect is the same no matter how many times it runs, so retrying it is safe."},{"term":"exponential backoff","definition":"Waiting base × 2^n between retries to avoid hammering a struggling server."}],"chapters":[{"id":"overview","title":"The big picture","goal":"Get a map of what was added where","scenes":[{"id":"map","title":"Map of the change","goal":"Know the three files' roles and how they relate","narration":"The change has three parts. **client.ts** starts using the new **retry.ts** module, and the policy values come from **config.ts**. The existing caller `service.ts` inherits the new behaviour without any code change.","steps":[{"do":"graph","title":"Dependencies","nodes":[{"id":"svc","label":"users/service.ts","sub":"fetchUser · renameUser","file":"src/users/service.ts","status":"context"},{"id":"client","label":"api/client.ts","sub":"request()","file":"src/api/client.ts"},{"id":"retry","label":"api/retry.ts","sub":"withRetry · HttpError","file":"src/api/retry.ts"},{"id":"config","label":"config.ts","sub":"retry policy","file":"src/config.ts"}],"edges":[{"from":"svc","to":"client","label":"calls"},{"from":"client","to":"retry","label":"new import"},{"from":"client","to":"config","label":"reads policy"}]},{"do":"graph","highlight":["client","retry","config"],"hold":1500},{"do":"graph","highlight":["svc","client"],"hold":1200}]}]},{"id":"entry","title":"What callers see","goal":"Understand how request() behaves now","scenes":[{"id":"request-diff","title":"request() now wraps send","goal":"The request moved into a send closure that is retried conditionally","narration":"The old request logic moved, unchanged, into a `send` closure. Two things differ: on failure it throws **`HttpError`** instead of `Error`, and the last line wraps the call in `withRetry` **only for idempotent requests**.","steps":[{"do":"open","file":"src/api/client.ts","view":"diff","diff":{"mode":"unified","granularity":"word"},"_openKind":"tree","_reveal":true},{"do":"focus","range":{"symbol":"request"},"_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":10,"to":24}},{"do":"type","range":{"find":"const idempotent","span":2},"_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":22,"to":23},"_chars":114,"_dels":0},{"do":"highlight","range":{"find":"throw new HttpError"},"tone":"add","label":"HttpError","_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":18,"to":18}},{"do":"highlight","range":{"find":"return idempotent"},"tone":"focus","label":"key line","_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":23,"to":23}},{"do":"note","at":{"find":"const idempotent"},"text":"Unless `idempotent` is set explicitly, **only GET** is retried.","tone":"why","_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":22,"to":22}}]},{"id":"request-split","title":"Side by side","goal":"Tell moved code apart from new code","narration":"In the split view it is clear the `fetch` block **only changed indentation**. The real changes to review are `HttpError` and the final branch.","steps":[{"do":"diffView","mode":"split"},{"do":"reveal","at":{"find":"const send"},"_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":12,"to":12}},{"do":"highlight","range":{"find":"const res = await fetch","span":4},"tone":"info","label":"moved (re-indented)","_file":"src/api/client.ts","_pane":0,"_view":"diff","_r":{"side":"after","from":13,"to":16}},{"do":"wait","ms":1200},{"do":"diffView","mode":"unified"}]}]},{"id":"retry","title":"Inside the retry module","goal":"Know when, how often and how long it retries","scenes":[{"id":"goto-withretry","title":"Into withRetry","goal":"Know the loop's exit conditions","narration":"Jump to the definition of `withRetry`. The loop returns as soon as `fn` succeeds. On failure it waits `base × 2^attempt` and tries again **only if the error is transient and retries remain**.","steps":[{"do":"goto","from":{"at":{"find":"return idempotent"},"token":"withRetry"},"to":{"file":"src/api/retry.ts","at":{"symbol":"withRetry"}},"_pane":0,"_from":{"file":"src/api/client.ts","side":"after","line":23,"to":23},"_to":{"file":"src/api/retry.ts","pane":0,"view":"after","side":"after","line":9,"from":9,"to":20}},{"do":"highlight","range":{"find":"if (!isTransient(err)"},"tone":"warn","label":"exit condition","_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":15,"to":15}},{"do":"highlight","range":{"find":"await sleep"},"tone":"info","label":"backoff","_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":16,"to":16}},{"do":"note","at":{"find":"await sleep"},"text":"200 → 400 → 800 ms: up to ~1.4 s of extra waiting with 3 retries.","tone":"risk","_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":16,"to":16}}]},{"id":"transient","title":"What counts as transient","goal":"Know retries are limited to 5xx and 429","narration":"`isTransient` is true only for an `HttpError` with status **5xx or 429**, so client errors such as 404 fail immediately. That check is why `client.ts` now throws `HttpError` instead of a plain `Error`.","steps":[{"do":"focus","range":{"symbol":"isTransient"},"_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":22,"to":24}},{"do":"goto","from":{"at":{"find":"err instanceof HttpError"},"token":"HttpError"},"to":{"file":"src/api/retry.ts","at":{"symbol":"HttpError"}},"_pane":0,"_from":{"file":"src/api/retry.ts","side":"after","line":23,"to":23},"_to":{"file":"src/api/retry.ts","pane":0,"view":"after","side":"after","line":26,"from":26,"to":30}},{"do":"say","text":"Keeping `status` around is the reason `HttpError` exists."}]},{"id":"config","title":"Policy lives in config","goal":"Know where to tune retries","narration":"The policy values live in `config.retry`; tuning retries in production means changing this one place.","steps":[{"do":"layout","mode":"columns"},{"do":"open","pane":1,"file":"src/config.ts","view":"diff","_openKind":"tree","_reveal":true},{"do":"highlight","pane":1,"range":{"find":"retry:"},"tone":"add","_file":"src/config.ts","_pane":1,"_view":"diff","_r":{"side":"after","from":4,"to":4}},{"do":"highlight","pane":0,"range":{"find":"baseDelayMs * 2"},"tone":"info","_file":"src/api/retry.ts","_pane":0,"_view":"after","_r":{"side":"after","from":16,"to":16}}]}]},{"id":"impact","title":"Impact and verification","goal":"Check the effect on existing code and the tests","scenes":[{"id":"callers","title":"What about existing callers?","goal":"Tell which calls become retried","narration":"Find the callers of `request`. `fetchUser` is a GET, so it is **retried automatically**; `renameUser` is a PATCH and behaves **exactly as before**.","steps":[{"do":"layout","mode":"single"},{"do":"refs","pane":0,"symbol":"request","items":[{"file":"src/users/service.ts","at":{"find":"return request\u003cUser>(`/users/${id}`);"},"label":"GET → retried"},{"file":"src/users/service.ts","at":{"find":"method: 'PATCH'"},"label":"PATCH → unchanged"}],"_pane":0,"_items":[{"file":"src/users/service.ts","view":"after","side":"after","line":9,"label":"GET → retried","text":"return request\u003cUser>(`/users/${id}`);"},{"file":"src/users/service.ts","view":"after","side":"after","line":13,"label":"PATCH → unchanged","text":"return request\u003cUser>(`/users/${id}`, { method: 'PATCH', body: { name } });"}]},{"do":"note","at":{"find":"method: 'PATCH'"},"text":"If this PATCH is idempotent, pass `idempotent: true` to opt in.","tone":"tip","_file":"src/users/service.ts","_pane":0,"_view":"after","_r":{"side":"after","from":13,"to":13}}]},{"id":"tests","title":"What the tests pin down","goal":"Know both core behaviours are covered","narration":"The tests pin down two behaviours: a **503 is retried until it succeeds**, and a **404 fails without retrying**. Note that no test covers the idempotency branch in `request()` itself.","steps":[{"do":"open","file":"test/retry.test.ts","view":"after","_openKind":"tree","_reveal":true},{"do":"highlight","range":{"find":"retries transient errors","block":true},"tone":"add","label":"503 → success","_file":"test/retry.test.ts","_pane":0,"_view":"after","_r":{"side":"after","from":3,"to":11}},{"do":"highlight","range":{"find":"does not retry 4xx","block":true},"tone":"remove","label":"404 → failure","_file":"test/retry.test.ts","_pane":0,"_view":"after","_r":{"side":"after","from":13,"to":15}}]}]}],"tree":{"root":"retry-demo","dirs":["src/api","src","src/users","test"],"files":[[0,"client.ts"],[0,"retry.ts"],[1,"config.ts"],[2,"profile.ts"],[2,"service.ts"],[3,"retry.test.ts"],[3,"service.test.ts"]],"partial":[],"total":7},"compiled":{"engineIrVersion":1,"at":"2026-11-17T09:28:12.267Z"}}</script>
+<script>/* Walkthrough diff engine — shared by the player (browser) and build.mjs (Node).
+ * Algorithms: "myers" (minimal edit script) and "patience" (unique-line anchors,
+ * better at keeping moved / re-ordered blocks and brace-heavy code readable).
+ * Both are post-processed with a slider heuristic and line pairing for
+ * intra-line (word) highlighting.  Exposes globalThis.WalkDiff. */
+(function (root) {
+  'use strict';
+
+  // ---------- Myers O((N+M)D), O(D^2) memory ----------
+  function myers(a, b, aLo, aHi, bLo, bHi, out) {
+    // trim common prefix / suffix
+    while (aLo < aHi && bLo < bHi && a[aLo] === b[bLo]) { out.push(['=', aLo, bLo]); aLo++; bLo++; }
+    const tail = [];
+    while (aLo < aHi && bLo < bHi && a[aHi - 1] === b[bHi - 1]) { aHi--; bHi--; tail.push(['=', aHi, bHi]); }
+    const n = aHi - aLo, m = bHi - bLo;
+    if (n === 0 || m === 0) {
+      for (let i = aLo; i < aHi; i++) out.push(['-', i, -1]);
+      for (let j = bLo; j < bHi; j++) out.push(['+', -1, j]);
+    } else {
+      const max = n + m;
+      const LIMIT = 2500;
+      const trace = [];
+      let found = -1;
+      let prev = null;
+      for (let d = 0; d <= Math.min(max, LIMIT); d++) {
+        const cur = new Int32Array(2 * d + 3);
+        for (let k = -d; k <= d; k += 2) {
+          let x;
+          const get = (kk) => prev[kk + (d - 1) + 1];
+          if (d === 0) x = 0;
+          else if (k === -d || (k !== d && get(k - 1) < get(k + 1))) x = get(k + 1);
+          else x = get(k - 1) + 1;
+          let y = x - k;
+          while (x < n && y < m && a[aLo + x] === b[bLo + y]) { x++; y++; }
+          cur[k + d + 1] = x;
+          if (x >= n && y >= m) { found = d; break; }
+        }
+        trace.push(cur); prev = cur;
+        if (found >= 0) break;
+      }
+      if (found < 0) {
+        // too different: emit as one replacement block
+        for (let i = aLo; i < aHi; i++) out.push(['-', i, -1]);
+        for (let j = bLo; j < bHi; j++) out.push(['+', -1, j]);
+      } else {
+        const ops = [];
+        let x = n, y = m;
+        for (let d = found; d > 0; d--) {
+          const p = trace[d - 1];
+          const k = x - y;
+          const get = (kk) => p[kk + (d - 1) + 1];
+          const down = k === -d || (k !== d && get(k - 1) < get(k + 1));
+          const pk = down ? k + 1 : k - 1;
+          const px = get(pk), py = px - pk;
+          const midX = down ? px : px + 1, midY = midX - k;
+          while (x > midX && y > midY) { ops.push(['=', aLo + x - 1, bLo + y - 1]); x--; y--; }
+          if (down) ops.push(['+', -1, bLo + y - 1]); else ops.push(['-', aLo + x - 1, -1]);
+          x = px; y = py;
+        }
+        while (x > 0 && y > 0) { ops.push(['=', aLo + x - 1, bLo + y - 1]); x--; y--; }
+        for (let i = ops.length - 1; i >= 0; i--) out.push(ops[i]);
+      }
+    }
+    for (let i = tail.length - 1; i >= 0; i--) out.push(tail[i]);
+    return out;
+  }
+
+  // ---------- Patience ----------
+  function patience(a, b, aLo, aHi, bLo, bHi, out, depth) {
+    while (aLo < aHi && bLo < bHi && a[aLo] === b[bLo]) { out.push(['=', aLo, bLo]); aLo++; bLo++; }
+    const tail = [];
+    while (aLo < aHi && bLo < bHi && a[aHi - 1] === b[bHi - 1]) { aHi--; bHi--; tail.push(['=', aHi, bHi]); }
+    const countA = new Map(), countB = new Map();
+    for (let i = aLo; i < aHi; i++) { const c = countA.get(a[i]); countA.set(a[i], c === undefined ? i : -1); }
+    for (let j = bLo; j < bHi; j++) { const c = countB.get(b[j]); countB.set(b[j], c === undefined ? j : -1); }
+    const pairs = [];
+    for (const [line, i] of countA) {
+      if (i < 0 || !line.trim()) continue;
+      const j = countB.get(line);
+      if (j !== undefined && j >= 0) pairs.push([i, j]);
+    }
+    pairs.sort((p, q) => p[0] - q[0]);
+    // longest increasing subsequence on j (patience sorting)
+    const piles = [], back = new Array(pairs.length);
+    for (let p = 0; p < pairs.length; p++) {
+      const j = pairs[p][1];
+      let lo = 0, hi = piles.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (pairs[piles[mid]][1] < j) lo = mid + 1; else hi = mid; }
+      back[p] = lo > 0 ? piles[lo - 1] : -1;
+      piles[lo] = p;
+    }
+    const lis = [];
+    for (let p = piles.length ? piles[piles.length - 1] : -1; p >= 0; p = back[p]) lis.push(pairs[p]);
+    lis.reverse();
+    if (!lis.length || depth > 64) {
+      myers(a, b, aLo, aHi, bLo, bHi, out);
+    } else {
+      let ai = aLo, bj = bLo;
+      for (const [i, j] of lis) {
+        patience(a, b, ai, i, bj, j, out, depth + 1);
+        out.push(['=', i, j]);
+        ai = i + 1; bj = j + 1;
+      }
+      patience(a, b, ai, aHi, bj, bHi, out, depth + 1);
+    }
+    for (let i = tail.length - 1; i >= 0; i--) out.push(tail[i]);
+    return out;
+  }
+
+  // ---------- slider heuristic: prefer blocks that end before a blank line ----------
+  function slide(ops, a, b) {
+    // operate on runs of a single kind surrounded by '='
+    for (let s = 0; s < ops.length; s++) {
+      const kind = ops[s][0];
+      if (kind === '=') continue;
+      let e = s; while (e + 1 < ops.length && ops[e + 1][0] === kind) e++;
+      const pure = (s === 0 || ops[s - 1][0] === '=') && (e + 1 >= ops.length || ops[e + 1][0] === '=');
+      if (pure) {
+        const lineOf = (op) => (kind === '-' ? a[op[1]] : b[op[2]]);
+        const candidates = [0];
+        // how far can the block slide down?
+        let down = 0;
+        while (e + 1 + down < ops.length && ops[e + 1 + down][0] === '=' && lineOf2(ops[s + down], kind, a, b) === eqLine(ops[e + 1 + down], kind, a, b)) { down++; candidates.push(down); }
+        let best = 0;
+        for (const c of candidates) {
+          const after = e + 1 + c < ops.length ? eqLine(ops[e + 1 + c], kind, a, b) : '';
+          const last = c === 0 ? lineOf(ops[e]) : eqLine(ops[e + c], kind, a, b);
+          if ((after !== undefined && !String(after).trim()) || /^\s*[}\])]/.test(String(last))) best = c;
+        }
+        for (let c = 0; c < best; c++) {
+          // rotate: first op of block becomes '=' with the next equal's counterpart
+          const first = ops[s + c], eq = ops[e + 1 + c];
+          if (kind === '-') { ops[s + c] = ['=', first[1], eq[2]]; ops[e + 1 + c] = ['-', eq[1], -1]; }
+          else { ops[s + c] = ['=', eq[1], first[2]]; ops[e + 1 + c] = ['+', -1, eq[2]]; }
+        }
+      }
+      s = e;
+    }
+    return ops;
+  }
+  function lineOf2(op, kind, a, b) { return kind === '-' ? a[op[1]] : b[op[2]]; }
+  function eqLine(op, kind, a, b) { return kind === '-' ? a[op[1]] : b[op[2]]; }
+
+  // ---------- word diff ----------
+  function tokenize(s) { return s.match(/\s+|[A-Za-z0-9_$]+|[^\sA-Za-z0-9_$]/g) || []; }
+  function wordDiff(x, y) {
+    const ta = tokenize(x), tb = tokenize(y);
+    const ops = myers(ta, tb, 0, ta.length, 0, tb.length, []);
+    const left = [], right = [];
+    let same = 0, total = 0;
+    for (const [k, i, j] of ops) {
+      if (k === '=') { push(left, ta[i], false); push(right, tb[j], false); same += ta[i].trim() ? ta[i].length : 0; }
+      else if (k === '-') push(left, ta[i], true); else push(right, tb[j], true);
+    }
+    total = Math.max(x.replace(/\s/g, '').length, y.replace(/\s/g, '').length) || 1;
+    return { left, right, similarity: same / total };
+  }
+  function push(arr, text, changed) {
+    const last = arr[arr.length - 1];
+    if (last && last.changed === changed) last.text += text; else arr.push({ text, changed });
+  }
+
+  /** Build display rows from two texts.
+   *  returns { rows:[{type:'eq'|'del'|'add'|'mod', old, new, oldText, newText, segOld, segNew}], stats } */
+  function compute(beforeText, afterText, opts) {
+    opts = opts || {};
+    const a = beforeText == null ? [] : splitLines(beforeText);
+    const b = afterText == null ? [] : splitLines(afterText);
+    const algo = opts.algorithm === 'myers' ? myers : patience;
+    let ops = algo === myers ? myers(a, b, 0, a.length, 0, b.length, []) : patience(a, b, 0, a.length, 0, b.length, [], 0);
+    ops = slide(ops, a, b);
+    const rows = [];
+    let adds = 0, dels = 0;
+    for (let s = 0; s < ops.length;) {
+      if (ops[s][0] === '=') { rows.push({ type: 'eq', old: ops[s][1] + 1, new: ops[s][2] + 1, oldText: a[ops[s][1]], newText: b[ops[s][2]] }); s++; continue; }
+      const dl = [], ad = [];
+      while (s < ops.length && ops[s][0] !== '=') { if (ops[s][0] === '-') dl.push(ops[s][1]); else ad.push(ops[s][2]); s++; }
+      dels += dl.length; adds += ad.length;
+      // pair similar lines in order for intra-line diff
+      const paired = pairLines(dl.map((i) => a[i]), ad.map((j) => b[j]), opts.granularity !== 'line');
+      let di = 0, aj = 0;
+      for (const p of paired) {
+        while (di < p[0]) { rows.push({ type: 'del', old: dl[di] + 1, oldText: a[dl[di]] }); di++; }
+        while (aj < p[1]) { rows.push({ type: 'add', new: ad[aj] + 1, newText: b[ad[aj]] }); aj++; }
+        const w = p[2];
+        const ws = a[dl[di]].replace(/\s+/g, ' ').trim() === b[ad[aj]].replace(/\s+/g, ' ').trim();
+        rows.push({ type: 'mod', ws, old: dl[di] + 1, new: ad[aj] + 1, oldText: a[dl[di]], newText: b[ad[aj]], segOld: w && w.left, segNew: w && w.right });
+        di++; aj++;
+      }
+      while (di < dl.length) { rows.push({ type: 'del', old: dl[di] + 1, oldText: a[dl[di]] }); di++; }
+      while (aj < ad.length) { rows.push({ type: 'add', new: ad[aj] + 1, newText: b[ad[aj]] }); aj++; }
+    }
+    return { rows, stats: { additions: adds, deletions: dels } };
+  }
+
+  function pairLines(dl, ad, words) {
+    // greedy in-order pairing of similar lines (similarity >= .45)
+    const out = []; let j0 = 0;
+    for (let i = 0; i < dl.length && j0 < ad.length; i++) {
+      for (let j = j0; j < Math.min(ad.length, j0 + 6); j++) {
+        const w = wordDiff(dl[i], ad[j]);
+        if (w.similarity >= 0.45) { out.push([i, j, words ? w : null]); j0 = j + 1; break; }
+      }
+    }
+    return out;
+  }
+
+  function splitLines(t) {
+    const lines = t.split('\n');
+    if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+    return lines.map((l) => l.replace(/\r$/, ''));
+  }
+
+  const api = { compute, myers, patience, wordDiff, splitLines };
+  root.WalkDiff = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>/* Tiny language-agnostic syntax highlighter (offline, no dependencies).
+ * Recognises comments, strings, numbers, a union keyword set, types
+ * (Capitalised identifiers) and call sites. Exposes globalThis.WalkHL. */
+(function (root) {
+  'use strict';
+  const KW = new Set(('abstract and as assert async await break case catch class const continue def default defer del delete do elif else enum export extends extern false final finally fn for from func function go goto if impl implements import in instanceof interface is lambda let loop match mod module mut namespace new nil none None not null object of or override package private protected pub public raise readonly record return self Self static struct super switch this throw throws trait true True False try type typeof union unsafe use using val var void when where while with yield end then begin rescue ensure unless until require module defp defmodule select chan map range fallthrough suspend fun companion data sealed open internal lateinit init get set let var guard protocol extension inout fileprivate typealias associatedtype dyn crate ref move where').split(' '));
+  const LINE_COMMENT = { python: '#', ruby: '#', shell: '#', yaml: '#', toml: '#', r: '#', elixir: '#', perl: '#', makefile: '#', dockerfile: '#', hcl: '#', sql: '--', lua: '--', haskell: '--' };
+  const NO_HL = new Set(['markdown', 'text']);
+
+  function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  /** Highlight one line. `st` carries multi-line comment / string state. */
+  function line(text, lang, st) {
+    st = st || {};
+    if (NO_HL.has(lang)) return { html: esc(text), st };
+    const lc = LINE_COMMENT[lang] || '//';
+    const hashToo = lc === '//' && (lang === 'php');
+    const blockC = !LINE_COMMENT[lang] || lang === 'sql' || lang === 'hcl';
+    let out = '';
+    let i = 0;
+    const n = text.length;
+    const span = (cls, s) => { out += `<span class="tk-${cls}">${esc(s)}</span>`; };
+    if (st.block) {
+      const end = text.indexOf(st.block);
+      if (end < 0) { span(st.blockCls, text); return { html: out, st }; }
+      span(st.blockCls, text.slice(0, end + st.block.length));
+      i = end + st.block.length;
+      st = {};
+    }
+    while (i < n) {
+      const c = text[i];
+      const rest = text.slice(i);
+      if (rest.startsWith(lc) || (hashToo && c === '#')) { span('com', rest); break; }
+      if (blockC && rest.startsWith('/*')) {
+        const end = text.indexOf('*/', i + 2);
+        if (end < 0) { span('com', rest); st = { block: '*/', blockCls: 'com' }; break; }
+        span('com', text.slice(i, end + 2)); i = end + 2; continue;
+      }
+      if ((lang === 'python') && (rest.startsWith('"""') || rest.startsWith("'''"))) {
+        const q = rest.slice(0, 3);
+        const end = text.indexOf(q, i + 3);
+        if (end < 0) { span('str', rest); st = { block: q, blockCls: 'str' }; break; }
+        span('str', text.slice(i, end + 3)); i = end + 3; continue;
+      }
+      if (c === '"' || c === "'" || c === '`') {
+        if (c === "'" && (lang === 'rust' || lang === 'ocaml') && /^'[a-z_]\w*(?!')/.test(rest)) { span('kw', rest.match(/^'[a-z_]\w*/)[0]); i += rest.match(/^'[a-z_]\w*/)[0].length; continue; }
+        let j = i + 1;
+        while (j < n && text[j] !== c) { if (text[j] === '\\') j++; j++; }
+        if (c === '`' && j >= n) { span('str', rest); st = { block: '`', blockCls: 'str' }; break; }
+        span('str', text.slice(i, Math.min(n, j + 1))); i = j + 1; continue;
+      }
+      if (/[0-9]/.test(c) && !/[\w$]/.test(text[i - 1] || '')) {
+        const m = rest.match(/^(0x[0-9a-fA-F_]+|\d[\d_]*(\.\d+)?([eE][+-]?\d+)?[a-zA-Z]*)/);
+        span('num', m[0]); i += m[0].length; continue;
+      }
+      if (/[A-Za-z_$@]/.test(c)) {
+        const m = rest.match(/^[@$]?[A-Za-z_$][\w$]*[?!]?/);
+        const w = m[0];
+        const next = text.slice(i + w.length).match(/^\s*(\(|<[\w\s,]*>\s*\()/);
+        if (KW.has(w)) span('kw', w);
+        else if (c === '@') span('meta', w);
+        else if (next) span('fn', w);
+        else if (/^[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*$/.test(w)) span('type', w);
+        else if (/^[A-Z][A-Z0-9_]+$/.test(w) && w.length > 1) span('const', w);
+        else out += esc(w);
+        i += w.length; continue;
+      }
+      if (/[{}()[\];,.:=<>+\-*/%!&|^~?]/.test(c)) { span('p', c); i++; continue; }
+      out += esc(c); i++;
+    }
+    return { html: out, st };
+  }
+
+  /** Highlight a whole file → array of html lines. */
+  function file(lines, lang) {
+    let st = {};
+    return lines.map((l) => { const r = line(l, lang, st); st = r.st; return r.html; });
+  }
+
+  root.WalkHL = { line, file, esc };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>/* Walkthrough timing model — shared by the player (browser) and the compiler
+ * (Node, for `check` duration estimates). Exposes globalThis.WalkTiming.
+ * All values are milliseconds at 1x speed. */
+(function (root) {
+  'use strict';
+  const BASE = { open: 700, layout: 450, diffView: 700, reveal: 850, highlight: 650, focus: 850, unfocus: 350, note: 700, goto: 2700, refs: 700, graph: 1100, say: 0, wait: 0, clear: 250, close: 350 };
+
+  /** Reading time for narration/notes. Hangul is read per syllable, other scripts per character. */
+  function readMs(text) {
+    const s = String(text || '');
+    const hangul = (s.match(/[가-힣]/g) || []).length;
+    return 900 + hangul * 75 + (s.length - hangul) * 28;
+  }
+
+  /** Replaying an edit: removed lines turn red first, then added text is typed (~38 chars/s at 1x). */
+  function typeMs(st) {
+    const chars = st._chars || 0, dels = st._dels || 0;
+    return Math.round(Math.min(7000, Math.max(900, 350 + chars * 26 + (dels ? 450 + dels * 60 : 0))));
+  }
+
+  /** Opening a file is a procedure: find it (explorer or tab) → click → it opens → its changes sweep in. */
+  const OPEN_NAV = { tree: 1150, tab: 650, same: 0 };
+  const OPEN_REVEAL = 950;
+  function openMs(st) {
+    const nav = OPEN_NAV[st._openKind || 'tree'];
+    return Math.max(450, nav + 350 + (st._reveal ? OPEN_REVEAL : 0));
+  }
+
+  /** Split narration into the items revealed one by one: sentences of prose paragraphs, and list bullets. */
+  function narrationItems(text) {
+    const items = [];
+    String(text || '').trim().split(/\n\s*\n/).forEach((para, pi) => {
+      const lines = para.split('\n').filter((l) => l.trim());
+      if (lines.length && lines.every((l) => /^\s*[-*]\s+/.test(l))) {
+        for (const l of lines) items.push({ kind: 'li', para: pi, text: l.replace(/^\s*[-*]\s+/, '') });
+      } else {
+        const flat = lines.join(' ');
+        // sentence ends: . ! ? (also after Korean endings), not inside `code`
+        const parts = [];
+        let buf = '', inCode = false;
+        for (let i = 0; i < flat.length; i++) {
+          const c = flat[i];
+          buf += c;
+          if (c === '`') inCode = !inCode;
+          if (!inCode && /[.!?]/.test(c) && (i + 1 >= flat.length || flat[i + 1] === ' ') && !/\d$/.test(buf.slice(0, -1).slice(-1))) { parts.push(buf.trim()); buf = ''; }
+        }
+        if (buf.trim()) parts.push(buf.trim());
+        for (const t of parts) items.push({ kind: 's', para: pi, text: t });
+      }
+    });
+    return items;
+  }
+
+  /** When each narration item appears (ms, scene-local). Steps may pin an item with `cue: n`;
+   *  the rest are spread between pins by text length over the span of the scene's steps. */
+  function cueTimes(sc, timed) {
+    const items = narrationItems(sc.narration);
+    const n = items.length;
+    if (!n) return { items, times: [] };
+    const starts = timed.map((x) => x.start), ends = timed.map((x) => x.start + x.dur);
+    const spanEnd = ends.length ? Math.max(...ends) : 2000;
+    const anchors = new Map([[0, 0]]);
+    for (const x of timed) if (Number.isInteger(x.st.cue) && x.st.cue >= 1 && x.st.cue <= n && !anchors.has(x.st.cue - 1)) anchors.set(x.st.cue - 1, x.start);
+    if (!anchors.has(n)) anchors.set(n, Math.max(spanEnd, (starts.length ? Math.max(...starts) : 0)));
+    const keys = [...anchors.keys()].sort((a, b) => a - b);
+    const w = items.map((it) => 10 + it.text.length);
+    const times = new Array(n).fill(0);
+    for (let a = 0; a < keys.length - 1; a++) {
+      const i0 = keys[a], i1 = keys[a + 1], t0 = anchors.get(i0), t1 = Math.max(anchors.get(i1), t0);
+      let tot = 0; for (let i = i0; i < i1; i++) tot += w[i];
+      let acc = 0;
+      for (let i = i0; i < i1 && i < n; i++) { times[i] = i === i0 ? t0 : t0 + (acc / tot) * (t1 - t0); acc += w[i]; }
+    }
+    return { items, times };
+  }
+
+  /** Lay out one scene: returns { timed: [{st, start, dur}], duration }. */
+  function scene(sc) {
+    let cursor = 350, prevStart = 0, maxEnd = 0;
+    const timed = (sc.steps || []).map((st) => {
+      let dur = st.ms != null && st.do !== 'wait' ? st.ms : BASE[st.do] ?? 600;
+      if (st.do === 'wait') dur = st.ms || 0;
+      if (st.do === 'refs') dur = (st.ms || 700) + 1300 * ((st._items || st.items || []).length);
+      if (st.do === 'type') dur = st.ms != null ? st.ms : typeMs(st);
+      if (st.do === 'open' && st.ms == null) dur = openMs(st);
+      let hold = st.hold || 0;
+      if (st.do === 'note') hold += readMs(st.text) * 0.55;
+      if (st.do === 'say') hold += readMs(st.text);
+      const start = st.with ? prevStart : cursor;
+      prevStart = start;
+      const end = start + dur;
+      cursor = Math.max(st.with ? cursor : 0, end + hold);
+      maxEnd = Math.max(maxEnd, cursor);
+      return { st, start, dur };
+    });
+    const cues = cueTimes(sc, timed);
+    const lastCue = cues.times.length ? cues.times[cues.times.length - 1] + readMs(cues.items[cues.items.length - 1].text) * 0.8 : 0;
+    return { timed, cues, duration: Math.max(maxEnd + 700, readMs(sc.narration) * 0.9 + 600, lastCue + 400, 2500) };
+  }
+
+  /** Total duration of an IR in ms. */
+  function total(ir) {
+    let t = 0;
+    for (const ch of ir.chapters || []) for (const sc of ch.scenes || []) t += scene(sc).duration;
+    return t;
+  }
+
+  root.WalkTiming = { BASE, readMs, typeMs, openMs, narrationItems, cueTimes, scene, total };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>/* Code Change Walkthrough — IR player.
+ * Renders compiled Walkthrough IR (docs/ir-v1.md) as an IDE-like, seekable animation.
+ *
+ * Core rule: the visible walkthrough state is a pure function of time.
+ *   state(T) = reduce(snapshot(sceneStart), steps started by T, their progress)
+ * so play / pause / scrub / speed / jump-to-scene are all "pick a T".
+ * Purely visual polish (fades, tab slides, folder expansion) is done with CSS
+ * transitions on top, and never feeds back into the state.
+ *
+ * Layout: [explorer] [editor panes] [walkthrough outline + narration] / controls. */
+(function () {
+  'use strict';
+  const IR = JSON.parse(document.getElementById('walkthrough-ir').textContent);
+  const D = window.WalkDiff, HL = window.WalkHL, TM = window.WalkTiming;
+  const app = document.getElementById('app');
+  const LANG = (IR.meta && IR.meta.language) || document.documentElement.lang || 'en';
+  document.documentElement.lang = LANG;
+  const KO = LANG.startsWith('ko');
+  const T_ = (ko, en) => (KO ? ko : en);
+
+  // ================================================================== helpers
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const ease = (p) => (p <= 0 ? 0 : p >= 1 ? 1 : p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+  const fmt = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const clone = (o) => (typeof structuredClone === 'function' ? structuredClone(o) : JSON.parse(JSON.stringify(o)));
+  const shortRef = (r) => (/^[0-9a-f]{40}$/i.test(String(r)) ? String(r).slice(0, 10) : String(r));
+  const restart = (node, cls) => { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); };
+  function md(text) {
+    const blocks = String(text || '').trim().split(/\n\s*\n/);
+    return blocks.map((b) => {
+      const lines = b.split('\n');
+      if (lines.every((l) => /^\s*[-*]\s+/.test(l))) return `<ul>${lines.map((l) => `<li>${inline(l.replace(/^\s*[-*]\s+/, ''))}</li>`).join('')}</ul>`;
+      return `<p>${lines.map(inline).join('<br>')}</p>`;
+    }).join('');
+    function inline(s) {
+      return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*]+)\*/g, '$1<i>$2</i>');
+    }
+  }
+  const mdInline = (t) => md(t).replace(/^<p>|<\/p>$/g, '');
+  const ICON = {
+    play: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9.5-5.5z"/></svg>',
+    pause: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 2h3v12h-3zM9.5 2h3v12h-3z"/></svg>',
+    prev: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 2h2v12H3zM14 2.5v11L6 8z"/></svg>',
+    next: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M11 2h2v12h-2zM2 2.5v11L10 8z"/></svg>',
+    restart: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 8a5.5 5.5 0 1 0 1.7-4"/><path d="M2 2.5v3h3"/></svg>',
+    explorer: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 3.5h4l1.2 1.5H14v7.5H2z"/></svg>',
+    guide: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M5 4h8M5 8h8M5 12h8"/><circle cx="2.5" cy="4" r=".8" fill="currentColor"/><circle cx="2.5" cy="8" r=".8" fill="currentColor"/><circle cx="2.5" cy="12" r=".8" fill="currentColor"/></svg>',
+    theme: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5a5.5 5.5 0 0 0 0 11z" fill="currentColor"/></svg>',
+    help: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M6.2 6.3a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4"/><circle cx="8" cy="11.6" r=".4" fill="currentColor"/></svg>',
+    close: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4l8 8M12 4l-8 8"/></svg>',
+    chevron: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 4l4 4-4 4"/></svg>',
+    unfold: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 2v4M6 4l2-2 2 2M8 14v-4M6 12l2 2 2-2M3 8h10"/></svg>',
+    filter: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 3h12L9.5 8.5V13l-3-1.5v-3z"/></svg>',
+    collapse: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2.5" y="2.5" width="11" height="11" rx="1"/><path d="M5.5 8h5"/></svg>',
+    check: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3.5 8.5l3 3 6-7"/></svg>',
+    map: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="5" width="4" height="3" rx=".6"/><rect x="10.5" y="2" width="4" height="3" rx=".6"/><rect x="10.5" y="9" width="4" height="3" rx=".6"/><path d="M5.5 6.5h2.5V3.5h2.5M8 6.5v4h2.5"/></svg>',
+    expand: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5L9 7M2.5 13.5L7 9"/></svg>',
+    shrink: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M9.5 6.5L14 2M6.5 9.5L2 14"/></svg>',
+    pointer: '<svg viewBox="0 0 22 22"><path d="M4 2l13 9.5-5.6 1 3.2 6.3-2.4 1.2-3.2-6.3L4.6 17.5z" fill="#fff" stroke="#111" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+  };
+  const STATUS_LETTER = { added: 'A', deleted: 'D', modified: 'M', renamed: 'R', copied: 'C' };
+  // VS Code-like file icon glyphs (label + colour class) by extension
+  const FILE_ICON = { ts: ['TS', 'i-blue'], tsx: ['TSX', 'i-blue'], mts: ['TS', 'i-blue'], cts: ['TS', 'i-blue'], js: ['JS', 'i-yellow'], jsx: ['JSX', 'i-yellow'], mjs: ['JS', 'i-yellow'], cjs: ['JS', 'i-yellow'], json: ['{}', 'i-yellow'], md: ['M↓', 'i-blue'], py: ['PY', 'i-blue'], go: ['GO', 'i-cyan'], rs: ['RS', 'i-orange'], java: ['J', 'i-red'], kt: ['K', 'i-purple'], rb: ['RB', 'i-red'], php: ['PHP', 'i-purple'], css: ['#', 'i-blue'], scss: ['#', 'i-pink'], html: ['<>', 'i-orange'], vue: ['V', 'i-green'], svelte: ['S', 'i-orange'], yml: ['Y', 'i-purple'], yaml: ['Y', 'i-purple'], toml: ['T', 'i-gray'], sql: ['DB', 'i-orange'], sh: ['$', 'i-green'], swift: ['SW', 'i-orange'], c: ['C', 'i-blue'], h: ['H', 'i-purple'], cpp: ['C++', 'i-blue'], cs: ['C#', 'i-green'], dart: ['DA', 'i-cyan'], lock: ['🔒', 'i-gray'], graphql: ['GQ', 'i-pink'], proto: ['PB', 'i-gray'], txt: ['≡', 'i-gray'], env: ['⚙', 'i-gray'] };
+  function fileIcon(name) {
+    const lower = name.toLowerCase();
+    if (lower === 'dockerfile') return ['🐳', 'i-blue'];
+    if (lower.startsWith('.env')) return FILE_ICON.env;
+    if (/\.(spec|test)\.[a-z]+$/.test(lower)) return ['✓', 'i-green'];
+    const ext = lower.includes('.') ? lower.split('.').pop() : '';
+    return FILE_ICON[ext] || ['•', 'i-gray'];
+  }
+
+  // ================================================================== timeline (see timing.js)
+  const scenes = [];
+  (IR.chapters || []).forEach((ch, ci) => (ch.scenes || []).forEach((sc, si) => scenes.push({ ...sc, ci, si, chapter: ch })));
+  let total = 0;
+  for (const sc of scenes) {
+    const lay = TM.scene(sc);
+    sc.timed = lay.timed;
+    sc.cues = lay.cues;
+    sc.duration = lay.duration;
+    sc.t0 = total;
+    total += sc.duration;
+  }
+  let sid = 0;
+  for (const sc of scenes) for (const t of sc.timed) t.st._id = ++sid;
+
+  // ================================================================== state
+  const DIFF_DEFAULT = { mode: 'unified', algorithm: 'patience', granularity: 'word', context: 3, whitespace: 'collapse' };
+  const newPane = () => ({ tabs: [], file: null, view: 'after', diff: { ...DIFF_DEFAULT }, scroll: null, mem: {}, hl: [], focus: null, notes: [], flash: null, tokline: null });
+  const initState = () => ({ layout: 'single', active: 0, panes: [newPane(), newPane()], pointer: null, keys: null, toast: null, refs: null, graph: null, map: null, say: '', typing: [], exFocus: null, reveal: null });
+  function resetTransient(s) {
+    for (const p of s.panes) { p.hl = []; p.focus = null; p.notes = []; p.flash = null; p.tokline = null; }
+    s.pointer = null; s.keys = null; s.toast = null; s.refs = null; s.graph = null; s.say = ''; s.typing = []; s.exFocus = null; s.reveal = null;
+  }
+  function setScroll(pane, to, mode, p) {
+    const prev = pane.scroll;
+    if (prev) prev.prev = prev.mode === 'ensure' && prev.prev ? { ...prev.prev, prev: null } : null;
+    pane.scroll = { to, mode: mode || 'center', p: p == null ? 1 : p, prev: prev && prev.to ? prev : null };
+    pane.mem[pane.file] = to;
+  }
+  const defaultView = (f) => (!f || f.status === 'context' || f.status === 'added' ? 'after' : f.status === 'deleted' ? 'before' : 'diff');
+  function showFile(s, pi, file, view) {
+    const pane = s.panes[pi];
+    if (pi === 1) s.layout = 'columns';
+    s.active = pi;
+    const f = IR.files[file];
+    if (f) {
+      if (!view) view = pane.file === file ? pane.view : defaultView(f);
+      if (view === 'after' && f.after == null) view = 'before';
+      if (view === 'before' && f.before == null) view = 'after';
+    } else view = 'after'; // a file without embedded content (explorer browsing)
+    if (!pane.tabs.includes(file)) pane.tabs.push(file);
+    if (pane.file !== file) {
+      pane.file = file;
+      pane.view = view;
+      pane.scroll = { to: pane.mem[file] || { side: view === 'before' ? 'before' : 'after', line: 1 }, mode: pane.mem[file] ? 'center' : 'top', p: 1, prev: null };
+    } else pane.view = view;
+    return pane;
+  }
+
+  function apply(s, st, p, dur) {
+    const pi = st._pane != null ? st._pane : st.pane != null ? (st.pane ? 1 : 0) : s.active;
+    const pane = s.panes[pi];
+    switch (st.do) {
+      case 'open': {
+        // Procedure (motion rules M3/M4): find the file → click → it opens → its changes sweep in.
+        const kind = st._openKind || 'tree';
+        const navMs = { tree: 1150, tab: 650, same: 0 }[kind];
+        const ms = p >= 1 ? Infinity : p * (dur || 0);
+        if (navMs && ms < navMs) {
+          const navP = ms / navMs;
+          const to = kind === 'tree' ? { kind: 'ex', path: st.file } : { kind: 'tab', pane: pi, file: st.file };
+          if (kind === 'tree') s.exFocus = st.file;
+          s.pointer = { from: s.pointer && s.pointer.to ? s.pointer.to : null, to, p: ease(clamp((navP - 0.15) / 0.55, 0, 1)), click: navP > 0.78 };
+          break; // nothing opens before the click
+        }
+        if (navMs && ms < navMs + 280 && s.pointer) s.pointer = { ...s.pointer, p: 1, click: false, fade: true };
+        else if (navMs && s.pointer && s.pointer.to && (s.pointer.to.kind === 'ex' || s.pointer.to.kind === 'tab')) s.pointer = null;
+        s.exFocus = null;
+        showFile(s, pi, st.file, st.view);
+        if (st.diff) Object.assign(pane.diff, st.diff);
+        const after = Number.isFinite(ms) ? clamp((ms - navMs) / Math.max(1, (dur || 1) - navMs), 0, 1) : 1;
+        if (st._r) { if (pane.scroll && pane.scroll.to !== st._r) setScroll(pane, st._r, 'center', ease(clamp(after / 0.4, 0, 1))); else pane.scroll.p = 1; }
+        if (st._reveal && after < 1) s.reveal = { file: st.file, p: clamp((after - 0.2) / 0.8, 0, 1) };
+        break;
+      }
+      case 'close': {
+        const i = pane.tabs.indexOf(st.file);
+        if (i >= 0) pane.tabs.splice(i, 1);
+        if (pane.file === st.file) { pane.file = null; const last = pane.tabs[pane.tabs.length - 1]; if (last) showFile(s, pi, last); }
+        if (pi === 1 && !pane.tabs.length) { s.layout = 'single'; s.active = 0; }
+        break;
+      }
+      case 'layout': s.layout = st.mode; if (st.mode === 'single') s.active = 0; break;
+      case 'diffView': {
+        if (st.mode) pane.diff.mode = st.mode;
+        if (st.algorithm) pane.diff.algorithm = st.algorithm;
+        if (st.granularity) pane.diff.granularity = st.granularity;
+        if (st.context !== undefined) pane.diff.context = st.context;
+        if (st.whitespace) pane.diff.whitespace = st.whitespace;
+        const f = pane.file && IR.files[pane.file];
+        if (f && f.before != null && f.after != null) pane.view = 'diff';
+        break;
+      }
+      case 'reveal': case 'highlight': case 'focus': case 'note': {
+        showFile(s, pi, st._file, st._view);
+        const r = st._r; if (!r) break;
+        // highlights sweep in line by line over the first 60% of the step
+        if (st.do === 'highlight') pane.hl.push({ ...r, tone: st.tone || 'focus', label: st.label || null, p: clamp(p / 0.6, 0, 1), key: st._id });
+        if (st.do === 'focus') pane.focus = { ...r, p: clamp(p / 0.5, 0, 1) };
+        if (st.do === 'note') pane.notes.push({ side: r.side, line: r.to, text: st.text, tone: st.tone || 'info', key: st._id });
+        const mode = st.do === 'reveal' ? st.align || 'center' : st.do === 'focus' ? 'center' : 'ensure';
+        if (st.reveal !== false) setScroll(pane, r, mode, ease(clamp(p / 0.7, 0, 1)));
+        break;
+      }
+      case 'type': {
+        showFile(s, pi, st._file, st._view);
+        const r = st._r; if (!r) break;
+        let e = s.typing.find((x) => x.key === st._id);
+        if (!e) { e = { key: st._id, file: st._file, side: r.side, from: r.from, to: r.to, p: 0 }; s.typing.push(e); }
+        e.p = p;
+        setScroll(pane, r, 'ensure', ease(clamp(p / 0.12, 0, 1)));
+        break;
+      }
+      case 'unfocus': for (const pn of st.pane != null ? [pane] : s.panes) pn.focus = null; break;
+      case 'clear': for (const pn of st.pane != null ? [pane] : s.panes) { pn.hl = []; pn.notes = []; pn.focus = null; } break;
+      case 'goto': {
+        const fr = st._from, to = st._to;
+        if (!fr || !to) break;
+        const P1 = 0.32, P2 = 0.56;
+        if (p < P2) {
+          showFile(s, pi, fr.file);
+          setScroll(pane, { side: fr.side, from: fr.line, to: fr.line }, 'ensure', ease(clamp(p / 0.12, 0, 1)));
+          const anchor = { pane: pi, side: fr.side, line: fr.line, token: (st.from || {}).token };
+          s.pointer = { from: s.pointer && s.pointer.to ? s.pointer.to : null, to: anchor, p: ease(clamp((p - 0.1) / (P1 - 0.1), 0, 1)), click: p > 0.48 };
+          if (p >= P1) { s.keys = ['⌘']; pane.tokline = anchor; }
+        } else {
+          pane.tokline = null;
+          const tp = s.panes[to.pane];
+          const same = tp.file === to.file;
+          showFile(s, to.pane, to.file, to.view);
+          const r = { side: to.side, from: to.from, to: to.to };
+          if (same) setScroll(tp, r, 'center', ease((p - P2) / 0.25)); else setScroll(tp, r, 'center', 1);
+          tp.hl.push({ ...r, tone: 'focus', label: null, p: clamp((p - P2) / 0.3, 0, 1), key: st._id });
+          tp.flash = { side: to.side, from: to.from, to: to.from, key: `${st._id}` };
+          s.toast = `${T_('정의로 이동', 'Go to Definition')}  ${(st.from || {}).token || ''} → ${to.file}:${to.line}`;
+          s.pointer = p < 0.7 && s.pointer ? { ...s.pointer, p: 1, click: false, fade: true } : null;
+          s.keys = null;
+        }
+        break;
+      }
+      case 'refs': {
+        const items = st._items || [];
+        const n = items.length;
+        const head = 700 / ((st.ms || 700) + 1300 * n);
+        const k = p < head ? -1 : Math.min(n - 1, Math.floor(((p - head) / (1 - head)) * n));
+        s.refs = { symbol: st.symbol, title: st.title || null, items, active: k };
+        if (k >= 0) {
+          const it = items[k];
+          const pn = showFile(s, pi, it.file, it.view);
+          const local = (((p - head) / (1 - head)) * n) - k;
+          const r = { side: it.side, from: it.line, to: it.line };
+          setScroll(pn, r, 'center', ease(clamp(local / 0.35, 0, 1)));
+          pn.hl = pn.hl.filter((h) => !h.ref);
+          pn.hl.push({ ...r, tone: 'info', ref: true, label: it.label, p: clamp(local / 0.3, 0, 1), key: `${st._id}:${k}` });
+          s.pointer = k === n - 1 && local > 0.7 ? null : { from: k > 0 ? { kind: 'ref', index: k - 1 } : null, to: { kind: 'ref', index: k }, p: ease(clamp(local / 0.22, 0, 1)), click: local > 0.2 && local < 0.36 };
+        }
+        break;
+      }
+      case 'graph': {
+        if (st.hide) { s.graph = null; if (st.unpin) s.map = null; break; }
+        if (st.nodes) {
+          s.graph = { nodes: st.nodes, edges: st.edges || [], title: st.title || T_('관계도', 'Relationships'), size: st.size || 'full', highlight: st.highlight || [], key: st._id };
+          if (st.pin !== false) s.map = { nodes: st.nodes, edges: st.edges || [], title: st.title || T_('관계도', 'Relationships'), key: st._id };
+        } else if (s.graph) s.graph = { ...s.graph, highlight: st.highlight || [] };
+        break;
+      }
+      case 'say': s.say = st.text; break;
+      default: break;
+    }
+  }
+
+  const snapshots = [];
+  function sceneStartState(k) {
+    if (snapshots[k]) return snapshots[k];
+    let s;
+    if (k === 0) s = initState();
+    else {
+      s = clone(sceneStartState(k - 1));
+      for (const t of scenes[k - 1].timed) apply(s, t.st, 1, t.dur);
+    }
+    resetTransient(s);
+    for (const p of s.panes) if (p.scroll) { p.scroll.p = 1; p.scroll.prev = null; }
+    snapshots[k] = s;
+    return s;
+  }
+  function sceneAt(T) {
+    let k = 0;
+    while (k < scenes.length - 1 && T >= scenes[k].t0 + scenes[k].duration) k++;
+    return k;
+  }
+  function stateAt(T) {
+    const k = sceneAt(T);
+    const sc = scenes[k];
+    const s = clone(sceneStartState(k));
+    const t = T - sc.t0;
+    // An edit that this scene will replay later is "not written yet" until then:
+    // its added lines are hidden and its removed lines look unchanged.
+    for (const x of sc.timed) {
+      if (x.st.do === 'type' && x.st._r && t < x.start) s.typing.push({ key: x.st._id, file: x.st._file, side: x.st._r.side, from: x.st._r.from, to: x.st._r.to, p: 0 });
+    }
+    for (const x of sc.timed) {
+      if (t < x.start) continue;
+      apply(s, x.st, x.dur ? clamp((t - x.start) / x.dur, 0, 1) : 1, x.dur);
+    }
+    s.scene = k;
+    s.sceneP = clamp(t / sc.duration, 0, 1);
+    s.sceneT = t;
+    return s;
+  }
+
+  // ================================================================== code models
+  // A model holds every row of a file view (no folding). Folding is applied per
+  // pane at render time so the walkthrough can unfold exactly what it points at.
+  const modelCache = new Map();
+  const hlCache = new Map();
+  function hlLines(file, side) {
+    const key = file + '\0' + side;
+    if (!hlCache.has(key)) {
+      const f = IR.files[file];
+      const lines = f[side] == null ? [] : D.splitLines(f[side]);
+      hlCache.set(key, { lines, html: HL.file(lines, f.language) });
+    }
+    return hlCache.get(key);
+  }
+  function segHtml(segs, lang, cls) {
+    let st = {}, out = '';
+    for (const sg of segs) { const r = HL.line(sg.text, lang, st); st = r.st; out += sg.changed && sg.text.trim() ? `<span class="${cls}">${r.html}</span>` : r.html; }
+    return out;
+  }
+  function model(file, view, diff) {
+    const key = [file, view, diff.mode, diff.algorithm, diff.granularity, diff.whitespace].join('|');
+    if (modelCache.has(key)) return modelCache.get(key);
+    const f = IR.files[file];
+    const lang = f.language;
+    const m = { key, file, view, split: false, plain: view !== 'diff', rows: [], idx: { before: new Map(), after: new Map() }, adds: 0, dels: 0 };
+    if (view !== 'diff') {
+      const side = view === 'before' ? 'before' : 'after';
+      const { html, lines } = hlLines(file, side);
+      const marks = {};
+      if (side === 'after' && f.before != null && f.after != null && f.status !== 'context') {
+        const { rows } = D.compute(f.before, f.after, { algorithm: diff.algorithm, granularity: 'line' });
+        let lastNew = 0;
+        for (const r of rows) {
+          if (r.type === 'add') { marks[r.new] = 'ch-add'; m.adds++; }
+          else if (r.type === 'mod' && !r.ws) { marks[r.new] = 'ch-mod'; m.adds++; m.dels++; }
+          else if (r.type === 'del') { m.dels++; const at = Math.max(1, lastNew); if (!/ch-delpt/.test(marks[at] || '')) marks[at] = ((marks[at] || '') + ' ch-delpt').trim(); }
+          if (r.new) lastNew = r.new;
+        }
+      } else if (side === 'after' && f.status === 'added') { html.forEach((_, i) => (marks[i + 1] = 'ch-add')); m.adds = html.length; }
+      else if (side === 'before' && f.status === 'deleted') { m.dels = html.length; }
+      html.forEach((h, i) => { m.rows.push({ cls: marks[i + 1] || '', o: side === 'before' ? i + 1 : null, n: side === 'after' ? i + 1 : null, line: i + 1, html: h, raw: lines[i], eq: true }); m.idx[side].set(i + 1, i); });
+    } else {
+      const old = hlLines(file, 'before').html, neu = hlLines(file, 'after').html;
+      const { rows } = D.compute(f.before, f.after, { algorithm: diff.algorithm, granularity: diff.granularity });
+      const ws = diff.whitespace !== 'show';
+      const push = (row) => {
+        const i = m.rows.length;
+        m.rows.push(row);
+        const o = row.split ? row.l && row.l.n : row.o, n = row.split ? row.r && row.r.n : row.n;
+        if (o) m.idx.before.set(o, i);
+        if (n) m.idx.after.set(n, i);
+      };
+      if (diff.mode === 'split') {
+        m.split = true;
+        const L = [], R = [];
+        const flush = () => { for (let j = 0; j < Math.max(L.length, R.length); j++) push({ split: true, l: L[j] || null, r: R[j] || null, eq: false }); L.length = 0; R.length = 0; };
+        for (const x of rows) {
+          if (x.type === 'eq') { flush(); push({ split: true, l: { n: x.old, html: old[x.old - 1], raw: x.oldText }, r: { n: x.new, html: neu[x.new - 1], raw: x.newText }, eq: true }); continue; }
+          if (x.type === 'del') { m.dels++; L.push({ n: x.old, html: old[x.old - 1], k: 'del', raw: x.oldText }); continue; }
+          if (x.type === 'add') { m.adds++; R.push({ n: x.new, html: neu[x.new - 1], k: 'add', raw: x.newText }); continue; }
+          flush();
+          if (x.ws && ws) { push({ split: true, l: { n: x.old, html: old[x.old - 1], k: 'ws', raw: x.oldText }, r: { n: x.new, html: neu[x.new - 1], k: 'ws', raw: x.newText }, eq: true }); continue; }
+          m.adds++; m.dels++;
+          push({ split: true, l: { n: x.old, html: x.segOld ? segHtml(x.segOld, lang, 'wd-del') : old[x.old - 1], k: 'del', raw: x.oldText }, r: { n: x.new, html: x.segNew ? segHtml(x.segNew, lang, 'wd-add') : neu[x.new - 1], k: 'add', raw: x.newText }, eq: false });
+        }
+        flush();
+      } else {
+        for (const r of rows) {
+          if (r.type === 'eq') push({ cls: '', o: r.old, n: r.new, mark: '', html: neu[r.new - 1], raw: r.newText, eq: true });
+          else if (r.type === 'del') { m.dels++; push({ cls: 'del', o: r.old, n: null, mark: '−', html: old[r.old - 1], raw: r.oldText }); }
+          else if (r.type === 'add') { m.adds++; push({ cls: 'add', o: null, n: r.new, mark: '+', html: neu[r.new - 1], raw: r.newText }); }
+          else if (r.ws && ws) push({ cls: 'ws', o: r.old, n: r.new, mark: '', html: neu[r.new - 1], raw: r.newText, eq: true });
+          else {
+            m.adds++; m.dels++;
+            push({ cls: 'del', o: r.old, n: null, mark: '−', html: r.segOld ? segHtml(r.segOld, lang, 'wd-del') : old[r.old - 1], raw: r.oldText });
+            push({ cls: 'add', o: null, n: r.new, mark: '+', html: r.segNew ? segHtml(r.segNew, lang, 'wd-add') : neu[r.new - 1], raw: r.newText });
+          }
+        }
+      }
+    }
+    modelCache.set(key, m);
+    return m;
+  }
+  /** Foldable runs of unchanged rows, GitHub-style: keep `ctx` rows around every change. */
+  const foldCache = new Map();
+  function foldsOf(m, ctx) {
+    if (m.plain || typeof ctx !== 'number') return [];
+    const key = m.key + '#' + ctx;
+    if (foldCache.has(key)) return foldCache.get(key);
+    const n = m.rows.length;
+    const keep = new Array(n).fill(false);
+    let any = false;
+    m.rows.forEach((r, i) => { if (!r.eq) { any = true; for (let j = Math.max(0, i - ctx); j <= Math.min(n - 1, i + ctx); j++) keep[j] = true; } });
+    const folds = [];
+    if (any) {
+      for (let i = 0; i < n;) {
+        if (keep[i]) { i++; continue; }
+        let j = i; while (j < n && !keep[j]) j++;
+        if (j - i >= 4) folds.push({ id: folds.length, a: i, b: j - 1 });
+        i = j;
+      }
+      // GitHub-style hunk header for the hunk that follows each fold
+      folds.forEach((f, k) => {
+        const end = k + 1 < folds.length ? folds[k + 1].a - 1 : n - 1;
+        if (f.b >= n - 1) { f.header = ''; return; }
+        let os = null, ol = 0, ns = null, nl = 0;
+        for (let i = f.b + 1; i <= end; i++) {
+          const r = m.rows[i];
+          const o = r.split ? r.l && r.l.n : r.o, nn = r.split ? r.r && r.r.n : r.n;
+          if (o) { if (os == null) os = o; ol++; }
+          if (nn) { if (ns == null) ns = nn; nl++; }
+        }
+        f.header = `@@ -${os || 0},${ol} +${ns || 0},${nl} @@`;
+      });
+      // a leading change needs a header too when the file starts with a change block
+    }
+    foldCache.set(key, folds);
+    return folds;
+  }
+  /** The rows a pane actually shows: model rows with collapsed folds. */
+  function viewOf(m, folds, expanded) {
+    const rows = [], idx = { before: new Map(), after: new Map() };
+    const mapRow = (i, at) => {
+      const r = m.rows[i];
+      const o = r.split ? r.l && r.l.n : r.o, n = r.split ? r.r && r.r.n : r.n;
+      if (o) idx.before.set(o, at);
+      if (n) idx.after.set(n, at);
+    };
+    let f = 0;
+    for (let i = 0; i < m.rows.length;) {
+      const fold = folds[f];
+      if (fold && i === fold.a) {
+        f++;
+        if (!expanded.has(fold.id)) {
+          const at = rows.length;
+          rows.push({ fold });
+          for (let j = fold.a; j <= fold.b; j++) mapRow(j, at);
+          i = fold.b + 1;
+          continue;
+        }
+        for (let j = fold.a; j <= fold.b; j++) { mapRow(j, rows.length); rows.push({ i: j, unfolded: fold.id }); }
+        i = fold.b + 1;
+        continue;
+      }
+      mapRow(i, rows.length);
+      rows.push({ i });
+      i++;
+    }
+    return { rows, idx };
+  }
+  function rowHtml(m, vr, vi) {
+    if (vr.fold) {
+      const f = vr.fold;
+      return `<div class="row fold" data-v="${vi}" data-fold="${f.id}" title="${T_('클릭하여 펼치기', 'Click to expand')}"><span class="fold-gut">${ICON.unfold}</span><span class="txt">${f.header ? `<span class="hunk">${esc(f.header)}</span>` : ''}<span class="fold-n">${f.b - f.a + 1} ${T_('줄 숨김', 'hidden lines')}</span></span></div>`;
+    }
+    const r = m.rows[vr.i];
+    const extra = vr.unfolded != null ? ' unfold' : '';
+    if (r.split) {
+      const half = (h) => (h ? `<div class="half ${h.k || ''}"><span class="gn">${h.n}</span><span class="mk">${h.k === 'add' ? '+' : h.k === 'del' ? '−' : ''}</span><span class="txt">${h.html || ''}</span></div>` : '<div class="half empty"></div>');
+      return `<div class="row split${extra}" data-v="${vi}">${half(r.l)}${half(r.r)}</div>`;
+    }
+    if (m.plain) return `<div class="row plain ${r.cls}${extra}" data-v="${vi}"><span class="gn">${r.line}</span><span class="cg"></span><span class="txt">${r.html || ''}</span></div>`;
+    return `<div class="row ${r.cls}${extra}" data-v="${vi}"><span class="gn o">${r.o || ''}</span><span class="gn n">${r.n || ''}</span><span class="mk">${r.mark || ''}</span><span class="txt">${r.html || ''}</span></div>`;
+  }
+
+  // ================================================================== DOM scaffold
+  const meta = IR.meta || {};
+  const src = IR.source || {};
+  app.innerHTML = `
+    <header class="wt-top">
+      <button class="icon-btn" data-act="explorer" title="${T_('탐색기', 'Explorer')} (B)">${ICON.explorer}</button>
+      <div class="title">${esc(meta.title || 'Code walkthrough')}</div>
+      ${src.base ? `<span class="range" title="${esc(src.base)} → ${esc(src.head)}">${esc(shortRef(src.base))} → ${esc(src.head === 'WORKTREE' ? T_('작업 트리', 'working tree') : shortRef(src.head))}</span>` : ''}
+      ${meta.intent ? `<span class="badge">${esc(meta.intent)}</span>` : ''}
+      <span class="spacer"></span>
+      <button class="icon-btn" data-act="map" title="${T_('구조 지도', 'Structure map')} (M)" hidden>${ICON.map}</button>
+      <button class="icon-btn" data-act="theme" title="${T_('테마', 'Theme')}">${ICON.theme}</button>
+      <button class="icon-btn" data-act="help" title="${T_('단축키', 'Shortcuts')} (?)">${ICON.help}</button>
+      <button class="icon-btn" data-act="guide" title="${T_('워크스루 패널', 'Walkthrough panel')} (G)">${ICON.guide}</button>
+    </header>
+    <div class="wt-main">
+      <aside class="wt-explorer" aria-label="${T_('탐색기', 'Explorer')}">
+        <div class="ex-head"><span>${T_('탐색기', 'Explorer')}</span><span class="ex-actions">
+          <button class="icon-btn sm" data-act="ex-filter" title="${T_('변경된 파일만 보기', 'Show changed files only')}">${ICON.filter}</button>
+          <button class="icon-btn sm" data-act="ex-collapse" title="${T_('모두 접기', 'Collapse all')}">${ICON.collapse}</button></span></div>
+        <div class="ex-root"><span class="tw open">${ICON.chevron}</span>${esc(((IR.tree && IR.tree.root) || T_('저장소', 'repository')).toUpperCase())}</div>
+        <div class="ex-body" role="tree"></div>
+      </aside>
+      <section class="wt-stage">
+        <div class="wt-panes"></div>
+        <div class="wt-refs" hidden></div>
+        <div class="wt-toast" hidden></div>
+
+        <div class="wt-start"><button data-act="play" aria-label="play">${ICON.play}</button><div class="t">${esc(meta.title || '')}</div><div class="s">${scenes.length} ${T_('장면', 'scenes')} · ${T_('약', '~')} ${fmt(total)} · ${T_('Space로 시작', 'Space to start')}</div></div>
+      </section>
+      <aside class="wt-guide" aria-label="${T_('워크스루', 'Walkthrough')}">
+        <div class="gd-head"><span>${T_('워크스루', 'Walkthrough')}</span><span class="gd-meta">${scenes.length} ${T_('장면', 'scenes')} · ${fmt(total)}</span></div>
+        <div class="gd-map" hidden></div>
+        <div class="gd-body"></div>
+        <div class="gd-foot"></div>
+      </aside>
+    </div>
+    <div class="wt-graph" hidden></div>
+    <div class="wt-pointer" hidden>${ICON.pointer}<span class="ripple"></span></div>
+    <div class="wt-keys" hidden></div>
+    <footer class="wt-ctrl">
+      <div class="ctrl-btns">
+        <button class="icon-btn" data-act="prev" title="${T_('이전 장면', 'Previous scene')} (←)">${ICON.prev}</button>
+        <button class="play" data-act="play" title="${T_('재생/일시정지', 'Play/Pause')} (Space)">${ICON.play}</button>
+        <button class="icon-btn" data-act="next" title="${T_('다음 장면', 'Next scene')} (→)">${ICON.next}</button>
+        <button class="icon-btn" data-act="restart" title="${T_('처음부터', 'Restart')}">${ICON.restart}</button>
+      </div>
+      <div class="scrub" role="slider" aria-label="${T_('타임라인', 'Timeline')}" tabindex="0"><div class="track"></div><div class="knob"></div><div class="tip"></div></div>
+      <div class="ctrl-right">
+        <span class="time"></span>
+        <select data-act="speed" aria-label="${T_('배속', 'Speed')}">${[0.5, 0.75, 1, 1.25, 1.5, 2, 3].map((v) => `<option value="${v}"${v === 1 ? ' selected' : ''}>${v}×</option>`).join('')}</select>
+        <label title="${T_('장면이 끝나면 자동으로 멈춥니다 (P)', 'Pause at the end of each scene (P)')}"><input type="checkbox" data-act="segpause" checked> ${T_('장면마다 멈춤', 'Pause per scene')}</label>
+      </div>
+      <div class="ctrl-hint"></div>
+    </footer>`;
+  const $ = (sel) => app.querySelector(sel);
+  const panesEl = $('.wt-panes');
+  const paneEls = [0, 1].map((i) => {
+    const p = el('div', 'pane');
+    p.innerHTML = '<div class="tabs"></div><div class="crumbs"></div><div class="editor"><div class="code"></div></div>';
+    panesEl.appendChild(p);
+    return { root: p, tabs: p.querySelector('.tabs'), crumbs: p.querySelector('.crumbs'), editor: p.querySelector('.editor'), code: p.querySelector('.code'), idx: i,
+      viewKey: '', view: null, model: null, rowEls: [], deco: [], noteSig: '', tabSig: '', tabList: [], crumbSig: '', scrollSig: '', labSig: '', tok: null, file: null, userExpanded: new Map(), typSig: '' };
+  });
+
+  // ================================================================== explorer (VS Code-like tree)
+  const ex = { root: null, expanded: new Set(), filter: false, revealed: null, prevVisible: new Set(), sig: '' };
+  const changedStatus = (p) => { const f = IR.files[p]; return f && f.status !== 'context' ? f.status : null; };
+  (function buildTree() {
+    const root = { name: '', path: '', dirs: new Map(), files: [], changed: 0, partial: false };
+    const ensureDir = (dpath) => {
+      if (!dpath) return root;
+      let node = root, acc = '';
+      for (const part of dpath.split('/')) {
+        acc = acc ? acc + '/' + part : part;
+        if (!node.dirs.has(part)) node.dirs.set(part, { name: part, path: acc, dirs: new Map(), files: [], changed: 0, partial: false });
+        node = node.dirs.get(part);
+      }
+      return node;
+    };
+    const seen = new Set();
+    const addFile = (p) => {
+      if (seen.has(p)) return; seen.add(p);
+      const i = p.lastIndexOf('/');
+      ensureDir(i < 0 ? '' : p.slice(0, i)).files.push({ name: p.slice(i + 1), path: p });
+    };
+    if (IR.tree) {
+      for (const [d, name] of IR.tree.files) { const dir = IR.tree.dirs[d]; addFile(dir ? dir + '/' + name : name); }
+      for (const d of IR.tree.partial || []) ensureDir(d).partial = true;
+    }
+    for (const p of Object.keys(IR.files)) addFile(p);
+    const sortTree = (n) => {
+      n.dirList = [...n.dirs.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      n.files.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      n.changed = n.files.filter((f) => changedStatus(f.path)).length;
+      for (const c of n.dirList) n.changed += sortTree(c);
+      return n.changed;
+    };
+    sortTree(root);
+    ex.root = root;
+    // start with every changed file visible
+    for (const p of Object.keys(IR.files)) if (changedStatus(p)) for (const a of ancestors(p)) ex.expanded.add(a);
+  })();
+  function ancestors(p) { const parts = p.split('/'); const out = []; for (let i = 1; i < parts.length; i++) out.push(parts.slice(0, i).join('/')); return out; }
+  /** Follow single-child directory chains (VS Code "compact folders"). */
+  function compact(dir) {
+    let node = dir; const names = [dir.name];
+    while (node.files.length === 0 && node.dirList.length === 1 && !node.partial) { node = node.dirList[0]; names.push(node.name); }
+    return { node, label: names.join('/') };
+  }
+  function renderExplorer(s) {
+    const activeFile = s.panes[s.active].file;
+    const target = s.exFocus || activeFile; // a file being picked in the explorer, else the active file
+    if (target && ex.revealed !== target) { for (const a of ancestors(target)) ex.expanded.add(a); }
+    const open = new Set(s.panes.flatMap((p) => p.tabs));
+    const sig = [started, activeFile, s.exFocus, [...open].join(','), [...ex.expanded].length, ex.filter, ex.version || 0].join('|');
+    const body = $('.ex-body');
+    if (sig === ex.sig) return;
+    ex.sig = sig;
+    const rows = [];
+    const visible = new Set();
+    const walk = (node, depth) => {
+      for (const d of node.dirList) {
+        if (ex.filter && !d.changed) continue;
+        const { node: leaf, label } = compact(d);
+        const isOpen = ex.expanded.has(leaf.path);
+        visible.add(leaf.path);
+        rows.push({ kind: 'dir', path: leaf.path, label, depth, open: isOpen, changed: leaf.changed, partial: leaf.partial });
+        if (isOpen) walk(leaf, depth + 1);
+      }
+      for (const f of node.files) {
+        const st = changedStatus(f.path);
+        if (ex.filter && !st) continue;
+        visible.add(f.path);
+        rows.push({ kind: 'file', path: f.path, label: f.name, depth, status: st, embedded: !!IR.files[f.path] });
+      }
+      if (node.partial && node !== ex.root) rows.push({ kind: 'more', path: node.path + '/…', label: T_('(일부 파일 생략)', '(some files omitted)'), depth });
+    };
+    walk(ex.root, 0);
+    const guides = (depth) => { let g = ''; for (let k = 0; k < depth; k++) g += `<span class="ig" style="left:${14 + k * 12}px"></span>`; return g; };
+    body.innerHTML = rows.map((r) => {
+      const isNew = ex.prevVisible.size && !ex.prevVisible.has(r.path) ? ' appear' : '';
+      const pad = `style="padding-left:${8 + r.depth * 12}px"`;
+      if (r.kind === 'more') return `<div class="ex-row more" ${pad}>${guides(r.depth)}<span class="tw"></span><span class="nm">${esc(r.label)}</span></div>`;
+      if (r.kind === 'dir') {
+        // folders on the target's path stay legible (where am I), the rest recede (focus+context, M10)
+        const onPath = target && (target === r.path || target.startsWith(r.path + '/'));
+        return `<div class="ex-row dir${r.changed ? ' has-changes' : ''}${onPath ? ' path' : ''}${isNew}" role="treeitem" aria-expanded="${r.open}" data-dir="${esc(r.path)}" ${pad} title="${esc(r.path)}">${guides(r.depth)}<span class="tw${r.open ? ' open' : ''}">${ICON.chevron}</span><span class="nm">${esc(r.label)}</span>${r.changed ? '<span class="dot"></span>' : ''}</div>`;
+      }
+      const [glyph, color] = fileIcon(r.label);
+      const cls = ['ex-row', 'file', r.status ? `st-${r.status}` : '', open.has(r.path) ? 'open' : '', r.path === activeFile && !s.exFocus ? 'active' : '', r.path === s.exFocus ? 'selecting' : '', r.path === target ? 'target' : '', r.embedded ? '' : 'stub', isNew].filter(Boolean).join(' ');
+      return `<div class="${cls}" role="treeitem" data-file="${esc(r.path)}" ${pad} title="${esc(r.path)}${r.embedded ? '' : ' — ' + T_('내용 미포함', 'content not embedded')}">${guides(r.depth)}<span class="tw"></span><span class="fi ${color}">${glyph}</span><span class="nm">${esc(r.label)}</span>${r.status ? `<span class="sb">${STATUS_LETTER[r.status] || ''}</span>` : ''}</div>`;
+    }).join('');
+    ex.prevVisible = visible;
+    body.classList.toggle('spot', !!target && started);
+    if (target && ex.revealed !== target) {
+      ex.revealed = target;
+      const row = Array.from(body.querySelectorAll('.ex-row')).find((r) => r.dataset.file === target);
+      if (row) {
+        // centre it (M5): a row parked at the panel edge is easy to miss
+        const b = body.getBoundingClientRect(), r = row.getBoundingClientRect();
+        if (r.top < b.top + 24 || r.bottom > b.bottom - 24) {
+          const y = body.scrollTop + (r.top - b.top) - body.clientHeight / 2 + r.height / 2;
+          body.scrollTo({ top: Math.max(0, y), behavior: playing ? 'smooth' : 'auto' });
+        }
+      }
+    }
+  }
+
+  // ================================================================== walkthrough guide (right panel)
+  /** Narration rendered as items (sentences / bullets) that appear in sync with the steps (M8). */
+  function narrationHtml(S) {
+    const items = (S.cues && S.cues.items) || [];
+    if (!items.length) return md(S.narration);
+    let html = '', para = -1, inList = false;
+    items.forEach((it, i) => {
+      if (it.para !== para) {
+        if (para >= 0) html += inList ? '</ul>' : '</p>';
+        para = it.para; inList = it.kind === 'li';
+        html += inList ? '<ul>' : '<p>';
+      }
+      const body = `<span class="sn" data-k="${i}">${mdInline(it.text)}</span>`;
+      html += inList ? `<li class="sn-li" data-k="${i}">${body}</li>` : body + ' ';
+    });
+    html += inList ? '</ul>' : '</p>';
+    return html;
+  }
+  const guideBody = $('.gd-body');
+  {
+    let html = `<section class="gd-sec gd-overview open"><button class="gd-sec-h" data-sec="overview">${T_('개요', 'Overview')}</button><div class="gd-detail"><div class="gd-inner">
+      <div class="gd-text">${md(meta.summary || '')}</div>
+      ${meta.strategy ? `<div class="gd-strategy"><b>${T_('진행 방식', 'How this is ordered')}${meta.strategy.order ? ` · ${esc(meta.strategy.order)}` : ''}</b>${md(meta.strategy.rationale || '')}</div>` : ''}
+    </div></div></section><ol class="gd-chapters">`;
+    let k = 0;
+    (IR.chapters || []).forEach((ch, ci) => {
+      html += `<li class="gd-ch" data-ch="${ci}"><div class="gd-ch-h"><span class="no">${ci + 1}</span><span class="t">${esc(ch.title || '')}</span></div><ol class="gd-scenes">`;
+      for (const sc of ch.scenes || []) {
+        const S = scenes[k];
+        html += `<li class="gd-sc" data-scene="${k}"><button class="gd-sc-h" data-scene="${k}"><span class="bullet">${ICON.check}</span><span class="t">${esc(sc.title || sc.id)}</span><span class="dur">${fmt(S.duration)}</span></button>
+          <div class="gd-detail"><div class="gd-inner">${sc.goal ? `<div class="gd-goal"><b>${T_('목표', 'Goal')}</b>${esc(sc.goal)}</div>` : ''}<div class="gd-text">${narrationHtml(S)}</div><div class="gd-say"></div></div></div>
+          <div class="gd-prog"><i></i></div></li>`;
+        k++;
+      }
+      html += '</ol></li>';
+    });
+    html += '</ol>';
+    const take = meta.takeaways || [], rf = meta.reviewFocus || [];
+    html += `<section class="gd-sec gd-recap"><button class="gd-sec-h" data-sec="recap">${T_('정리', 'Recap')}</button><div class="gd-detail"><div class="gd-inner">
+      ${take.length ? `<h4>${T_('핵심 요약', 'Key takeaways')}</h4><ul>${take.map((t) => `<li>${mdInline(t)}</li>`).join('')}</ul>` : ''}
+      ${rf.length ? `<h4>${T_('리뷰 때 확인할 것', 'Review checklist')}</h4><ul class="rf">${rf.map((t) => `<li>${mdInline(t)}</li>`).join('')}</ul>` : ''}
+      <p class="muted">${T_('일시정지 중에는 탐색기에서 파일을 열거나 ⌘/Ctrl+클릭으로 정의로 이동할 수 있습니다.', 'While paused, open files from the explorer or ⌘/Ctrl+Click to go to a definition.')}</p>
+    </div></div></section>`;
+    guideBody.innerHTML = html;
+    const g = IR.glossary || [];
+    $('.gd-foot').innerHTML = g.length ? `<details><summary>${T_('용어', 'Glossary')} (${g.length})</summary><dl>${g.map((x) => `<dt>${esc(x.term)}</dt><dd>${esc(x.definition)}</dd>`).join('')}</dl></details>` : '';
+  }
+  const scItems = Array.from(guideBody.querySelectorAll('.gd-sc'));
+  const guide = { cur: -9, say: null, sec: { overview: true, recap: false } };
+  function renderGuide(s) {
+    const atEnd = started && T >= total - 1 && !playing;
+    const cur = !started ? -1 : atEnd ? scenes.length : s.scene;
+    if (cur !== guide.cur) {
+      guide.cur = cur;
+      scItems.forEach((li, i) => {
+        if (i !== cur) { delete li.dataset.ci; li.querySelectorAll('.sn-next, .sn-cur, .sn-past').forEach((e) => e.classList.remove('sn-next', 'sn-cur', 'sn-past')); }
+        li.classList.toggle('cur', i === cur);
+        li.classList.toggle('done', cur >= 0 && i < cur);
+        li.classList.toggle('open', i === cur);
+      });
+      guideBody.querySelectorAll('.gd-ch').forEach((ch) => {
+        const ci = Number(ch.dataset.ch);
+        ch.classList.toggle('cur', cur >= 0 && cur < scenes.length && scenes[cur].ci === ci);
+        ch.classList.toggle('done', cur >= 0 && scenes.filter((x) => x.ci === ci).every((x) => scenes.indexOf(x) < cur));
+      });
+      guideBody.querySelector('.gd-overview').classList.toggle('open', cur < 0 || guide.sec.overviewPinned === true);
+      guideBody.querySelector('.gd-recap').classList.toggle('open', atEnd || guide.sec.recapPinned === true);
+      guideBody.querySelector('.gd-recap').classList.toggle('cur', atEnd);
+      guide.say = null;
+      const target = cur < 0 ? guideBody.querySelector('.gd-overview') : cur >= scenes.length ? guideBody.querySelector('.gd-recap') : scItems[cur];
+      if (target) setTimeout(() => target.scrollIntoView({ block: cur >= scenes.length ? 'start' : 'nearest', behavior: 'smooth' }), 60);
+    }
+    if (cur >= 0 && cur < scenes.length) {
+      const li = scItems[cur];
+      li.querySelector('.gd-prog i').style.width = `${(s.sceneP * 100).toFixed(1)}%`;
+      const times = (scenes[cur].cues && scenes[cur].cues.times) || [];
+      let curItem = -1;
+      times.forEach((t0, k) => { if (s.sceneT >= t0) curItem = k; });
+      if (li.dataset.ci !== String(curItem)) {
+        li.dataset.ci = String(curItem);
+        li.querySelectorAll('.sn').forEach((e) => {
+          const k = Number(e.dataset.k);
+          const host = e.parentElement.classList.contains('sn-li') ? e.parentElement : e;
+          host.classList.toggle('sn-next', k > curItem);
+          host.classList.toggle('sn-cur', k === curItem);
+          host.classList.toggle('sn-past', k < curItem);
+        });
+      }
+      if (s.say !== guide.say) {
+        guide.say = s.say;
+        const say = li.querySelector('.gd-say');
+        say.innerHTML = s.say ? md(s.say) : '';
+        if (s.say) restart(say, 'in');
+      }
+    }
+  }
+
+  // ================================================================== scrubber
+  const track = $('.scrub .track');
+  const chSpans = [];
+  (IR.chapters || []).forEach((ch, ci) => {
+    const scs = scenes.filter((x) => x.ci === ci);
+    if (!scs.length) return;
+    const t0 = scs[0].t0, t1 = scs[scs.length - 1].t0 + scs[scs.length - 1].duration;
+    const seg = el('div', 'seg', '<div class="fill"></div>');
+    seg.style.flex = String(t1 - t0);
+    seg.title = ch.title || '';
+    track.appendChild(seg);
+    chSpans.push({ t0, t1, fill: seg.firstChild });
+  });
+  for (const sc of scenes.slice(1)) {
+    if (sc.si === 0) continue;
+    const tk = el('div', 'tick'); tk.style.left = `${(sc.t0 / total) * 100}%`; $('.scrub').appendChild(tk);
+  }
+
+  // ================================================================== player state
+  let T = 0, playing = false, speed = 1, segPause = true, atSceneEnd = false, started = false;
+  let userOps = []; // exploration while paused; cleared on play / seek
+  let lastRefsSig = '', lastGraphKey = null, lastGraphHl = '', lastFlash = ['', ''];
+
+  // ================================================================== render
+  function render() {
+    const s = stateAt(T);
+    for (const op of userOps) op(s);
+    panesEl.classList.toggle('columns', s.layout === 'columns');
+    s.panes.forEach((ps, i) => renderPane(paneEls[i], ps, i === s.active, s));
+    renderPointer(s);
+    renderRefs(s);
+    renderGraph(s);
+    const toast = $('.wt-toast');
+    if (!!s.toast !== !toast.hidden || (s.toast && toast.textContent !== s.toast)) { toast.hidden = !s.toast; if (s.toast) { toast.textContent = s.toast; restart(toast, 'in'); } }
+    renderExplorer(s);
+    renderGuide(s);
+    renderChrome(s);
+    $('.wt-start').classList.toggle('gone', started);
+  }
+
+  function rangeRows(P, r) {
+    // contiguous view-row span of a line range, so interleaved rows of the other side stay inside
+    const map = P.view.idx[r.side]; let lo = Infinity, hi = -1;
+    for (let ln = r.from; ln <= r.to; ln++) { const i = map.get(ln); if (i != null) { lo = Math.min(lo, i); hi = Math.max(hi, i); } }
+    return hi < 0 ? [] : Array.from({ length: hi - lo + 1 }, (_, k) => lo + k);
+  }
+  function modelRowsOf(m, r) {
+    const map = m.idx[r.side]; let lo = Infinity, hi = -1;
+    for (let ln = r.from; ln <= r.to; ln++) { const i = map.get(ln); if (i != null) { lo = Math.min(lo, i); hi = Math.max(hi, i); } }
+    return hi < 0 ? null : [lo, hi];
+  }
+
+  function renderPane(P, ps, active, s) {
+    P.root.classList.toggle('active', active && s.layout === 'columns');
+    // ---- tabs (new tabs slide in)
+    const tabSig = ps.tabs.join('|') + '#' + ps.file + '#' + ps.view;
+    if (tabSig !== P.tabSig) {
+      const prev = new Set(P.tabList);
+      P.tabSig = tabSig; P.tabList = ps.tabs.slice();
+      P.tabs.innerHTML = ps.tabs.map((f) => {
+        const st = IR.files[f] ? IR.files[f].status : null;
+        const name = f.split('/').pop();
+        const [glyph, color] = fileIcon(name);
+        const mode = f === ps.file ? (ps.view === 'diff' ? 'diff' : ps.view === 'before' ? T_('이전', 'before') : '') : '';
+        return `<button class="tab${f === ps.file ? ' on' : ''}${prev.size && !prev.has(f) ? ' tab-new' : ''}${st && st !== 'context' ? ` st-${st}` : ''}" data-file="${esc(f)}" data-pane="${P.idx}" title="${esc(f)}"><span class="fi ${color}">${glyph}</span><span class="nm">${esc(name)}</span>${mode ? `<span class="mode">${mode}</span>` : ''}${st && STATUS_LETTER[st] ? `<span class="sb">${STATUS_LETTER[st]}</span>` : ''}</button>`;
+      }).join('');
+      const on = P.tabs.querySelector('.tab.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    if (!ps.file) {
+      if (P.viewKey !== '∅') { P.viewKey = '∅'; P.model = null; P.view = null; P.file = null; P.code.innerHTML = `<div class="empty-pane">${T_('열린 파일 없음', 'No file open')}</div>`; P.crumbs.innerHTML = ''; P.crumbSig = ''; }
+      return;
+    }
+    const f = IR.files[ps.file];
+    if (!f) { // explorer-only file: no content embedded
+      const key = 'stub:' + ps.file;
+      if (P.viewKey !== key) {
+        P.viewKey = key; P.model = null; P.view = null; P.file = ps.file;
+        P.crumbs.innerHTML = `<span class="path">${ps.file.split('/').map(esc).join('<i>›</i>')}</span>`; P.crumbSig = '';
+        P.code.innerHTML = `<div class="empty-pane stub"><div>${T_('이 파일의 내용은 워크스루에 포함되지 않았습니다.', 'This file’s content is not embedded in the walkthrough.')}</div><div class="muted">${T_('변경과 관련된 파일만 내용이 들어 있습니다.', 'Only files related to the change are embedded.')}</div></div>`;
+        restart(P.code, 'enter');
+      }
+      return;
+    }
+    const m = model(ps.file, ps.view, ps.diff);
+    const ctx = ps.view === 'diff' ? ps.diff.context : null;
+    const folds = foldsOf(m, ctx);
+    // ---- unfold whatever the walkthrough currently points at
+    const expanded = new Set(P.userExpanded.get(m.key) || []);
+    if (folds.length) {
+      const refs = [];
+      for (const h of ps.hl) refs.push(h);
+      if (ps.focus) refs.push(ps.focus);
+      for (const n of ps.notes) refs.push({ side: n.side, from: n.line, to: n.line });
+      if (ps.flash) refs.push(ps.flash);
+      if (ps.tokline) refs.push({ side: ps.tokline.side, from: ps.tokline.line, to: ps.tokline.line });
+      if (ps.scroll && ps.scroll.to) refs.push({ side: ps.scroll.to.side, from: ps.scroll.to.from ?? ps.scroll.to.line, to: ps.scroll.to.to ?? ps.scroll.to.line });
+      for (const t of s.typing) if (t.file === ps.file) refs.push(t);
+      for (const r of refs) {
+        const span = modelRowsOf(m, r);
+        if (!span) continue;
+        for (const fd of folds) if (fd.a <= span[1] && span[0] <= fd.b) expanded.add(fd.id);
+      }
+    }
+    const viewKey = m.key + '#' + ctx + '#' + [...expanded].sort((a, b) => a - b).join(',');
+    let entering = false;
+    if (P.viewKey !== viewKey) {
+      const fileChanged = P.file !== ps.file || !P.model || P.model.key !== m.key;
+      const prevExpanded = P.expanded || new Set();
+      P.viewKey = viewKey; P.model = m; P.file = ps.file; P.expanded = expanded;
+      P.view = viewOf(m, folds, expanded);
+      P.code.innerHTML = P.view.rows.map((vr, vi) => rowHtml(m, vr, vi)).join('');
+      P.code.classList.toggle('split-mode', m.split);
+      P.code.classList.toggle('plain-mode', m.plain);
+      P.rowEls = Array.from(P.code.children);
+      // only freshly unfolded rows animate; rows of folds that were already open don't
+      if (!fileChanged) P.view.rows.forEach((vr, vi) => { if (vr.unfolded != null && prevExpanded.has(vr.unfolded)) P.rowEls[vi].classList.remove('unfold'); });
+      else P.rowEls.forEach((e) => e.classList.remove('unfold'));
+      P.deco = new Array(P.rowEls.length).fill('');
+      P.noteSig = ''; P.scrollSig = ''; P.labSig = ''; P.typSig = '';
+      lastFlash[P.idx] = '';
+      if (fileChanged) { entering = true; restart(P.code, 'enter'); }
+    }
+    // ---- breadcrumbs + GitHub-style diffstat + view switch
+    const crumbSig = viewKey + '|' + ps.diff.mode;
+    if (crumbSig !== P.crumbSig) {
+      P.crumbSig = crumbSig;
+      const canDiff = f.before != null && f.after != null && f.status !== 'context';
+      const vb = (v, label) => `<button data-view="${v}" data-pane="${P.idx}" class="${(v === ps.view || (ps.view === 'diff' && v === ps.diff.mode)) ? 'on' : ''}">${label}</button>`;
+      const totalCh = m.adds + m.dels;
+      const blocks = totalCh ? Array.from({ length: 5 }, (_, i) => (i < Math.round((m.adds / totalCh) * 5) ? 'a' : 'd')) : [];
+      const stat = totalCh ? `<span class="dstat"><span class="pa">+${m.adds}</span><span class="pd">−${m.dels}</span><span class="sq">${blocks.map((b) => `<i class="${b}"></i>`).join('')}</span></span>` : '';
+      P.crumbs.innerHTML = `<span class="path">${ps.file.split('/').map(esc).join('<i>›</i>')}</span>${f.oldPath ? `<span class="sym">← ${esc(f.oldPath)}</span>` : ''}${f.role ? `<span class="sym">${esc(f.role)}</span>` : ''}
+        <span class="vbtns">${stat}${canDiff ? vb('after', T_('이후', 'after')) + vb('before', T_('이전', 'before')) + vb('unified', 'unified') + vb('split', 'split') : ''}</span>`;
+    }
+    const V = P.view;
+    // ---- row decorations: highlight (line-by-line sweep), focus, typing replay
+    const deco = new Array(V.rows.length).fill('');
+    const add = (i, c) => { deco[i] = deco[i] ? deco[i] + ' ' + c : c; };
+    const labels = [];
+    for (const h of ps.hl) {
+      const rs = rangeRows(P, h);
+      if (!rs.length || h.p <= 0) continue;
+      const shown = Math.max(1, Math.ceil(rs.length * h.p));
+      rs.slice(0, shown).forEach((i, k) => { add(i, `hl hl-${h.tone}`); if (k === 0) add(i, 'hl-first'); if (k === shown - 1) add(i, 'hl-last'); });
+      if (h.label) labels.push([rs[0], h.label, h.tone]);
+    }
+    if (ps.focus) {
+      const keep = new Set(rangeRows(P, ps.focus));
+      for (const h of ps.hl) for (const i of rangeRows(P, h)) keep.add(i);
+      if (keep.size) for (let i = 0; i < deco.length; i++) if (!keep.has(i)) add(i, 'dim');
+    }
+    if (s.reveal && s.reveal.file === ps.file && s.reveal.p < 1) {
+      const changed = [];
+      V.rows.forEach((vr, vi) => { if (vr.fold) return; const r = m.rows[vr.i]; if (m.plain ? /ch-/.test(r.cls) : !r.eq) changed.push(vi); });
+      const shown = Math.floor(changed.length * s.reveal.p);
+      for (let k = shown; k < changed.length; k++) add(changed[k], 'chg-pend');
+    }
+    const typingCur = [];
+    for (const t of s.typing) {
+      if (t.file !== ps.file || t.p >= 1) continue;
+      const rs = rangeRows(P, t);
+      const items = [];
+      for (const vi of rs) {
+        const vr = V.rows[vi]; if (vr.fold) continue;
+        const r = m.rows[vr.i];
+        if (m.plain) items.push({ vi, add: r.raw || '', addTxt: 0, onlyAdd: true });
+        else if (r.split) items.push({ vi, del: r.l && r.l.k === 'del', add: r.r && r.r.k === 'add' ? r.r.raw || '' : null, addTxt: 1, onlyAdd: !(r.l && r.l.k === 'del') });
+        else if (r.cls === 'del') items.push({ vi, del: true });
+        else if (r.cls === 'add') items.push({ vi, add: r.raw || '', addTxt: 0, onlyAdd: true });
+      }
+      const dels = items.filter((x) => x.del);
+      const addsList = items.filter((x) => x.add != null);
+      const delP = dels.length ? clamp(t.p / 0.28, 0, 1) : 1;
+      const typeP = dels.length ? clamp((t.p - 0.28) / 0.72, 0, 1) : t.p;
+      dels.forEach((x, k) => { if (t.p <= 0 || delP * dels.length <= k) add(x.vi, 'typ-del-pend'); });
+      const len = (x) => x.add.replace(/^\s+/, '').length;
+      const totalChars = addsList.reduce((a, x) => a + len(x), 0) || 1;
+      let budget = typeP * totalChars;
+      for (const x of addsList) {
+        const L = len(x);
+        if (t.p <= 0 || budget <= 0) { add(x.vi, x.onlyAdd && !m.split ? 'typ-hidden' : 'typ-add-pend'); continue; }
+        if (budget >= L) { budget -= L; continue; }
+        add(x.vi, 'typ-cur');
+        typingCur.push({ vi: x.vi, offset: (x.add.length - L) + Math.floor(budget), half: m.split ? 1 : 0 });
+        budget = 0;
+      }
+    }
+    for (let i = 0; i < deco.length; i++) {
+      if (deco[i] !== P.deco[i]) {
+        const e = P.rowEls[i];
+        for (const c of (P.deco[i] || '').split(' ')) if (c) e.classList.remove(c);
+        for (const c of deco[i].split(' ')) if (c) e.classList.add(c);
+      }
+    }
+    P.deco = deco;
+    // the typing caret: clip the current line at the typed character (measured, so wide glyphs work)
+    const typSig = JSON.stringify(typingCur);
+    if (typSig !== P.typSig) {
+      P.code.querySelectorAll('.txt.clip').forEach((t) => { t.classList.remove('clip'); t.style.removeProperty('--clipx'); });
+      for (const c of typingCur) {
+        const row = P.rowEls[c.vi];
+        const txt = c.half ? row.querySelectorAll('.txt')[1] : row.querySelector('.txt');
+        if (!txt) continue;
+        const pos = locate(txt, c.offset);
+        let x = 0;
+        if (pos) { const rg = document.createRange(); rg.setStart(pos[0], pos[1]); rg.setEnd(pos[0], pos[1]); x = rg.getBoundingClientRect().left - txt.getBoundingClientRect().left; }
+        txt.style.setProperty('--clipx', `${Math.max(0, x)}px`);
+        txt.classList.add('clip');
+      }
+      P.typSig = typSig;
+    }
+    // ---- highlight labels
+    P.code.style.setProperty('--vw', `${P.editor.clientWidth + P.editor.scrollLeft}px`);
+    const labSig = JSON.stringify(labels) + viewKey;
+    if (labSig !== P.labSig) {
+      const prevLabels = new Set(Array.from(P.code.querySelectorAll('.hl-label')).map((x) => x.textContent));
+      P.labSig = labSig;
+      P.code.querySelectorAll('.hl-label').forEach((x) => x.remove());
+      for (const [i, text, tone] of labels) {
+        const lb = el('span', `hl-label tone-${tone}${prevLabels.has(text) ? '' : ' in'}`);
+        lb.textContent = text;
+        P.rowEls[i].appendChild(lb);
+      }
+    }
+    // ---- flash (restart CSS animation only when the flash identity changes)
+    const fk = ps.flash ? `${ps.flash.key}:${ps.file}` : '';
+    if (fk !== lastFlash[P.idx]) {
+      P.code.querySelectorAll('.row.flash').forEach((x) => x.classList.remove('flash'));
+      if (ps.flash) for (const i of rangeRows(P, ps.flash)) restart(P.rowEls[i], 'flash');
+      lastFlash[P.idx] = fk;
+    }
+    // ---- inline notes (expand in)
+    const noteSig = JSON.stringify(ps.notes.map((n) => [n.key, n.side, n.line])) + viewKey;
+    if (noteSig !== P.noteSig) {
+      const had = new Set(Array.from(P.code.querySelectorAll('.note')).map((x) => x.dataset.key));
+      P.noteSig = noteSig;
+      P.code.querySelectorAll('.note').forEach((x) => x.remove());
+      for (const n of ps.notes) {
+        const i = V.idx[n.side].get(n.line);
+        if (i == null) continue;
+        const tag = { info: T_('메모', 'note'), why: T_('왜', 'why'), risk: T_('주의', 'risk'), tip: T_('팁', 'tip') }[n.tone] || n.tone;
+        const ne = el('div', `note tone-${n.tone}${had.has(String(n.key)) ? '' : ' in'}`, `<div class="note-in"><span class="tag">${esc(tag)}</span>${mdInline(n.text)}</div>`);
+        ne.dataset.key = n.key;
+        P.rowEls[i].after(ne);
+      }
+    }
+    // ---- scroll
+    if (ps.scroll) {
+      const sig = JSON.stringify([ps.scroll.to, ps.scroll.mode, ps.scroll.p, viewKey, ps.notes.length, typSig]);
+      if (sig !== P.scrollSig || playing) {
+        P.scrollSig = sig;
+        const y = scrollPx(P, ps.scroll);
+        if (y != null && Math.abs(P.editor.scrollTop - y) > 0.5) {
+          if (entering || !playing) P.editor.scrollTop = y; else P.editor.scrollTop = y;
+        }
+      }
+    }
+    // ---- Cmd-hover underline
+    if (ps.tokline) {
+      const r = tokenRect(P, ps.tokline);
+      let u = P.tok;
+      if (!u) { u = P.tok = el('div', 'tokline'); P.code.appendChild(u); }
+      if (r) { u.style.left = `${r.left}px`; u.style.top = `${r.bottom - 1}px`; u.style.width = `${r.width}px`; }
+    } else if (P.tok) { P.tok.remove(); P.tok = null; }
+  }
+
+  function rowRange(P, a) {
+    const map = P.view.idx[a.side] || P.view.idx.after;
+    const i0 = map.get(a.line != null ? a.line : a.from);
+    const i1 = map.get(a.to != null ? a.to : a.line);
+    if (i0 == null) return null;
+    return [i0, i1 == null ? i0 : i1];
+  }
+  function nextNoteH(e) { const n = e.nextElementSibling; return n && n.classList.contains('note') ? n.offsetHeight + 8 : 0; }
+  function targetPx(P, scroll, fromPx) {
+    const rr = rowRange(P, scroll.to);
+    if (!rr) return fromPx;
+    const e0 = P.rowEls[rr[0]], e1 = P.rowEls[rr[1]];
+    if (!e0) return fromPx;
+    const top = e0.offsetTop, bottom = e1.offsetTop + e1.offsetHeight + nextNoteH(e1);
+    const H = P.editor.clientHeight, rh = e0.offsetHeight || 20;
+    const max = Math.max(0, P.code.scrollHeight - H);
+    let y;
+    if (scroll.mode === 'top') y = top - rh * 3;
+    else if (scroll.mode === 'ensure' && fromPx != null && top >= fromPx + rh * 2 && bottom <= fromPx + H - rh * 2) y = fromPx;
+    else y = bottom - top > H - rh * 4 ? top - rh * 2 : Math.min((top + bottom) / 2 - H * 0.45, top - rh * 2);
+    return clamp(y, 0, max);
+  }
+  function scrollPx(P, scroll) {
+    const prevPx = scroll.prev ? scrollPx(P, { ...scroll.prev, p: 1 }) : null;
+    const to = targetPx(P, scroll, prevPx);
+    if (scroll.p >= 1 || prevPx == null) return to;
+    return prevPx + (to - prevPx) * scroll.p;
+  }
+  function tokenRect(P, a) {
+    if (!P.view) return null;
+    const rr = rowRange(P, a); if (!rr) return null;
+    const row = P.rowEls[rr[0]];
+    let txt = row.querySelector('.txt');
+    if (row.classList.contains('split')) txt = row.querySelectorAll('.txt')[a.side === 'before' ? 0 : 1] || txt;
+    if (!txt) return null;
+    const full = txt.textContent;
+    const at = a.token ? full.indexOf(a.token) : -1;
+    const base = P.code.getBoundingClientRect();
+    let rect;
+    if (at >= 0) {
+      const range = document.createRange();
+      const s0 = locate(txt, at), e0 = locate(txt, at + a.token.length);
+      if (s0 && e0) { range.setStart(s0[0], s0[1]); range.setEnd(e0[0], e0[1]); rect = range.getBoundingClientRect(); }
+    }
+    if (!rect || !rect.width) rect = txt.getBoundingClientRect();
+    return { left: rect.left - base.left, top: rect.top - base.top, bottom: rect.bottom - base.top, width: Math.min(rect.width, 400), abs: rect };
+  }
+  function locate(root, offset) {
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let n, acc = 0, last = null;
+    while ((n = w.nextNode())) { last = n; if (acc + n.length >= offset) return [n, offset - acc]; acc += n.length; }
+    return last ? [last, last.length] : null;
+  }
+
+  function renderPointer(s) {
+    const ptr = $('.wt-pointer'), keys = $('.wt-keys');
+    if (!s.pointer) { ptr.hidden = true; keys.hidden = true; return; }
+    const within = (pt, box) => (box ? { x: clamp(pt.x, box.left + 4, box.right - 8), y: clamp(pt.y, box.top + 4, box.bottom - 10) } : pt);
+    const visible = (r, box) => r.bottom > box.top + 2 && r.top < box.bottom - 2 && r.right > box.left && r.left < box.right;
+    const pos = (a) => {
+      const stage = $('.wt-stage').getBoundingClientRect();
+      if (!a) return { x: stage.left + stage.width * 0.62, y: stage.top + stage.height * 0.88 };
+      if (a.kind === 'ex') {
+        const row = Array.from(document.querySelectorAll('.ex-row')).find((r) => r.dataset.file === a.path);
+        const box = $('.ex-body').getBoundingClientRect();
+        if (!row || !box.width) return null;
+        const r = row.getBoundingClientRect();
+        if (!visible(r, box)) return within({ x: r.left + 60, y: r.top + r.height * 0.6 }, box);
+        const nm = row.querySelector('.nm').getBoundingClientRect();
+        return { x: nm.left + Math.min(nm.width, 80) * 0.5, y: r.top + r.height * 0.62 };
+      }
+      if (a.kind === 'tab') {
+        const tab = paneEls[a.pane].tabs.querySelector(`.tab[data-file="${CSS.escape(a.file)}"]`);
+        if (!tab) return null;
+        const r = tab.getBoundingClientRect();
+        return within({ x: r.left + r.width * 0.5, y: r.top + r.height * 0.6 }, paneEls[a.pane].tabs.getBoundingClientRect());
+      }
+      if (a.kind === 'ref') {
+        const li = $('.wt-refs') && $('.wt-refs').querySelectorAll('li')[a.index];
+        if (!li) return null;
+        const r = li.getBoundingClientRect();
+        return within({ x: r.left + 90, y: r.top + r.height * 0.6 }, $('.wt-refs ol').getBoundingClientRect());
+      }
+      const P = paneEls[a.pane]; const ps = s.panes[a.pane];
+      if (!P.view || !ps.file) return null;
+      const r = tokenRect(P, a);
+      if (!r) return null;
+      return within({ x: r.abs.left + Math.min(r.abs.width, 60) / 2, y: r.abs.top + r.abs.height * 0.7 }, P.editor.getBoundingClientRect());
+    };
+    const to = pos(s.pointer.to); if (!to) { ptr.hidden = true; keys.hidden = true; return; }
+    const from = pos(s.pointer.from) || pos(null);
+    const p = s.pointer.p;
+    // natural motion: slow-in/slow-out along a gentle arc (M6)
+    const dx = to.x - from.x, dy = to.y - from.y, dist = Math.hypot(dx, dy) || 1;
+    const bow = Math.sin(Math.PI * p) * Math.min(80, dist * 0.12);
+    const x = from.x + dx * p + (-dy / dist) * bow, y = from.y + dy * p + (dx / dist) * bow;
+    ptr.hidden = false;
+    ptr.style.transform = `translate(${x - 4}px, ${y - 2}px)`;
+    ptr.style.opacity = s.pointer.fade ? '0' : '1';
+    ptr.classList.toggle('click', !!s.pointer.click);
+    keys.hidden = !s.keys;
+    if (s.keys) { keys.innerHTML = s.keys.map((k) => `<kbd>${k}</kbd>`).join('') + `<kbd>${T_('클릭', 'Click')}</kbd>`; keys.style.left = `${x}px`; keys.style.top = `${y}px`; }
+  }
+
+  function renderRefs(s) {
+    const box = $('.wt-refs');
+    const sig = s.refs ? JSON.stringify([s.refs.symbol, s.refs.items.length, s.refs.active]) : '';
+    if (sig === lastRefsSig) return;
+    const wasHidden = box.hidden;
+    lastRefsSig = sig;
+    if (!s.refs) { box.hidden = true; box.innerHTML = ''; return; }
+    box.hidden = false;
+    if (wasHidden) restart(box, 'in');
+    box.innerHTML = `<header><b>${esc(s.refs.symbol || '')}</b><span>${esc(s.refs.title || T_(`참조 ${s.refs.items.length}곳`, `${s.refs.items.length} references`))}</span></header>
+      <ol>${s.refs.items.map((it, i) => `<li class="${i === s.refs.active ? 'on' : ''}${i < s.refs.active ? ' seen' : ''}"><button data-file="${esc(it.file)}" data-line="${it.line}" data-side="${it.side}" data-view="${it.view}"><span class="loc">${esc(it.file.split('/').pop())}<i>:${it.line}</i></span><span class="snip">${esc(it.text)}${it.label ? `<span class="lbl">${esc(it.label)}</span>` : ''}</span></button></li>`).join('')}</ol>`;
+    const on = box.querySelector('li.on'); if (on) on.scrollIntoView({ block: 'nearest' });
+  }
+
+  const mapUi = { shown: true, expanded: false };
+  function renderGraph(s) {
+    const box = $('.wt-graph');
+    let content = null, mode = 'hidden';
+    if (s.graph) { content = s.graph; mode = s.graph.size === 'panel' ? 'panel' : 'full'; }
+    else if (s.map && mapUi.shown) { content = s.map; mode = mapUi.expanded ? 'full' : 'mini'; }
+    $('[data-act="map"]').classList.toggle('on', !!s.map && mapUi.shown);
+    $('[data-act="map"]').hidden = !s.map;
+    if (!content) {
+      if (lastGraphKey !== null) { box.classList.add('leaving'); setTimeout(() => { if (lastGraphKey === null) { box.hidden = true; box.innerHTML = ''; box.classList.remove('leaving'); } }, 260); lastGraphKey = null; lastGraphHl = ''; }
+      return;
+    }
+    const wasHidden = box.hidden || lastGraphKey === null;
+    if (content.key !== lastGraphKey) {
+      lastGraphKey = content.key; lastGraphHl = '';
+      box.hidden = false; box.classList.remove('leaving');
+      box.innerHTML = `<header><span class="t">${esc(content.title)}</span>
+        <button class="icon-btn sm" data-act="map-toggle" title="${T_('크게/작게', 'Expand / dock')}">${ICON.expand}</button>
+        <button class="icon-btn sm" data-act="graph-close" title="${T_('닫기', 'Close')}">${ICON.close}</button></header><div class="gbody">${graphSvg(content)}</div>`;
+      if (wasHidden) restart(box, 'in');
+    }
+    for (const m of ['full', 'mini', 'panel']) box.classList.toggle(m, m === mode);
+    placeGraph(box, mode);
+    box.dataset.src = s.graph ? 'graph' : 'map';
+    box.querySelector('[data-act="map-toggle"]').innerHTML = mode === 'mini' ? ICON.expand : ICON.shrink;
+    box.querySelector('[data-act="map-toggle"]').hidden = mode === 'panel' || (mode === 'full' && !!s.graph);
+    // highlights: explicit during the graph's own scene; afterwards the map follows the active file
+    const activeFile = s.panes[s.active].file;
+    const open = new Set(s.panes.flatMap((p) => p.tabs));
+    const hlList = s.graph ? s.graph.highlight || [] : content.nodes.filter((n) => n.file && n.file === activeFile).map((n) => n.id);
+    const hlSig = JSON.stringify([hlList, mode, s.graph ? '' : [...open].join(',')]);
+    if (hlSig !== lastGraphHl) {
+      lastGraphHl = hlSig;
+      const hl = new Set(hlList);
+      const dimOthers = !!s.graph && hl.size > 0;
+      box.querySelectorAll('.g-node').forEach((n) => {
+        const on = hl.has(n.dataset.id);
+        n.classList.toggle('on', on);
+        n.classList.toggle('off', dimOthers && !on);
+        n.classList.toggle('visited', !s.graph && !!n.dataset.file && open.has(n.dataset.file) && !on);
+      });
+      box.querySelectorAll('.g-edge').forEach((e) => { const on = hl.has(`${e.dataset.from}->${e.dataset.to}`) || (hl.has(e.dataset.from) && hl.has(e.dataset.to)); e.classList.toggle('on', on); e.classList.toggle('off', dimOthers && !on); });
+    }
+  }
+  /** The graph lives in a fixed layer and moves between three homes (transitions on its box):
+   *  full = over the whole editor stage, mini = the slot at the top of the walkthrough panel
+   *  (never covering code), panel = a large card at the editor's top-right. */
+  function placeGraph(box, mode) {
+    const slot = $('.gd-map');
+    const guideVisible = !app.classList.contains('hide-guide') && $('.wt-guide').getBoundingClientRect().width > 120;
+    slot.hidden = !(mode === 'mini' && guideVisible);
+    const st = $('.wt-stage').getBoundingClientRect();
+    let r;
+    if (mode === 'full') r = { left: st.left + 14, top: st.top + 14, width: st.width - 28, height: st.height - 28 };
+    else if (mode === 'mini' && guideVisible) { const g = slot.getBoundingClientRect(); r = { left: g.left, top: g.top, width: g.width, height: g.height }; }
+    else if (mode === 'mini') r = { left: st.right - 254, top: st.top + 66, width: 240, height: 150 };
+    else { const w = Math.min(620, st.width - 28); r = { left: st.right - 14 - w, top: st.top + 70, width: w, height: Math.min(340, st.height - 90) }; }
+    const sig = [r.left, r.top, r.width, r.height].map(Math.round).join(',');
+    if (box.dataset.rect === sig) return;
+    box.dataset.rect = sig;
+    Object.assign(box.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+  }
+  /** Approximate text width (px) for 10–12px UI fonts: wide glyphs (CJK) count double. */
+  function textW(str, size) {
+    let w = 0;
+    for (const ch of String(str || '')) w += /[ᄀ-ᇿ　-鿿가-힯＀-￯]/.test(ch) ? size * 1.0 : size * 0.6;
+    return w;
+  }
+  /** Layered graph layout tuned for legibility: crossing-reduced ordering, spread ports,
+   *  label-aware column gaps, and collision-avoiding edge labels on opaque pills. */
+  function graphSvg(g) {
+    const nodes = g.nodes.map((n) => ({ ...n }));
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const edges = g.edges.filter((e) => byId.has(e.from) && byId.has(e.to) && e.from !== e.to).map((e, k) => ({ ...e, k }));
+    // 1. layers: longest path from sources
+    nodes.forEach((n) => (n.layer = 0));
+    for (let it = 0; it < nodes.length; it++) {
+      let changed = false;
+      for (const e of edges) { const a = byId.get(e.from), b = byId.get(e.to); if (b.layer < a.layer + 1 && a.layer + 1 < nodes.length) { b.layer = a.layer + 1; changed = true; } }
+      if (!changed) break;
+    }
+    const layers = [];
+    for (const n of nodes) (layers[n.layer] = layers[n.layer] || []).push(n);
+    for (let L = 0; L < layers.length; L++) layers[L] = layers[L] || [];
+    // 2. order within layers: barycentre sweeps down and up to reduce crossings
+    const order = () => layers.forEach((ls) => ls.forEach((n, i) => (n.ord = i)));
+    order();
+    for (let sweep = 0; sweep < 4; sweep++) {
+      const down = sweep % 2 === 0;
+      for (let L = down ? 1 : layers.length - 2; down ? L < layers.length : L >= 0; L += down ? 1 : -1) {
+        for (const n of layers[L]) {
+          const nb = edges.filter((e) => (down ? e.to === n.id : e.from === n.id)).map((e) => byId.get(down ? e.from : e.to)).filter((m) => m.layer === L + (down ? -1 : 1));
+          n.bc = nb.length ? nb.reduce((a, m) => a + m.ord, 0) / nb.length : n.ord;
+        }
+        layers[L].sort((a, b) => a.bc - b.bc || a.ord - b.ord);
+        order();
+      }
+    }
+    // 3. geometry: node sizes, label-aware column gaps
+    const nh = 44;
+    for (const n of nodes) n.w = Math.max(96, Math.min(260, Math.max(textW(n.label || n.id, 12) + 28, textW(n.sub, 10) + 24)));
+    const colW = layers.map((ls) => Math.max(96, ...ls.map((n) => n.w)));
+    const gapAfter = layers.map((_, L) => {
+      const lab = edges.filter((e) => byId.get(e.from).layer === L && byId.get(e.to).layer > L).map((e) => (e.label ? textW(e.label, 10) + 16 : 0));
+      return Math.max(64, (lab.length ? Math.max(...lab) : 0) + 40);
+    });
+    const maxRows = Math.max(...layers.map((l) => l.length));
+    const crowd = edges.length / Math.max(1, nodes.length);
+    const gapY = crowd > 1.2 ? 30 : 22;
+    let x = 12;
+    layers.forEach((ls, L) => { ls.forEach((n, i) => { n.x = x + (colW[L] - n.w) / 2; n.y = 30 + i * (nh + gapY); }); x += colW[L] + (L < layers.length - 1 ? gapAfter[L] : 0); });
+    const width = x + 12, height = 30 + maxRows * (nh + gapY) - gapY + 30;
+    layers.forEach((ls) => { const h = ls.length * (nh + gapY) - gapY; for (const n of ls) n.y += (height - 60 - h) / 2; });
+    // 4. ports: spread each node's outgoing / incoming edges along its height, in target / source order
+    const fwd = edges.filter((e) => byId.get(e.to).layer > byId.get(e.from).layer);
+    for (const n of nodes) {
+      const outs = fwd.filter((e) => e.from === n.id).sort((a, b) => byId.get(a.to).y - byId.get(b.to).y);
+      outs.forEach((e, i) => (e.y1 = n.y + nh * (i + 1) / (outs.length + 1)));
+      const ins = fwd.filter((e) => e.to === n.id).sort((a, b) => byId.get(a.from).y - byId.get(b.from).y);
+      ins.forEach((e, i) => (e.y2 = n.y + nh * (i + 1) / (ins.length + 1)));
+    }
+    // 5. paths + labels with collision avoidance
+    const boxes = nodes.map((n) => ({ x: n.x - 4, y: n.y - 4, w: n.w + 8, h: nh + 8 }));
+    const hit = (b) => boxes.some((o) => b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h);
+    const bez = (P, t) => { const u = 1 - t; return [0, 1].map((k) => u * u * u * P[0][k] + 3 * u * u * t * P[1][k] + 3 * u * t * t * P[2][k] + t * t * t * P[3][k]); };
+    let out = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" style="--w:${width}px" xmlns="http://www.w3.org/2000/svg" role="img"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>`;
+    const labels = [];
+    edges.forEach((e) => {
+      const a = byId.get(e.from), b = byId.get(e.to);
+      let P;
+      if (b.layer > a.layer) {
+        const x1 = a.x + a.w, y1 = e.y1 ?? a.y + nh / 2, x2 = b.x - 2, y2 = e.y2 ?? b.y + nh / 2, c = Math.max(24, (x2 - x1) * 0.5);
+        P = [[x1, y1], [x1 + c, y1], [x2 - c, y2], [x2, y2]];
+      } else { // same layer or backwards: arc over the top
+        const x1 = a.x + a.w / 2, y1 = a.y, x2 = b.x + b.w / 2, y2 = b.y - 2, top = Math.min(y1, y2) - 28 - Math.abs(x2 - x1) * 0.08;
+        P = [[x1, y1], [x1, top], [x2, top], [x2, y2]];
+      }
+      const d = `M${P[0][0]} ${P[0][1]} C${P[1][0]} ${P[1][1]} ${P[2][0]} ${P[2][1]} ${P[3][0]} ${P[3][1]}`;
+      let lbl = '';
+      if (e.label) {
+        const lw = textW(e.label, 10) + 12, lh = 16;
+        let best = null;
+        for (const t of [0.5, 0.38, 0.62, 0.28, 0.72, 0.2, 0.8]) {
+          const [cx, cy] = bez(P, t);
+          for (const dy of [0, -11, 11]) {
+            const box = { x: cx - lw / 2, y: cy - lh / 2 + dy, w: lw, h: lh };
+            if (!hit(box)) { best = box; break; }
+          }
+          if (best) break;
+        }
+        if (!best) { const [cx, cy] = bez(P, 0.5); best = { x: cx - lw / 2, y: cy - lh / 2, w: lw, h: lh }; }
+        boxes.push({ x: best.x - 3, y: best.y - 2, w: best.w + 6, h: best.h + 4 });
+        lbl = `<g class="lbl"><rect x="${best.x.toFixed(1)}" y="${best.y.toFixed(1)}" width="${lw.toFixed(1)}" height="${lh}" rx="8"/><text x="${(best.x + lw / 2).toFixed(1)}" y="${(best.y + 11.5).toFixed(1)}" text-anchor="middle">${esc(e.label)}</text></g>`;
+      }
+      labels.push(`<g class="g-edge${e.style === 'dashed' ? ' dashed' : ''}" data-from="${esc(e.from)}" data-to="${esc(e.to)}" style="--i:${e.k + nodes.length}"><path d="${d}" marker-end="url(#ah)" pathLength="1"/>${lbl}</g>`);
+    });
+    // edges first (under nodes), labels drawn with their edge so highlight toggles them together
+    out += labels.join('');
+    nodes.forEach((n, k) => {
+      const status = n.status || (n.file && IR.files[n.file] ? IR.files[n.file].status : 'context');
+      out += `<g class="g-node ${status}" data-id="${esc(n.id)}"${n.file ? ` data-file="${esc(n.file)}"` : ''} style="--i:${k}"><rect x="${n.x}" y="${n.y}" width="${n.w}" height="${nh}" rx="7"/><text x="${n.x + n.w / 2}" y="${n.y + (n.sub ? 18 : 27)}" text-anchor="middle">${esc(n.label || n.id)}</text>${n.sub ? `<text class="sub" x="${n.x + n.w / 2}" y="${n.y + 34}" text-anchor="middle">${esc(n.sub)}</text>` : ''}</g>`;
+    });
+    return out + '</svg>';
+  }
+  function renderChrome(s) {
+    $('.ctrl-btns .play').innerHTML = playing ? ICON.pause : ICON.play;
+    app.classList.toggle('paused-at-end', atSceneEnd && !playing);
+    app.classList.toggle('playing', playing);
+    $('.time').textContent = `${fmt(T)} / ${fmt(total)}`;
+    for (const c of chSpans) c.fill.style.width = `${clamp((T - c.t0) / (c.t1 - c.t0), 0, 1) * 100}%`;
+    $('.scrub .knob').style.left = `${(T / total) * 100}%`;
+    $('.scrub').setAttribute('aria-valuenow', String(Math.round((T / total) * 100)));
+    const hint = $('.ctrl-hint');
+    const msg = atSceneEnd && !playing ? `<span class="cont">${T_('장면 끝 — Space로 다음 장면', 'End of scene — Space to continue')}</span>` : '';
+    const sig = msg + (userOps.length ? 'u' : '');
+    if (hint.dataset.sig !== sig) {
+      hint.dataset.sig = sig;
+      hint.innerHTML = `${msg}<span><kbd>Space</kbd> ${T_('재생/정지', 'play/pause')}</span><span><kbd>←</kbd><kbd>→</kbd> ${T_('장면 이동', 'scene')}</span><span><kbd>⇧</kbd>+<kbd>←</kbd><kbd>→</kbd> ±5s</span><span><kbd>[</kbd><kbd>]</kbd> ${T_('배속', 'speed')}</span><span>⌘/Ctrl+${T_('클릭: 정의로 이동', 'Click: definition')}</span>${userOps.length ? `<span class="cont">${T_('탐색 모드 — 재생하면 장면으로 돌아갑니다', 'Exploring — play to return to the walkthrough')}</span>` : ''}`;
+    }
+  }
+
+  // ================================================================== playback
+  let raf = 0, lastTs = 0;
+  function tick(ts) {
+    if (!playing) return;
+    const dt = lastTs ? Math.min(100, ts - lastTs) : 16;
+    lastTs = ts;
+    const k = sceneAt(T);
+    const end = scenes[k].t0 + scenes[k].duration;
+    const next = T + dt * speed;
+    if (segPause && T < end && next >= end && k < scenes.length - 1) { T = end - 0.5; playing = false; atSceneEnd = true; render(); return; }
+    if (next >= total) { T = total; playing = false; render(); return; }
+    T = next;
+    render();
+    raf = requestAnimationFrame(tick);
+  }
+  function play() {
+    if (T >= total) seek(0);
+    if (atSceneEnd) { T = Math.min(total, Math.ceil(T + 1)); atSceneEnd = false; }
+    started = true;
+    userOps = [];
+    playing = true; lastTs = 0;
+    cancelAnimationFrame(raf); raf = requestAnimationFrame(tick);
+    render();
+  }
+  function pause() { playing = false; cancelAnimationFrame(raf); render(); }
+  function seek(t, keepPlaying) {
+    T = clamp(t, 0, total); atSceneEnd = false; userOps = []; started = true;
+    if (!keepPlaying) playing = false;
+    render();
+  }
+  function gotoScene(k, autoplay) {
+    k = clamp(k, 0, scenes.length - 1);
+    seek(scenes[k].t0 + 1);
+    if (autoplay) play();
+  }
+
+  // ================================================================== interaction
+  function exploreOpen(file, opt) {
+    if (playing) pause();
+    started = true;
+    opt = opt || {};
+    userOps.push((s) => {
+      const pi = opt.pane != null ? opt.pane : s.active;
+      const pane = showFile(s, pi, file, opt.view);
+      if (opt.line && IR.files[file]) {
+        const r = { side: opt.side || (pane.view === 'before' ? 'before' : 'after'), from: opt.line, to: opt.line };
+        pane.scroll = { to: r, mode: 'center', p: 1, prev: null };
+        pane.hl.push({ ...r, tone: 'focus', p: 1, key: 'u' });
+        pane.flash = { ...r, key: 'u' + userOps.length };
+      }
+    });
+    render();
+  }
+  app.addEventListener('click', (ev) => {
+    const t = ev.target.closest('button, [data-file], [data-dir], [data-fold], .row');
+    if (!t) return;
+    const act = t.dataset && t.dataset.act;
+    if (act === 'play') return playing ? pause() : play();
+    if (act === 'prev') return gotoScene(sceneAt(T) - (T - scenes[sceneAt(T)].t0 < 1500 ? 1 : 0), playing);
+    if (act === 'next') return gotoScene(sceneAt(T) + 1, playing);
+    if (act === 'restart') return gotoScene(0, true);
+    if (act === 'explorer') return toggleExplorer();
+    if (act === 'guide') { app.classList.toggle('hide-guide'); return settle(); }
+    if (act === 'ex-filter') { ex.filter = !ex.filter; t.classList.toggle('on', ex.filter); ex.version = (ex.version || 0) + 1; return render(); }
+    if (act === 'ex-collapse') { ex.expanded.clear(); ex.revealed = '\0'; ex.version = (ex.version || 0) + 1; ex.prevVisible = new Set(); return render(); }
+    if (act === 'theme') { const r = document.documentElement; const cur = r.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); r.dataset.theme = cur === 'light' ? 'dark' : 'light'; try { localStorage.setItem('wt-theme', r.dataset.theme); } catch (e) { /* ignore */ } return; }
+    if (act === 'help') return toggleHelp();
+    if (act === 'graph-close') {
+      if ($('.wt-graph').dataset.src === 'map') { mapUi.shown = false; mapUi.expanded = false; return render(); }
+      if (playing) pause(); userOps.push((s) => { s.graph = null; }); return render();
+    }
+    if (act === 'map') { mapUi.shown = !mapUi.shown; mapUi.expanded = false; return render(); }
+    if (act === 'map-toggle') { mapUi.expanded = !mapUi.expanded; mapUi.shown = true; return render(); }
+    if (t.dataset.sec) { const sec = t.closest('.gd-sec'); const open = !sec.classList.contains('open'); sec.classList.toggle('open', open); guide.sec[t.dataset.sec + 'Pinned'] = open; return; }
+    if (t.dataset.scene) return gotoScene(Number(t.dataset.scene), false);
+    if (t.dataset.dir != null && t.classList.contains('ex-row')) {
+      const d = t.dataset.dir;
+      if (ex.expanded.has(d)) ex.expanded.delete(d); else ex.expanded.add(d);
+      ex.version = (ex.version || 0) + 1;
+      return render();
+    }
+    if (t.dataset.fold != null) {
+      const P = paneEls.find((x) => x.code.contains(t));
+      if (P && P.model) { const list = P.userExpanded.get(P.model.key) || []; list.push(Number(t.dataset.fold)); P.userExpanded.set(P.model.key, list); P.viewKey = ''; render(); }
+      return;
+    }
+    if (t.dataset.view && t.dataset.pane) {
+      const pi = Number(t.dataset.pane), v = t.dataset.view;
+      if (playing) pause();
+      userOps.push((s) => { const p = s.panes[pi]; if (v === 'unified' || v === 'split') { p.view = 'diff'; p.diff.mode = v; } else p.view = v; });
+      return render();
+    }
+    if (t.dataset.file) return exploreOpen(t.dataset.file, { pane: t.dataset.pane != null ? Number(t.dataset.pane) : undefined, line: t.dataset.line ? Number(t.dataset.line) : null, side: t.dataset.side, view: t.dataset.view });
+    if (t.classList.contains('row') && (ev.metaKey || ev.ctrlKey)) {
+      const word = wordAt(ev);
+      if (word) { const def = findDefinition(word); if (def) exploreOpen(def.file, { line: def.line, side: 'after', view: 'after' }); }
+    }
+  });
+  function toggleExplorer() {
+    if (matchMedia('(max-width: 1000px)').matches) app.classList.toggle('show-explorer');
+    else app.classList.toggle('hide-explorer');
+    settle();
+  }
+  /** Re-measure after a panel slides (layout-dependent overlays follow). */
+  function settle() { const again = () => { $('.wt-graph').dataset.rect = ''; for (const P of paneEls) P.scrollSig = ''; render(); }; again(); setTimeout(again, 320); }
+  function wordAt(ev) {
+    let node, off;
+    if (document.caretPositionFromPoint) { const c = document.caretPositionFromPoint(ev.clientX, ev.clientY); if (c) { node = c.offsetNode; off = c.offset; } }
+    else if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(ev.clientX, ev.clientY); if (r) { node = r.startContainer; off = r.startOffset; } }
+    if (!node || node.nodeType !== 3) return null;
+    const s = node.textContent;
+    let a = off, b = off;
+    while (a > 0 && /[\w$]/.test(s[a - 1])) a--;
+    while (b < s.length && /[\w$]/.test(s[b])) b++;
+    return s.slice(a, b) || null;
+  }
+  function findDefinition(word) {
+    const re = new RegExp(`(?:\\b(?:function|class|def|fn|func|fun|interface|type|struct|enum|trait|const|let|var|val|module|object)\\s+\\*?\\s*${word}\\b)|(?:^\\s*(?:export\\s+)?(?:async\\s+)?${word}\\s*[=:(]\\s*(?:async\\s*)?\\(?)`);
+    for (const [p, f] of Object.entries(IR.files)) {
+      const text = f.after != null ? f.after : f.before;
+      if (!text) continue;
+      const lines = D.splitLines(text);
+      for (let i = 0; i < lines.length; i++) if (re.test(lines[i])) return { file: p, line: i + 1 };
+    }
+    return null;
+  }
+
+  // scrubber
+  const scrub = $('.scrub');
+  const tFromX = (x) => { const r = scrub.getBoundingClientRect(); return clamp((x - r.left) / r.width, 0, 1) * total; };
+  let dragging = false, wasPlaying = false;
+  scrub.addEventListener('pointerdown', (e) => { dragging = true; wasPlaying = playing; scrub.setPointerCapture(e.pointerId); seek(tFromX(e.clientX)); });
+  scrub.addEventListener('pointermove', (e) => {
+    const t = tFromX(e.clientX);
+    const tip = scrub.querySelector('.tip');
+    const sc = scenes[sceneAt(t)];
+    tip.textContent = `${sceneAt(t) + 1}. ${sc.title || ''} · ${fmt(t)}`;
+    tip.style.left = `${(t / total) * 100}%`;
+    if (dragging) seek(t);
+  });
+  scrub.addEventListener('pointerup', () => { dragging = false; if (wasPlaying) play(); });
+  scrub.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); seek(T + (e.key === 'ArrowLeft' ? -5000 : 5000), playing); } });
+
+  $('[data-act="speed"]').addEventListener('change', (e) => { speed = Number(e.target.value); });
+  $('[data-act="segpause"]').addEventListener('change', (e) => { segPause = e.target.checked; });
+
+  function setSpeed(dir) {
+    const sel = $('[data-act="speed"]');
+    const opts = Array.from(sel.options).map((o) => Number(o.value));
+    const i = clamp(opts.indexOf(speed) + dir, 0, opts.length - 1);
+    speed = opts[i]; sel.value = String(speed);
+  }
+  function toggleHelp() {
+    const exi = document.querySelector('.help');
+    if (exi) { exi.remove(); return; }
+    const box = el('div', 'help', `<div role="dialog" aria-label="shortcuts"><h2>${T_('단축키', 'Keyboard shortcuts')}</h2><table>
+      <tr><td><kbd>Space</kbd> / <kbd>K</kbd></td><td>${T_('재생 / 일시정지', 'Play / pause')}</td></tr>
+      <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>${T_('이전 / 다음 장면', 'Previous / next scene')}</td></tr>
+      <tr><td><kbd>⇧</kbd>+<kbd>←</kbd> <kbd>→</kbd></td><td>${T_('5초 뒤로 / 앞으로', 'Seek ±5s')}</td></tr>
+      <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>${T_('배속 낮추기 / 높이기', 'Slower / faster')}</td></tr>
+      <tr><td><kbd>P</kbd></td><td>${T_('장면마다 멈춤 켜기/끄기', 'Toggle pause per scene')}</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>${T_('N번째 챕터로 이동', 'Jump to chapter N')}</td></tr>
+      <tr><td><kbd>B</kbd> / <kbd>G</kbd> / <kbd>M</kbd></td><td>${T_('탐색기 / 워크스루 패널 / 구조 지도', 'Explorer / walkthrough panel / structure map')}</td></tr>
+      <tr><td>⌘/Ctrl + ${T_('클릭', 'Click')}</td><td>${T_('식별자의 정의로 이동 (일시정지 중)', 'Go to definition (while paused)')}</td></tr>
+      </table></div>`);
+    box.addEventListener('click', (e) => { if (e.target === box) box.remove(); });
+    document.body.appendChild(box);
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.target.closest && e.target.closest('input, select, textarea')) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (k === ' ' || k === 'k' || k === 'K') { e.preventDefault(); playing ? pause() : play(); }
+    else if (k === 'ArrowRight' && e.shiftKey) seek(T + 5000, playing);
+    else if (k === 'ArrowLeft' && e.shiftKey) seek(T - 5000, playing);
+    else if (k === 'ArrowRight') gotoScene(sceneAt(T) + 1, playing);
+    else if (k === 'ArrowLeft') gotoScene(sceneAt(T) - (T - scenes[sceneAt(T)].t0 < 1500 ? 1 : 0), playing);
+    else if (k === ']') setSpeed(1);
+    else if (k === '[') setSpeed(-1);
+    else if (k === 'p' || k === 'P') { segPause = !segPause; $('[data-act="segpause"]').checked = segPause; }
+    else if (k === 'b' || k === 'B') toggleExplorer();
+    else if (k === 'g' || k === 'G') { app.classList.toggle('hide-guide'); settle(); }
+    else if (k === 'm' || k === 'M') { mapUi.shown = !mapUi.shown; mapUi.expanded = false; render(); }
+    else if (k === '?') toggleHelp();
+    else if (k === 'Escape') { const h = document.querySelector('.help'); if (h) h.remove(); }
+    else if (/^[1-9]$/.test(k)) { const ci = Number(k) - 1; const sc = scenes.findIndex((x) => x.ci === ci); if (sc >= 0) gotoScene(sc, playing); }
+  });
+  window.addEventListener('resize', () => { for (const P of paneEls) { P.scrollSig = ''; P.typSig = ''; } $('.wt-graph').dataset.rect = ''; render(); });
+
+  try { const th = localStorage.getItem('wt-theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) { /* ignore */ }
+  const hash = /scene=([^&]+)/.exec(location.hash);
+  if (hash) { const v = decodeURIComponent(hash[1]); const i = scenes.findIndex((x, n) => x.id === v || String(n + 1) === v); if (i >= 0) { started = true; T = scenes[i].t0 + 1; } }
+  app.removeAttribute('aria-busy');
+  render();
+  window.__walkthrough = { scenes, total, seek, play, pause, stateAt, get T() { return T; } };
+})();
+</script>
+</body>
+</html>

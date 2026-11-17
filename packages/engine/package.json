@@ -1,0 +1,22 @@
+{
+  "name": "code-walkthrough-engine",
+  "version": "0.1.0",
+  "description": "Executes Walkthrough IR v1: validates it, compiles it into a standalone IDE-like animated HTML player, or serves it on localhost.",
+  "type": "module",
+  "bin": {
+    "code-walkthrough": "bin/code-walkthrough.mjs"
+  },
+  "exports": {
+    ".": "./src/compile.mjs",
+    "./serve": "./src/serve.mjs"
+  },
+  "files": ["bin", "src", "player", "docs", "schema"],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node test/smoke.mjs"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

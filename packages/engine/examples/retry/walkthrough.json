@@ -1,0 +1,435 @@
+{
+  "version": 1,
+  "meta": {
+    "title": "Retry idempotent requests with exponential backoff",
+    "summary": "`request()` now retries failed **idempotent (GET) requests** up to 3 times with exponential backoff. The retry logic lives in a new `retry.ts` module, and an `HttpError` type lets it retry only transient failures (5xx, 429).",
+    "intent": "feature",
+    "language": "en",
+    "strategy": {
+      "order": "top-down",
+      "rationale": "Start from what callers see (what changed), then go down into the new module (how it works), and finish with the blast radius (existing callers) and tests."
+    },
+    "takeaways": [
+      "GET retries by default; other methods only with `idempotent: true`",
+      "Only `isTransient()` errors are retried: 5xx and 429",
+      "`fetchUser` gets retries without any code change; `renameUser` (PATCH) is unaffected"
+    ],
+    "reviewFocus": [
+      "Are any PATCH/POST callers idempotent and should pass `idempotent: true`?",
+      "Does the total backoff (200+400+800 ms) fit within `timeoutMs`?"
+    ]
+  },
+  "source": {
+    "base": "HEAD~1",
+    "head": "HEAD"
+  },
+  "files": {
+    "src/api/client.ts": {
+      "status": "modified",
+      "role": "HTTP entry point"
+    },
+    "src/api/retry.ts": {
+      "status": "added",
+      "role": "retry policy"
+    },
+    "src/config.ts": {
+      "status": "modified",
+      "role": "config"
+    },
+    "src/users/service.ts": {
+      "status": "context",
+      "role": "existing caller"
+    },
+    "test/retry.test.ts": {
+      "status": "added"
+    }
+  },
+  "glossary": [
+    {
+      "term": "idempotent",
+      "definition": "A request whose effect is the same no matter how many times it runs, so retrying it is safe."
+    },
+    {
+      "term": "exponential backoff",
+      "definition": "Waiting base × 2^n between retries to avoid hammering a struggling server."
+    }
+  ],
+  "chapters": [
+    {
+      "id": "overview",
+      "title": "The big picture",
+      "goal": "Get a map of what was added where",
+      "scenes": [
+        {
+          "id": "map",
+          "title": "Map of the change",
+          "goal": "Know the three files' roles and how they relate",
+          "narration": "The change has three parts. **client.ts** starts using the new **retry.ts** module, and the policy values come from **config.ts**. The existing caller `service.ts` inherits the new behaviour without any code change.",
+          "steps": [
+            {
+              "do": "graph",
+              "title": "Dependencies",
+              "nodes": [
+                {
+                  "id": "svc",
+                  "label": "users/service.ts",
+                  "sub": "fetchUser · renameUser",
+                  "file": "src/users/service.ts",
+                  "status": "context"
+                },
+                {
+                  "id": "client",
+                  "label": "api/client.ts",
+                  "sub": "request()",
+                  "file": "src/api/client.ts"
+                },
+                {
+                  "id": "retry",
+                  "label": "api/retry.ts",
+                  "sub": "withRetry · HttpError",
+                  "file": "src/api/retry.ts"
+                },
+                {
+                  "id": "config",
+                  "label": "config.ts",
+                  "sub": "retry policy",
+                  "file": "src/config.ts"
+                }
+              ],
+              "edges": [
+                {
+                  "from": "svc",
+                  "to": "client",
+                  "label": "calls"
+                },
+                {
+                  "from": "client",
+                  "to": "retry",
+                  "label": "new import"
+                },
+                {
+                  "from": "client",
+                  "to": "config",
+                  "label": "reads policy"
+                }
+              ]
+            },
+            {
+              "do": "graph",
+              "highlight": [
+                "client",
+                "retry",
+                "config"
+              ],
+              "hold": 1500
+            },
+            {
+              "do": "graph",
+              "highlight": [
+                "svc",
+                "client"
+              ],
+              "hold": 1200
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "entry",
+      "title": "What callers see",
+      "goal": "Understand how request() behaves now",
+      "scenes": [
+        {
+          "id": "request-diff",
+          "title": "request() now wraps send",
+          "goal": "The request moved into a send closure that is retried conditionally",
+          "narration": "The old request logic moved, unchanged, into a `send` closure. Two things differ: on failure it throws **`HttpError`** instead of `Error`, and the last line wraps the call in `withRetry` **only for idempotent requests**.",
+          "steps": [
+            {
+              "do": "open",
+              "file": "src/api/client.ts",
+              "view": "diff",
+              "diff": {
+                "mode": "unified",
+                "granularity": "word"
+              }
+            },
+            {
+              "do": "focus",
+              "range": {
+                "symbol": "request"
+              }
+            },
+            {
+              "do": "type",
+              "range": {
+                "find": "const idempotent",
+                "span": 2
+              }
+            },
+            {
+              "do": "highlight",
+              "range": {
+                "find": "throw new HttpError"
+              },
+              "tone": "add",
+              "label": "HttpError"
+            },
+            {
+              "do": "highlight",
+              "range": {
+                "find": "return idempotent"
+              },
+              "tone": "focus",
+              "label": "key line"
+            },
+            {
+              "do": "note",
+              "at": {
+                "find": "const idempotent"
+              },
+              "text": "Unless `idempotent` is set explicitly, **only GET** is retried.",
+              "tone": "why"
+            }
+          ]
+        },
+        {
+          "id": "request-split",
+          "title": "Side by side",
+          "goal": "Tell moved code apart from new code",
+          "narration": "In the split view it is clear the `fetch` block **only changed indentation**. The real changes to review are `HttpError` and the final branch.",
+          "steps": [
+            {
+              "do": "diffView",
+              "mode": "split"
+            },
+            {
+              "do": "reveal",
+              "at": {
+                "find": "const send"
+              }
+            },
+            {
+              "do": "highlight",
+              "range": {
+                "find": "const res = await fetch",
+                "span": 4
+              },
+              "tone": "info",
+              "label": "moved (re-indented)"
+            },
+            {
+              "do": "wait",
+              "ms": 1200
+            },
+            {
+              "do": "diffView",
+              "mode": "unified"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "retry",
+      "title": "Inside the retry module",
+      "goal": "Know when, how often and how long it retries",
+      "scenes": [
+        {
+          "id": "goto-withretry",
+          "title": "Into withRetry",
+          "goal": "Know the loop's exit conditions",
+          "narration": "Jump to the definition of `withRetry`. The loop returns as soon as `fn` succeeds. On failure it waits `base × 2^attempt` and tries again **only if the error is transient and retries remain**.",
+          "steps": [
+            {
+              "do": "goto",
+              "from": {
+                "at": {
+                  "find": "return idempotent"
+                },
+                "token": "withRetry"
+              },
+              "to": {
+                "file": "src/api/retry.ts",
+                "at": {
+                  "symbol": "withRetry"
+                }
+              }
+            },
+            {
+              "do": "highlight",
+              "range": {
+                "find": "if (!isTransient(err)"
+              },
+              "tone": "warn",
+              "label": "exit condition"
+            },
+            {
+              "do": "highlight",
+              "range": {
+                "find": "await sleep"
+              },
+              "tone": "info",
+              "label": "backoff"
+            },
+            {
+              "do": "note",
+              "at": {
+                "find": "await sleep"
+              },
+              "text": "200 → 400 → 800 ms: up to ~1.4 s of extra waiting with 3 retries.",
+              "tone": "risk"
+            }
+          ]
+        },
+        {
+          "id": "transient",
+          "title": "What counts as transient",
+          "goal": "Know retries are limited to 5xx and 429",
+          "narration": "`isTransient` is true only for an `HttpError` with status **5xx or 429**, so client errors such as 404 fail immediately. That check is why `client.ts` now throws `HttpError` instead of a plain `Error`.",
+          "steps": [
+            {
+              "do": "focus",
+              "range": {
+                "symbol": "isTransient"
+              }
+            },
+            {
+              "do": "goto",
+              "from": {
+                "at": {
+                  "find": "err instanceof HttpError"
+                },
+                "token": "HttpError"
+              },
+              "to": {
+                "file": "src/api/retry.ts",
+                "at": {
+                  "symbol": "HttpError"
+                }
+              }
+            },
+            {
+              "do": "say",
+              "text": "Keeping `status` around is the reason `HttpError` exists."
+            }
+          ]
+        },
+        {
+          "id": "config",
+          "title": "Policy lives in config",
+          "goal": "Know where to tune retries",
+          "narration": "The policy values live in `config.retry`; tuning retries in production means changing this one place.",
+          "steps": [
+            {
+              "do": "layout",
+              "mode": "columns"
+            },
+            {
+              "do": "open",
+              "pane": 1,
+              "file": "src/config.ts",
+              "view": "diff"
+            },
+            {
+              "do": "highlight",
+              "pane": 1,
+              "range": {
+                "find": "retry:"
+              },
+              "tone": "add"
+            },
+            {
+              "do": "highlight",
+              "pane": 0,
+              "range": {
+                "find": "baseDelayMs * 2"
+              },
+              "tone": "info"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "impact",
+      "title": "Impact and verification",
+      "goal": "Check the effect on existing code and the tests",
+      "scenes": [
+        {
+          "id": "callers",
+          "title": "What about existing callers?",
+          "goal": "Tell which calls become retried",
+          "narration": "Find the callers of `request`. `fetchUser` is a GET, so it is **retried automatically**; `renameUser` is a PATCH and behaves **exactly as before**.",
+          "steps": [
+            {
+              "do": "layout",
+              "mode": "single"
+            },
+            {
+              "do": "refs",
+              "pane": 0,
+              "symbol": "request",
+              "items": [
+                {
+                  "file": "src/users/service.ts",
+                  "at": {
+                    "find": "return request<User>(`/users/${id}`);"
+                  },
+                  "label": "GET → retried"
+                },
+                {
+                  "file": "src/users/service.ts",
+                  "at": {
+                    "find": "method: 'PATCH'"
+                  },
+                  "label": "PATCH → unchanged"
+                }
+              ]
+            },
+            {
+              "do": "note",
+              "at": {
+                "find": "method: 'PATCH'"
+              },
+              "text": "If this PATCH is idempotent, pass `idempotent: true` to opt in.",
+              "tone": "tip"
+            }
+          ]
+        },
+        {
+          "id": "tests",
+          "title": "What the tests pin down",
+          "goal": "Know both core behaviours are covered",
+          "narration": "The tests pin down two behaviours: a **503 is retried until it succeeds**, and a **404 fails without retrying**. Note that no test covers the idempotency branch in `request()` itself.",
+          "steps": [
+            {
+              "do": "open",
+              "file": "test/retry.test.ts",
+              "view": "after"
+            },
+            {
+              "do": "highlight",
+              "range": {
+                "find": "retries transient errors",
+                "block": true
+              },
+              "tone": "add",
+              "label": "503 → success"
+            },
+            {
+              "do": "highlight",
+              "range": {
+                "find": "does not retry 4xx",
+                "block": true
+              },
+              "tone": "remove",
+              "label": "404 → failure"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
