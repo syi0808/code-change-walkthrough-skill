@@ -1,0 +1,3 @@
+# Keep scripts and docs LF on every platform (Windows checkouts included).
+* text=auto eol=lf
+*.png binary
