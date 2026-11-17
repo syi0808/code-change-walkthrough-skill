@@ -120,6 +120,18 @@ This is background material and is not loaded at runtime. The operational rules 
 
 **Rule.** R8 combines these. A prose lead sentence carries the *why*. Short full-sentence bullets then carry the procedure, one per visual beat, each keeping its connective, and the player reveals each bullet in sync with its step (`cue`).
 
+## 10. Question chains and event boundaries (R29–R31)
+
+**Basis**
+- Program comprehension is driven by questions and hypotheses (Brooks, 1983; Letovsky, 1987). Developers' questions follow from what they just learned, moving from focus points to connected code (Sillito et al., 2006).
+- People segment continuous experience into events. Boundaries are where mental models get updated, and a clear transition at a boundary improves comprehension and memory (Zacks et al., 2007).
+- Working memory holds about four chunks (Cowan, 2001), and words placed next to the thing they describe beat words placed elsewhere (spatial contiguity; Mayer, 2021).
+
+**Rules.**
+- R29: each scene answers a stated question.
+- R30: each boundary carries a bridge from the last answer to the next question.
+- R31: one explanation at a time, written to sit under the code it explains.
+
 ---
 
 ### References
@@ -138,6 +150,7 @@ This is background material and is not loaded at runtime. The operational rules 
 - Lawrance, J., Bogart, C., Burnett, M., Bellamy, R., Rector, K., & Fleming, S. D. (2013). How programmers debug, revisited: An information foraging theory perspective. *IEEE TSE*.
 - Letovsky, S. (1987). Cognitive processes in program comprehension. *J. Systems and Software*.
 - Lowe, R. K. (2003). Animation and learning: selective processing of information in dynamic graphics. *Learning and Instruction*.
+- Zacks, J. M., Speer, N. K., Swallow, K. M., Braver, T. S., & Reynolds, J. R. (2007). Event perception: a mind-brain perspective. *Psychological Bulletin*.
 - Ganier, F. (2004). Factors affecting the processing of procedural instructions: implications for document design. *IEEE Transactions on Professional Communication*.
 - Lorch, R. F. (1989). Text-signaling devices and their effects on reading and memory processes. *Educational Psychology Review*.
 - Mayer, R. E. (2021). *Multimedia Learning* (3rd ed.). Cambridge University Press.

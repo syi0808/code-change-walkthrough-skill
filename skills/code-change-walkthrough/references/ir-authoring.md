@@ -9,6 +9,40 @@ node "<skill>/scripts/engine.mjs" schema   # JSON Schema (structural)
 
 The engine's `examples/retry/walkthrough.json` is a complete worked example: 4 chapters, 8 scenes, every action type.
 
+## The tour and its stops
+
+The engine replays every changed hunk; you decide the order and where to stop.
+
+```json
+"tour": {
+  "order": ["src/api/client.ts", "src/api/retry.ts", "src/config.ts", "test/retry.test.ts"],
+  "tempo": { "src/api/client.ts#3": "key", "src/index.ts": "skim" }
+},
+"chapters": [{ "title": "What callers see", "scenes": [
+  { "id": "request", "at": { "file": "src/api/client.ts", "hunk": 3 }, "question": "What happens now when a request fails?", … }
+] }]
+```
+
+- **Every changed file goes in `order`**, following the question chain. Unlisted files are appended, but you want them where they make sense.
+- **`at` makes a scene a stop**: it plays right after the tour replays that hunk (or the whole file, without `hunk`). The hunk you attach to defaults to `key` tempo (typed).
+- **Don't add `type` steps for code the tour replays**; use `tempo: "key"` instead. Don't explain wiring; let it `skim`.
+- Keep stops for what needs words, typically one per idea from your question chain. Plain hunks between stops need no explanation.
+- `check --json` → `stats.tour` gives `{hunks, files}`, and `stats.unnarratedFiles` should be empty.
+
+## Every scene: question, bridge, then steps
+
+```json
+{ "id": "transient", "title": "What counts as transient",
+  "at": { "file": "src/api/retry.ts" },
+  "question": "Which failures are worth retrying?",
+  "bridge": "The loop only retries transient errors, so what counts as transient?",
+  "goal": "Know that only 5xx and 429 are retried",
+  "narration": "Only server-side or rate-limit failures are retried.\n\n- `isTransient` is true for an `HttpError` with status 5xx or 429.\n- A 404 fails at once, because retrying would not change the answer.",
+  "steps": [ … ] }
+```
+
+`question` stays above the code for the whole scene. `bridge` is shown on the transition card when the scene starts, so skip it for the first scene. `check` warns when either one is missing.
+
 ## Shape to aim for
 
 ```jsonc

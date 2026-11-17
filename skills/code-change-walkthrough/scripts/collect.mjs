@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Layer 1 (analysis) — collect codebase context for a change.
+// Layer 1 (analysis): collect codebase context for a change.
 //
 // Goes beyond `git diff`: changed symbols, who references them (fan-in),
 // what changed files import (fan-out), dependency clusters, a suggested
@@ -20,7 +20,7 @@ import * as L from './lib/lang.mjs';
 process.on('uncaughtException', (e) => { console.error(`collect: ${e.message}`); if (/Unknown (base|head) ref/.test(e.message)) console.error('hint: shallow clone? try `git fetch --unshallow` or `git fetch origin <ref>`'); process.exit(1); });
 const args = parseArgs(process.argv.slice(2));
 if (args.help || args.h) {
-  console.log(`collect.mjs — change context for authoring a walkthrough
+  console.log(`collect.mjs: change context for authoring a walkthrough
 
   node collect.mjs [--repo DIR] [--range A..B | A...B] [--base REF] [--head REF|WORKTREE]
                    [--out DIR|FILE.json] [--max-refs 25] [--json]

@@ -1,4 +1,4 @@
-// VENDORED from packages/engine/src/lib — do not edit here; run tools/sync-skill-lib.mjs
+// VENDORED from packages/engine/src/lib: do not edit here; run tools/sync-skill-lib.mjs
 // Language-agnostic, heuristic code structure extraction.
 // No parsers, no per-framework logic: a union of regex patterns that covers the
 // definition / import idioms of mainstream languages. Precision is "good enough

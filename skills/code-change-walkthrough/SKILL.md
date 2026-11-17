@@ -6,7 +6,7 @@ compatibility: Requires Node.js 18+ and git. Runs on macOS, Linux and Windows (n
 
 # Code Change Walkthrough
 
-Your job is to **author Walkthrough IR**. The IR is a plan that says which code to show, in which order, with which view, and what to say about it, so that a person understands a code change quickly and correctly. A separate engine (`code-walkthrough`) executes that plan. It fetches file contents, resolves anchors to lines, computes diffs, animates the IDE, and handles playback. You never write HTML, CSS, or timing.
+Your job is to **author Walkthrough IR**. The engine replays the **whole diff** (every hunk of every changed file) as the spine of the walkthrough, so coverage is automatic. Your IR decides the **order** of that replay and the **explanation stops** along it: where to pause, what question each stop answers, and what to point at. The IR is a plan that says which code to show, in which order, with which view, and what to say about it, so that a person understands a code change quickly and correctly. A separate engine (`code-walkthrough`) executes that plan. It fetches file contents, resolves anchors to lines, computes diffs, animates the IDE, and handles playback. You never write HTML, CSS, or timing.
 
 ```
  collect.mjs ─► context digest ─► you read the code ─► strategy ─► walkthrough.json (IR)
@@ -72,14 +72,18 @@ Write down for yourself, before you design anything:
 Read `references/strategy-playbook.md`, then decide:
 1. the **change type** for each cluster
 2. the **order strategy** (top-down, bottom-up, data-flow, symptom-cause-fix, before-after, clusters) and a one-sentence rationale
-3. an **outline**: chapter and scene titles with one-sentence `goal`s only. Check the flow before writing any steps. Scene 1 is the big picture (a `graph`). Put each definition right before its usages, and each implementation right before its tests. Stay within the size budget
-4. for each scene, the **view** (after, before, diff; unified or split; single or columns) and the **actions**
+3. a **question chain**: for each scene, the `question` the viewer has at that point and the `bridge` that leads to it from the previous answer (playbook §6). Read the questions as a list: each must follow from the previous one. This list *is* the order.
+4. an **outline**: chapter and scene titles with one-sentence `goal`s only. Check the flow before writing any steps. Scene 1 is the big picture (a `graph`). Put each definition right before its usages, and each implementation right before its tests. Stay within the size budget
+5. for each scene, the **view** (after, before, diff; unified or split; single or columns) and the **actions**
 
 ### 4. Write the IR
 
 Read `references/ir-authoring.md` for patterns and pitfalls. Run `node "<skill>/scripts/engine.mjs" spec` for the full contract the installed engine accepts. Write `walkthrough.json` next to the context JSON.
 - In `source`, put **the same range you gave `collect`**: `"range": "A...B"` for a branch or PR (the engine resolves the merge-base the same way), or `base`/`head` for explicit refs or `WORKTREE`. Never write a branch tip as `base` when the change is a PR; you would pull in unrelated commits from the base branch. Pass the repository with `--repo`. Sanity check: the file count in `check` should match the digest
 - Use `find` and `symbol` anchors; use line numbers only as a last resort
+- Set `tour.order`: every changed file in the order of your question chain. Attach each explanation scene to the hunk or file it explains with `at` (it plays right after that hunk is replayed). Mark the hunks worth typing out with `tour.tempo` `"key"`, and anything that is wiring with `"skim"` (most wiring is detected automatically)
+- Give every scene a `question` and every scene after the first a `bridge` (R29, R30)
+- Write in plain, short sentences without em dashes (R32)
 - Write narration as **one lead sentence (the why) + 2–4 bullets**, one bullet per visual beat in step order, each pinned to its step with `cue`. Say where you are going before a `goto` or `refs`
 - Give scene 1's graph nodes a `file`: the graph docks as a structure map that tracks the file in view
 - Fill in `meta.summary`, `strategy.rationale`, `takeaways`, and `reviewFocus`

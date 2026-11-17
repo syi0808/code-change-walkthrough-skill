@@ -1,4 +1,4 @@
-# docs/ — background, not runtime
+# docs/: background, not runtime
 
 This directory holds material about the skill that the agent does **not** need in order to run it: design rationale, research, and notes for maintainers. `SKILL.md` lists this directory only as background, and nothing tells the agent to read it.
 

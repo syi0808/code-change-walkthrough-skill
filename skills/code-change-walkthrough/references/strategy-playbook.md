@@ -78,7 +78,19 @@ The default audience is `reviewer`.
 | Newcomer (unfamiliar codebase) | More pre-training (the graph, a `glossary`). Add scenes that show the structure before the change (context files). Control flow first, domain meaning second (Pennington) |
 | Author (self-review, PR description) | Intent → change → risks. `reviewFocus` lists what the author should double-check |
 
-## 6. Narration rules (R8, R9, R16, R18)
+## 6. The question chain (R29, R30)
+
+Before writing any steps, write the scenes' `question`s in order and read them as a list. Each one should follow from the previous answer. If a question comes out of nowhere, the order is wrong, or a bridging scene is missing.
+
+| Scene | `question` | `bridge` (from the previous answer) |
+|---|---|---|
+| 1 | What does this change add, and where? | (none) |
+| 2 | What does a request to the new endpoint look like? | The map shows one entry point, so start there. |
+| 3 | Who is allowed to call it? | The controller checks access first, so that comes next. |
+| 4 | What goes into the list? | Access is settled, so now the query itself. |
+| 5 | What do the tests guarantee? | The behaviour is clear; check what is pinned down. |
+
+## 7. Narration rules (R8, R9, R16, R18, R31, R32)
 
 - **Shape: one lead sentence, then 2–4 bullets.** The lead sentence (prose) states the point or the *why*. Each bullet then describes one visual beat in the order it appears on screen. Pin each bullet to the step that shows it with `cue` (see ir-authoring). Every bullet is a full short sentence that keeps its connective ("so", "because", "instead of"). Don't reduce it to a noun-phrase fragment, which drops the causal link the viewer needs.
 - Keep a short prose paragraph only where the whole scene is one causal chain that bullets would break apart.

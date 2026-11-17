@@ -1,4 +1,4 @@
-// VENDORED from packages/engine/src/lib — do not edit here; run tools/sync-skill-lib.mjs
+// VENDORED from packages/engine/src/lib: do not edit here; run tools/sync-skill-lib.mjs
 // Git access layer. Every function is pure I/O over `git` so the analysis
 // layer stays language/framework agnostic.
 import { execFileSync } from 'node:child_process';

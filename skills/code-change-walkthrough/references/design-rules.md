@@ -46,6 +46,15 @@ Apply these rules when you design a walkthrough. When two choices seem equally g
 - **R24. Close with a recap:** `takeaways` (2–4) and `reviewFocus` (open questions for the reviewer).
 - **R25. Scale scaffolding to the audience.** Newcomers get more pre-training. Reviewers get less.
 
+## Coverage
+- **R33. Cover the whole diff, stop where it needs words.** The tour replays every hunk; order it by the question chain (`tour.order`) and attach explanation scenes as stops (`at`). Type key hunks (`tempo: "key"`), skim wiring (`"skim"`), and don't spend stops on code that speaks for itself.
+
+## Narrative thread
+- **R29. Every scene answers a question.** Give each scene a `question`: what the viewer is wondering at that moment, phrased the way they would ask it ("Who is allowed to see this list?"). The player keeps it above the code all scene long, so the code on screen always has a reason. The chain of questions *is* the order of the walkthrough.
+- **R30. Bridge every boundary.** Give every scene after the first a `bridge`, one sentence on how the previous answer raises this question ("Access is settled, so now: what goes into the list?"). The player shows it on the transition card.
+- **R31. Write for one voice at a time.** The player shows one explanation at a time, attached under the newest highlight, and a `note` counts as that voice. Per scene, use one lead sentence, then one bullet or note per highlight, in the order of the highlights. Only the two newest highlights stay salient, so explain each as it appears and don't refer back to a third.
+- **R32. Sound like a person.** Write short, plain sentences in the viewer's language. Don't use em dashes, stacked qualifiers, or filler ("Note that…", "It is worth mentioning…"). Prefer the words a teammate would say at the screen.
+
 ## Diff views
 - **R26. Split for in-place rewrites, unified for additions, deletions, and scattered edits.**
 - **R27. `patience` (the default) for moved blocks and brace-heavy code; `myers` for short edits.**
