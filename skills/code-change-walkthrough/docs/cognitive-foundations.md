@@ -1,0 +1,154 @@
+# Cognitive foundations: rationale for R1–R28
+
+This is background material and is not loaded at runtime. The operational rules live in `../references/design-rules.md`. This document gives the research basis for each rule and notes how the engine and the skill implement it.
+
+---
+
+## 1. Working memory and cognitive load
+
+**Basis**
+- *Cognitive Load Theory* (Sweller, 1988; Sweller, van Merriënboer & Paas, 1998/2019) splits load into three kinds. *Intrinsic* load comes from the task itself. *Extraneous* load comes from how the material is presented. *Germane* load goes into building schemas. A designer can only remove extraneous load.
+- Working memory holds about 4±1 chunks (Cowan, 2001). Treat Miller's (1956) 7±2 as an upper bound.
+- In code review, reviewers' working-memory capacity relates to their performance, and so does the order in which change parts are presented (Baum, Schneider & Bacchelli, *EMSE* 2019).
+
+**Rules**
+- **R1. One idea per scene.** Introduce at most about 4 new identifiers, files, or concepts per scene.
+  → engine warnings: narration over 600 characters, more than 12 steps in a scene, more than 7 scenes in a chapter.
+- **R2. Remove extraneous load.** Collapse lines whose only change is whitespace, and show word-level diffs so only the changed tokens stand out. Keep lock files and generated files out of the narration. Fold large files (`context`) or `focus` the relevant part.
+  → engine: whitespace-only pair detection and word diff (`player/diff.js`). Skill: `isGeneratedFile`.
+- **R3. Chunk repetitive mechanical edits.** When one pattern repeats (for example, 30 call sites updated for a new signature), show one representative instance and a `refs` list, and say that the rest follow the same pattern.
+
+## 2. Multimedia learning principles (Mayer, *Multimedia Learning*, 3rd ed., 2021)
+
+| Principle | Finding | Application |
+|---|---|---|
+| Segmenting | Learner-paced segments improve understanding | Scenes are segments. The player pauses at each scene end by default and supports speed control, scene jumps, and scrubbing (**R4**) |
+| Pre-training | Learning the names and key concepts first reduces load later | Open with a big-picture scene (`graph`) and provide a `glossary` (**R5**) |
+| Signaling | Cues to what matters cut search cost | `highlight` with a `label`, `focus` (dims the rest), the Cmd-hover underline (**R6**) |
+| Spatial contiguity | Put explanations next to what they explain | `note` renders inline, directly under the code line it refers to (**R7**) |
+| Temporal contiguity | Words and the visuals they describe should coincide | Order the steps the same way as the narration's sentences, and use `say` for captions in the middle of a scene (**R8**) |
+| Coherence | Interesting but extraneous material hurts | No decorative motion. Files outside the narration are available for exploration only (see R2) |
+| Redundancy | Don't repeat on-screen content in text | The narration explains **intent, reasons, and relations**. It never reads code aloud (**R9**) |
+
+## 3. When animation helps
+
+**Basis**
+- Tversky, Morrison & Bétrancourt (2002), *Animation: can it facilitate?* Animation beats static graphics only when it satisfies *congruence* (the change shown on screen mirrors the change in the concept) and *apprehension* (it is slow and clear enough to perceive). Interactivity, such as pausing and replaying, helps.
+- Lowe (2003): learners attend to what is perceptually salient, which is not necessarily what is thematically relevant.
+
+**Rules**
+- **R10. Animate only real IDE actions, plus replaying the key edit itself (`type`):** opening a file, scrolling, going to a definition (Cmd+Click), finding references. These are the actions developers actually perform while comprehending code, so the motion is congruent with the meaning. No flourishes or decorative transitions.
+- **R11. The most salient thing must be the most relevant thing.** Keep 1–2 highlights at a time, and use `focus` to dim everything else.
+- **R12. Give the learner control:** play, pause, speed, scrubbing, scene jumps, and free exploration while paused (file tree, Cmd+Click).
+  → engine: the player renders `state(T)` as a pure function of time, so any seek gives an identical frame.
+
+## 4. Program comprehension models
+
+**Basis**
+- **Top-down, hypothesis-driven** (Brooks, 1983): comprehension starts from a hypothesis about what the code does and verifies it through *beacons*, characteristic code that reveals intent.
+- **Bottom-up, program model then situation model** (Pennington, 1987): with unfamiliar code, readers first build a control-flow model, then the domain meaning.
+- **Plans and rules of discourse** (Soloway & Ehrlich, 1984): experts recognise familiar programming plans, and code that violates conventions badly hurts comprehension.
+- **Why, how, and what questions, and conjectures** (Letovsky, 1987): comprehenders keep forming conjectures about what the code does, why, and how.
+- **Integrated metamodel** (von Mayrhauser & Vans, 1995): readers switch between top-down, bottom-up, and situation models depending on how familiar the code is.
+- **Linearity** (Busjahn et al., 2015): novices read code more linearly than experts, and experts follow execution order.
+
+**Rules**
+- **R13. State the intent (the hypothesis) first.** `meta.summary` and the first scene say "this change does X so that Y". Later scenes confirm it in code.
+- **R14. Follow execution or dependency order, not file order.** Trace the execution path (entry point → callee) or the data flow. Never use alphabetical or diff order as is.
+- **R15. Point out beacons and convention breaks.** Mark lines that reveal intent with `highlight` and a label. Mark unusual code with `note tone:"risk"`.
+- **R16. Each scene explicitly answers at least one of what, why, or how.** Note tones (`why`, `risk`, `tip`) make the kind of answer visible.
+- **R17. Adapt to the audience's familiarity.** → playbook, "Audience".
+
+## 5. Information foraging and developers' questions
+
+**Basis**
+- *Information Foraging Theory* (Pirolli & Card, 1999), applied to programmers by Lawrance et al. (2013): developers follow *information scent*, and navigation cost breaks comprehension.
+- Ko, Myers, Coblenz & Aung (2006): a large share of maintenance time goes to navigating and to seeking, relating, and collecting relevant information.
+- Sillito, Murphy & De Volder (2006): developers ask 44 kinds of questions during change tasks, in four categories: (1) finding focus points, (2) expanding focus points (callers, callees, types), (3) understanding a connected subgraph, and (4) relating subgraphs to each other.
+
+**Rules**
+- **R18. Give scent before moving.** Before a `goto` or `refs`, say where you are going and why, in the narration or a `say`.
+- **R19. The player pays the navigation cost.** Go to definition, reference lists, and side-by-side panes (`layout: columns`) happen automatically.
+- **R20. Match scene types to Sillito's question categories.**
+
+| Question category | Scene type | Typical actions |
+|---|---|---|
+| Finding focus points | entry-point introduction | `open` + `focus` |
+| Expanding focus points | follow a definition or caller | `goto`, `refs` |
+| Understanding a subgraph | trace a flow | chained `goto`, `columns` |
+| Relating subgraphs | impact, structure | `graph`, `refs` |
+
+## 6. Code review research
+
+**Basis**
+- Bacchelli & Bird (2013): the central challenge of modern code review is *understanding the change*.
+- Baum et al. (ICSME 2017): the order in which change parts are read matters, and related parts (call relations, declaration and use) should sit close together.
+- Barnett et al. (2015, *ClusterChanges*) and Tao & Kim (2015): splitting a tangled change into independent partitions makes review easier.
+
+**Rules**
+- **R21. Partition the change into clusters and map them to chapters.** Start from `suggestions.clusters` in the collect output (connected components of changed files by imports and references). Independent clusters become separate chapters.
+- **R22. Keep related parts adjacent.** Show a definition, then its usages; an implementation, then its tests.
+
+## 7. Overview, recap, and self-explanation
+
+**Basis**
+- *Advance organizers* (Ausubel, 1960): seeing the high-level structure first gives new detail something to attach to.
+- *Expertise reversal* (Kalyuga et al., 2003): scaffolding that helps novices adds load for experts.
+- Self-explanation (Chi et al., 1994) and retrieval practice (Roediger & Karpicke, 2006): a closing summary and questions improve retention.
+
+**Rules**
+- **R23. Start with a map.** The overview card shows the summary, the strategy, and the agenda. Scene 1 shows the change as a `graph`.
+- **R24. End with a recap and open questions.** Use `meta.takeaways` (2–4 points) and `meta.reviewFocus` (questions the reviewer must decide).
+- **R25. Scale scaffolding to the audience.** → playbook, "Audience".
+
+## 8. Visual comparison
+
+**Basis**
+- Gleicher et al. (2011), *Visual comparison for information visualization*: there are three ways to show a comparison. *Juxtaposition* places items side by side. *Superposition* overlays them. *Explicit encoding* draws the differences themselves.
+
+**Rules (choosing the diff view)**
+- **R26. In-place rewrites call for split (juxtaposition).** Use unified (superposition) when additions or deletions dominate or the edits are scattered. Always encode differences explicitly at word level.
+- **R27. Use patience for moved blocks and brace-heavy code.** Its unique-line anchors match the correspondence a human expects. Use myers for short edits where a minimal edit script matters.
+- **R28. Open new files in `after`, not `diff`,** because all-green carries no information. Open deleted files in `before`.
+
+## 9. Text structure of the narration (lead sentence + bullets)
+
+**Basis**
+- **Signaling with structure.** Headings, lists, and enumeration help readers find a text's structure and remember it (Lorch, 1989). For *procedural* content, a step-by-step format improves comprehension and execution over continuous prose (Ganier, 2004).
+- **Cohesion.** Connectives such as "because", "so", and "instead" make causal relations explicit. Cohesive text helps readers with less domain knowledge most (McNamara, Kintsch, Songer & Kintsch, 1996). Fragmented bullets that drop the connectives hide the reasoning (Tufte, 2003, a critical essay rather than an experiment).
+- **Segmenting and temporal contiguity** (Mayer, 2021): one segment per visual beat, presented together with that beat.
+
+**Rule.** R8 combines these. A prose lead sentence carries the *why*. Short full-sentence bullets then carry the procedure, one per visual beat, each keeping its connective, and the player reveals each bullet in sync with its step (`cue`).
+
+---
+
+### References
+- Ausubel, D. P. (1960). The use of advance organizers in the learning and retention of meaningful verbal material. *J. Educational Psychology*.
+- Bacchelli, A., & Bird, C. (2013). Expectations, outcomes, and challenges of modern code review. *ICSE*.
+- Barnett, M., Bird, C., Brunet, J., & Lahiri, S. K. (2015). Helping developers help themselves: Automatic decomposition of code review changesets. *ICSE*.
+- Baum, T., Schneider, K., & Bacchelli, A. (2017). On the optimal order of reading source code changes for review. *ICSME*.
+- Baum, T., Schneider, K., & Bacchelli, A. (2019). Associating working memory capacity and code change ordering with code review performance. *Empirical Software Engineering*.
+- Brooks, R. (1983). Towards a theory of the comprehension of computer programs. *IJMMS*.
+- Busjahn, T., et al. (2015). Eye movements in code reading: Relaxing the linear order. *ICPC*.
+- Chi, M. T. H., et al. (1994). Eliciting self-explanations improves understanding. *Cognitive Science*.
+- Cowan, N. (2001). The magical number 4 in short-term memory. *Behavioral and Brain Sciences*.
+- Gleicher, M., et al. (2011). Visual comparison for information visualization. *Information Visualization*.
+- Kalyuga, S., Ayres, P., Chandler, P., & Sweller, J. (2003). The expertise reversal effect. *Educational Psychologist*.
+- Ko, A. J., Myers, B. A., Coblenz, M. J., & Aung, H. H. (2006). An exploratory study of how developers seek, relate, and collect relevant information during software maintenance tasks. *IEEE TSE*.
+- Lawrance, J., Bogart, C., Burnett, M., Bellamy, R., Rector, K., & Fleming, S. D. (2013). How programmers debug, revisited: An information foraging theory perspective. *IEEE TSE*.
+- Letovsky, S. (1987). Cognitive processes in program comprehension. *J. Systems and Software*.
+- Lowe, R. K. (2003). Animation and learning: selective processing of information in dynamic graphics. *Learning and Instruction*.
+- Ganier, F. (2004). Factors affecting the processing of procedural instructions: implications for document design. *IEEE Transactions on Professional Communication*.
+- Lorch, R. F. (1989). Text-signaling devices and their effects on reading and memory processes. *Educational Psychology Review*.
+- Mayer, R. E. (2021). *Multimedia Learning* (3rd ed.). Cambridge University Press.
+- McNamara, D. S., Kintsch, E., Songer, N. B., & Kintsch, W. (1996). Are good texts always better? Interactions of text coherence, background knowledge, and levels of understanding in learning from text. *Cognition and Instruction*.
+- Tufte, E. R. (2003). *The Cognitive Style of PowerPoint*. Graphics Press.
+- Pennington, N. (1987). Stimulus structures and mental representations in expert comprehension of computer programs. *Cognitive Psychology*.
+- Pirolli, P., & Card, S. (1999). Information foraging. *Psychological Review*.
+- Roediger, H. L., & Karpicke, J. D. (2006). Test-enhanced learning. *Psychological Science*.
+- Sillito, J., Murphy, G. C., & De Volder, K. (2006). Questions programmers ask during software evolution tasks. *FSE*.
+- Soloway, E., & Ehrlich, K. (1984). Empirical studies of programming knowledge. *IEEE TSE*.
+- Sweller, J. (1988). Cognitive load during problem solving. *Cognitive Science*.
+- Tao, Y., & Kim, S. (2015). Partitioning composite code changes to facilitate code review. *MSR*.
+- Tversky, B., Morrison, J. B., & Bétrancourt, M. (2002). Animation: can it facilitate? *IJHCS*.
+- von Mayrhauser, A., & Vans, A. M. (1995). Program comprehension during software maintenance and evolution. *IEEE Computer*.
