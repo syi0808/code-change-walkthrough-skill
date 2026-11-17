@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const src = path.join(root, 'packages/engine/src/lib');
 const dst = path.join(root, 'skills/code-change-walkthrough/scripts/lib');
-const header = '// VENDORED from packages/engine/src/lib — do not edit here; run tools/sync-skill-lib.mjs\n';
+const header = '// VENDORED from packages/engine/src/lib: do not edit here; run tools/sync-skill-lib.mjs\n';
 let drift = 0;
 fs.mkdirSync(dst, { recursive: true });
 for (const f of fs.readdirSync(src).filter((x) => x.endsWith('.mjs'))) {

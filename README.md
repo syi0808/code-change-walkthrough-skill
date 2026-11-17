@@ -14,7 +14,9 @@ It has two independent parts. The **Walkthrough IR** is the only contract betwee
 └────────────────────────────────┬────────────────────────────────────┘
                                  │  walkthrough.json  (Walkthrough IR v1)
 ┌────────────────────────────────▼────────────────────────────────────┐
-│ packages/engine  (execution) — `code-walkthrough` CLI               │
+│ packages/engine  (execution): `code-walkthrough` CLI               │
+│   tour     replays the WHOLE diff (every hunk) as the spine;         │
+│            the author's explanation scenes are stops on it          │
 │   check    validate IR, resolve anchors against git                 │
 │   build    standalone offline HTML player (single file)             │
 │   serve    the same player on localhost, live-reloading as the      │

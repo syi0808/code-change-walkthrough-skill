@@ -26,7 +26,7 @@ const target = path.join(SKILLS_DIR, 'code-change-walkthrough');
 let st = null;
 try { st = fs.lstatSync(target); } catch { /* absent */ }
 if (st) {
-  if (!st.isSymbolicLink()) { console.error(`✗ ${target} exists and is not a link — remove it first`); process.exit(1); }
+  if (!st.isSymbolicLink()) { console.error(`✗ ${target} exists and is not a link: remove it first`); process.exit(1); }
   fs.rmSync(target, { recursive: false, force: true });
 }
 // Windows: a directory junction needs no admin rights / developer mode.
