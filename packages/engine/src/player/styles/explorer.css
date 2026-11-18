@@ -39,3 +39,4 @@
 .ex-row.gone .nm { text-decoration: line-through; } .ex-row.gone { opacity: .45; }
 .ex-row.more { color: var(--fg-3); font-style: italic; cursor: default; }
 .i-blue { color: #519aba; } .i-yellow { color: #cbcb41; } .i-green { color: #8dc149; } .i-red { color: #cc3e44; } .i-orange { color: #e37933; } .i-purple { color: #a074c4; } .i-pink { color: #f55385; } .i-cyan { color: #519aba; } .i-gray { color: #8b949e; }
+.ex-row-wrap { overflow: hidden; }

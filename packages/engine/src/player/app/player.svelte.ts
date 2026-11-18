@@ -9,6 +9,7 @@ import { clamp, IR } from '../core/env.ts';
 import { model } from '../core/model.ts';
 import { showFile, stateAt, type State } from '../core/state.ts';
 import { sceneAt, scenes, total } from '../core/timeline.ts';
+import { settleTop } from '../core/explorer.ts';
 import { computeVoice, type Voice } from '../core/voice.ts';
 import type { Side, View } from '../../ir/types.ts';
 
@@ -33,9 +34,15 @@ class Player {
   /** Bumped when layout must be re-measured (resize, panels sliding). */
   epoch = $state(0);
 
+  /** Bumped when computed states must be recomputed (the explorer's size changed). */
+  stateVersion = $state(0);
+
   frame: State = $derived.by(() => {
+    void this.stateVersion;
     const s = stateAt(this.T);
     for (const op of this.userOps) op(s);
+    // a file opened while exploring is kept in view like any other
+    if (this.userOps.length) s.exTop = settleTop(s.exTop, s.exFocus || s.panes[s.active].file, this.T, s.exFocus);
     return s;
   });
   atEnd = $derived(this.started && this.T >= total - 1 && !this.playing);

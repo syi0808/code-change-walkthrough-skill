@@ -72,12 +72,24 @@ export function delShare(st: Step, dur: number): number {
 export type OpenPhaseName = 'locate' | 'travel' | 'press' | 'beat' | 'swap' | 'land' | 'reveal';
 export interface Phase<N extends string = string> { name: N; ms: number }
 
-/** One folder move in the explorer: the selection steps onto the row (FOLD_STEP * FOLD_SELECT), then it opens or closes. */
-export const FOLD_STEP = 330;
-export const FOLD_SELECT = 0.45;
+/** One folder click in the explorer walk: the pointer travels to the folder's row (FOLD_TRAVEL of the
+ *  step), presses until FOLD_CLICK, then the folder opens or closes in the rest of the step. */
+export const FOLD_STEP = 800;
+export const FOLD_TRAVEL = 0.45;
+export const FOLD_CLICK = 0.6;
+/** The end of the walk: the file's row comes into view before the pointer heads for it. */
+export const WALK_FILE = 400;
 const FOLD_MAX = 8;
 /** The explorer's locate phase for a file pick that closes and opens `folds` folders. */
-export const locateMs = (folds = 1): number => Math.max(610, (Math.min(folds, FOLD_MAX) + 1) * FOLD_STEP);
+export const locateMs = (folds = 0): number => Math.max(610, Math.min(folds, FOLD_MAX) * FOLD_STEP + WALK_FILE);
+/** Where a walk of `folds` folder clicks is at progress p (0..1 of the locate phase):
+ *  segment k (k === folds is the final segment, the file's row) and the progress within it. */
+export function walkAt(folds: number, p: number): { k: number; local: number } {
+  if (p >= 1) return { k: folds, local: 1 };
+  const ms = Math.max(0, p) * (folds * FOLD_STEP + WALK_FILE);
+  const k = Math.min(folds, Math.floor(ms / FOLD_STEP));
+  return { k, local: Math.min(1, k < folds ? (ms - k * FOLD_STEP) / FOLD_STEP : (ms - folds * FOLD_STEP) / WALK_FILE) };
+}
 
 export function openPhases(st: Step): Phase<OpenPhaseName>[] {
   const kind = st._openKind || 'tree';

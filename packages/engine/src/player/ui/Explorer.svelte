@@ -1,72 +1,94 @@
 <script lang="ts">
   // VS Code-like explorer. Folders start closed. Picking a file walks the tree the way a person
-  // does with the keyboard: the old file's folders close up to the folder both files share,
-  // the new file's folders open one at a time, and the selection steps onto each row as it
-  // goes (shared/tree-path foldMoves). All of it runs on the timeline clock (the "locate" phase).
-  import { onDestroy, untrack } from 'svelte';
-  import { slide } from 'svelte/transition';
+  // does with the mouse: the pointer clicks the old file's folders closed up to the folder both
+  // files share, then clicks the new file's folders open one at a time, and the selection follows
+  // each click (shared/tree-path foldMoves, timed by walkAt).
+  // Everything here is a function of the frame: which rows exist and how tall they are (a folder's
+  // rows grow in on the timeline, not on a wall-clock transition), where the selection is, and the
+  // scroll (state.exTop, core/explorer.ts). Nothing is read back from the screen to decide what to show.
+  import { onDestroy } from 'svelte';
   import { ORDER, player } from '../app/player.svelte.ts';
-  import { ease, fileIcon, ICON, IR, STATUS_LETTER, t } from '../core/env.ts';
-  import { fileBorn, fileGone } from '../core/timeline.ts';
-  import { changedStatus, dirs, treeRows, type TreeRow } from '../core/tree.ts';
-  import { FOLD_SELECT, FOLD_STEP } from '../../shared/timing.ts';
+  import { clamp, ease, fileIcon, ICON, IR, STATUS_LETTER, t } from '../core/env.ts';
+  import { ROW_H, setExplorerView } from '../core/explorer.ts';
+  import { resetSnapshots } from '../core/state.ts';
+  import { fileGone } from '../core/timeline.ts';
+  import { rowsAt, dirs, type TreeRow } from '../core/tree.ts';
+  import { FOLD_CLICK, FOLD_TRAVEL, walkAt } from '../../shared/timing.ts';
   import { chain, foldMoves } from '../../shared/tree-path.ts';
 
   const s = $derived(player.frame);
   const activeFile = $derived(s.panes[s.active].file);
   const target = $derived(s.exFocus || activeFile);
   const open = $derived(new Set(s.panes.flatMap((p) => p.tabs)));
-  const count = (o: Record<string, number>) => (player.started ? Object.keys(o).filter((f) => o[f] <= player.T).length : -1);
-  const born = $derived(count(fileBorn));
-  const gone = $derived(count(fileGone));
+  const isGone = (p: string) => player.started && fileGone[p] != null && fileGone[p] <= player.T;
 
-  /** The walk in progress: which move (k) and how far into it (local, 0..1). */
+  /** The walk in progress: which move (k; k === folds is the file's row) and how far into it (local, 0..1). */
   const motion = $derived.by(() => {
     const ex = s.exScroll;
     if (!ex) return null;
     const moves = foldMoves(dirs, ex.from, ex.file);
-    const x = Math.max(0, ex.p) * moves.length;
-    const k = Math.min(moves.length - 1, Math.floor(x));
-    return { moves, k, local: ex.p >= 1 ? 1 : x - k, from: ex.from, key: ex.key };
+    const folds = moves.length - 1;
+    const { k, local } = walkAt(folds, ex.p);
+    return { moves, folds, k, local, from: ex.from, file: ex.file, pick: ex.pick, cursor: ex.cursor };
   });
-  /** Each move: the selection steps onto the row, then the folder opens or closes. */
-  const stepP = (local: number) => ease(Math.min(1, local / FOLD_SELECT));
-  /** Folders open on the timeline: the path of the file in view, or the walk between two paths. */
-  const autoOpen = $derived.by(() => {
-    if (!player.started) return new Set<string>();
-    const m = motion;
-    if (!m) return new Set(chain(dirs, target));
-    const set = new Set(chain(dirs, m.from));
-    m.moves.forEach((mv, j) => {
-      if (j > m.k || (j === m.k && m.local < FOLD_SELECT)) return;
-      if (mv.kind === 'close') set.delete(mv.path);
-      else if (mv.kind === 'open') set.add(mv.path);
-    });
-    return set;
+  /** A folder move: the selection goes to the row on the click, the folder toggles when the click ends. */
+  const clickP = (local: number) => ease(clamp((local - FOLD_TRAVEL) / (FOLD_CLICK - FOLD_TRAVEL), 0, 1));
+  const toggleP = (local: number) => ease(clamp((local - FOLD_CLICK) / (1 - FOLD_CLICK), 0, 1));
+
+  interface Row extends TreeRow { g: number }
+  /** Rows on the timeline: the folders open before the current move, plus the one it toggles, growing or shrinking. */
+  const model = $derived.by((): { rows: Row[]; y: Map<string, number> } => {
+    const T = player.T, focus = s.exFocus;
+    let before: Set<string>, after: Set<string>, q = 1;
+    if (player.manualTree) before = after = new Set(player.expanded);
+    else if (!player.started) before = after = new Set();
+    else if (!motion) before = after = new Set(chain(dirs, target));
+    else {
+      before = new Set(chain(dirs, motion.from));
+      for (let j = 0; j < motion.k; j++) { const mv = motion.moves[j]; if (mv.kind === 'close') before.delete(mv.path); else if (mv.kind === 'open') before.add(mv.path); }
+      after = new Set(before);
+      const mv = motion.moves[motion.k];
+      if (motion.k < motion.folds && motion.local >= FOLD_CLICK) { if (mv.kind === 'close') after.delete(mv.path); else after.add(mv.path); q = toggleP(motion.local); }
+    }
+    const union = new Set([...before, ...after]);
+    const filter = player.ui.exFilter;
+    const inB = new Set(rowsAt(before, filter, T, focus, player.started).map((r) => r.path));
+    const inA = before === after ? inB : new Set(rowsAt(after, filter, T, focus, player.started).map((r) => r.path));
+    const rows: Row[] = [];
+    const y = new Map<string, number>();
+    let acc = 0;
+    for (const r of rowsAt(union, filter, T, focus, player.started)) {
+      const g = inA.has(r.path) && inB.has(r.path) ? 1 : inA.has(r.path) ? q : 1 - q;
+      if (g <= 0) continue;
+      rows.push({ ...r, open: r.kind === 'dir' ? after.has(r.path) : r.open, g });
+      y.set(r.path, acc);
+      acc += ROW_H * g;
+    }
+    return { rows, y };
   });
-  // once the viewer opens or closes a folder, the tree is theirs until playback resumes
-  const expanded = $derived(player.manualTree ? player.expanded : autoOpen);
-  const openKey = $derived([...expanded].sort().join('|'));
-  const rows: TreeRow[] = $derived.by(() => {
-    // recompute only when the tree's shape changes, not every frame
-    void [born, s.exFocus, openKey, player.ui.exFilter, player.started];
-    return untrack(() => treeRows(expanded, player.ui.exFilter, (p) => player.started && changedStatus(p) === 'added' && fileBorn[p] != null && fileBorn[p] > player.T && p !== s.exFocus));
-  });
-  const isGone = (p: string) => { void gone; return player.started && fileGone[p] != null && fileGone[p] <= player.T; };
   const onPath = (p: string) => !!target && (target === p || target.startsWith(p + '/'));
   /** The row the walk is on now: lit while everything else recedes. */
-  const cur = $derived(motion && motion.local < 1 ? motion.moves[motion.k].path : null);
-  // a folder opens or closes in what is left of its move
-  // (paused, a seek lands at once: nothing would re-measure the rows after a slide ends)
-  const rowDur = $derived(player.playing ? Math.round((FOLD_STEP * (1 - FOLD_SELECT) - 20) / player.speed) : 0);
+  const cur = $derived(motion && motion.k < motion.folds ? motion.moves[motion.k].path : null);
+  /** The selection: one bar that moves with the clicks (an object that moves is seen as one thing going somewhere). */
+  const sel = $derived.by((): { y: number; o: number } | null => {
+    if (!player.started) return null;
+    const Y = (p: string | null | undefined) => (p ? model.y.get(p) ?? null : null);
+    const m = motion;
+    if (!m) { const y = Y(target); return y == null ? null : { y, o: 1 }; }
+    let a: number | null, b: number | null, q: number;
+    if (!m.cursor) { a = Y(m.from); b = Y(m.file); q = ease(m.pick); }
+    else if (m.k < m.folds) { a = Y(m.k > 0 ? m.moves[m.k - 1].path : m.from); b = Y(m.moves[m.k].path); q = clickP(m.local); }
+    else { a = Y(m.folds > 0 ? m.moves[m.folds - 1].path : m.from); b = Y(m.file); q = m.pick; }
+    if (b == null) return a == null ? null : { y: a, o: 1 };
+    return a == null ? { y: b, o: q } : { y: a + (b - a) * q, o: 1 };
+  });
 
   let body: HTMLDivElement | undefined = $state();
-  let sel: HTMLDivElement | undefined = $state();
 
   function own() {
     if (player.manualTree) return;
     player.expanded.clear();
-    for (const d of autoOpen) player.expanded.add(d);
+    for (const d of chain(dirs, target)) player.expanded.add(d);
     player.manualTree = true;
   }
   function toggleDir(path: string) {
@@ -76,69 +98,17 @@
   }
   function collapseAll() { own(); player.expanded.clear(); player.commit(); }
 
-  // ---- layout: keep the row the walk is on in view
-  let anim: { key: string; from: number; to: number } | null = null;
-  let shown: string | null = null;
-  // Scroll as little as needed: the row comes in a quarter of the height from the edge it
-  // enters at. The list stays put when it can, so the selection itself is what moves on screen.
-  const centred = (row: HTMLElement): number | null => {
-    if (!body) return null;
-    const b = body.getBoundingClientRect(), r = row.getBoundingClientRect();
-    if (r.top >= b.top + 24 && r.bottom <= b.bottom - 24) return null; // already comfortably visible
-    const m = body.clientHeight * 0.25;
-    const y = r.top < b.top ? body.scrollTop + (r.top - b.top) - m : body.scrollTop + (r.bottom - b.bottom) + m;
-    return Math.max(0, Math.min(y, body.scrollHeight - body.clientHeight));
-  };
-  const rowOf = (p: string | null | undefined) => (p && body ? body.querySelector<HTMLElement>(`.ex-row[data-path="${CSS.escape(p)}"]`) : null);
+  // ---- layout: the explorer's size goes into the state (its scroll is computed there); then the scroll is applied
+  let applied: { el: HTMLElement; top: number } | null = null;
   const off = player.layout(ORDER.explorer, () => {
     if (!body) return;
-    scroll();
-    place();
+    if (setExplorerView(body.clientHeight, player.ui.exFilter)) { resetSnapshots(); player.stateVersion++; queueMicrotask(() => player.commit()); return; }
+    if (player.manualTree || !player.started) return;
+    // paused with nothing changed: leave the list where the viewer may have scrolled it
+    if (!player.playing && applied && applied.el === body && applied.top === s.exTop) return;
+    applied = { el: body, top: s.exTop };
+    body.scrollTop = s.exTop;
   });
-  // One selection that moves, instead of one row losing its highlight while another gains it:
-  // an object that moves continuously is seen as the same thing going somewhere, so the eye
-  // follows it up the old path and down the new one, and sees where the new file is.
-  function place() {
-    if (!sel) return;
-    const m = motion;
-    let y: number | null = null, o = 1;
-    if (m) {
-      const a = rowOf(m.k > 0 ? m.moves[m.k - 1].path : m.from), b = rowOf(m.moves[m.k].path);
-      const q = stepP(m.local);
-      if (b) { y = a ? a.offsetTop + (b.offsetTop - a.offsetTop) * q : b.offsetTop; if (!a && m.k === 0) o = q; }
-      else if (a) y = a.offsetTop;
-    } else if (target) {
-      const r = rowOf(target);
-      if (r) y = r.offsetTop;
-    }
-    sel.hidden = y == null || !player.started;
-    if (y != null) { sel.style.transform = `translateY(${y.toFixed(1)}px)`; sel.style.opacity = o < 1 ? o.toFixed(3) : ''; }
-  }
-  function scroll() {
-    if (!body) return;
-    const m = motion;
-    if (m) {
-      // each move brings its row into view while the selection steps onto it
-      const path = m.moves[m.k].path;
-      const key = `${m.key}:${m.k}:${path}`;
-      if (!anim || anim.key !== key) {
-        const row = rowOf(path);
-        const to = row ? centred(row) : null;
-        anim = { key, from: body.scrollTop, to: to ?? body.scrollTop };
-      }
-      body.scrollTop = anim.from + (anim.to - anim.from) * stepP(m.local);
-      shown = s.exScroll!.file;
-      return;
-    }
-    anim = null;
-    if (target && target !== shown) {
-      // reached without a walk (a seek, a jump to a definition): keep it in view without animating
-      shown = target;
-      const row = rowOf(target);
-      const to = row ? centred(row) : null;
-      if (to != null) body.scrollTop = to;
-    }
-  }
   onDestroy(off);
 </script>
 
@@ -148,10 +118,10 @@
     <button class="icon-btn sm" title={t('explorer.collapseAll')} onclick={collapseAll}>{@html ICON.collapse}</button></span></div>
   <div class="ex-root"><span class="tw open">{@html ICON.chevron}</span>{(IR.tree?.root || t('explorer.repository')).toUpperCase()}</div>
   <div class="ex-body" class:spot={!!target && player.started} role="tree" bind:this={body}>
-    <div class="ex-sel" bind:this={sel} hidden></div>
-    {#each rows as r (r.path)}
+    {#if sel}<div class="ex-sel" style="transform:translateY({sel.y.toFixed(1)}px){sel.o < 1 ? `;opacity:${sel.o.toFixed(3)}` : ''}"></div>{/if}
+    {#each model.rows as r (r.path)}
       {@const pad = `padding-left:${8 + r.depth * 12}px`}
-      <div class="ex-row-wrap" transition:slide={{ duration: rowDur }}>
+      <div class="ex-row-wrap" style={r.g < 1 ? `height:${(ROW_H * r.g).toFixed(2)}px;opacity:${r.g.toFixed(3)}` : null}>
         {#if r.kind === 'more'}
           <div class="ex-row more" style={pad}>{#each { length: r.depth } as _, k}<span class="ig" style="left:{14 + k * 12}px"></span>{/each}<span class="tw"></span><span class="nm">{t('explorer.omitted')}</span></div>
         {:else if r.kind === 'dir'}

@@ -14,7 +14,7 @@ So an IR never contains copied source code (unless the code is not in git), rare
 
 Pipeline: `authoring IR ──compile──► compiled IR (self-contained) ──render──► standalone HTML` (`code-walkthrough build`), or the same HTML served on localhost (`code-walkthrough serve`).
 
-The compiled IR also carries the repository's **file tree** at `head` (`tree`), so the player's explorer shows the real directory structure, not only the changed files. Folders start closed; picking a file closes the old file's folders and opens the new one's, one at a time, and the compiler times the pick by that number of moves (`_fold`). Only the files listed in `files` (plus the other changed files) have content. Opening any other file shows a "content not embedded" placeholder. Very large repositories (over 25,000 files) are pruned to the directories that lead to embedded files.
+The compiled IR also carries the repository's **file tree** at `head` (`tree`), so the player's explorer shows the real directory structure, not only the changed files. Folders start closed; picking a file has the pointer click the old file's folders closed and the new one's open, one at a time, and the compiler times the pick by that number of moves (`_fold`). Only the files listed in `files` (plus the other changed files) have content. Opening any other file shows a "content not embedded" placeholder. Very large repositories (over 25,000 files) are pruned to the directories that lead to embedded files.
 
 ---
 

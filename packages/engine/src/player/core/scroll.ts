@@ -20,10 +20,11 @@ function rowRange(v: CodeView, a: ScrollTarget): [number, number] | null {
   if (i0 == null) return null;
   return [i0, i1 == null ? i0 : i1];
 }
-/** Height of an explanation attached under a row (it scrolls into view with its line). */
+/** How far an explanation attached to a row reaches below it (it scrolls into view with its line). */
 function noteBelow(e: HTMLElement): number {
   const n = e.nextElementSibling as HTMLElement | null;
-  return n && n.classList.contains('note') ? n.offsetHeight + 8 : 0;
+  if (!n || !n.classList.contains('note')) return 0;
+  return Math.max(0, n.offsetTop + n.offsetHeight - (e.offsetTop + e.offsetHeight)) + 8;
 }
 /** Where the write head sits once the page carries it, and the stretch over which the page takes it over. */
 const HOLD = 0.62, EASE_IN = 0.16;

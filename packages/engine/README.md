@@ -69,7 +69,7 @@ scripts/build.mjs     player -> bundles -> dist/ and the skill's scripts/
 
 ## Design
 
-The player's layout and motion follow rules M1–M30 grounded in perception and learning research: visual momentum, overview+detail, procedural navigation, one clock, one moving region at a time, room before content, a steady rhythm, lines uncovered in place while the page carries the write head, reading that paces the scene, a selection that moves instead of blinking, scrolls that start where the eye is, explanations read at the top next to the question, an explorer that walks the path, the outside of the diff shown and labelled, and words kept as data. See [`docs/design-rationale.md`](docs/design-rationale.md).
+The player's layout and motion follow rules M1–M32 grounded in perception and learning research: visual momentum, overview+detail, procedural navigation, one clock, one moving region at a time, room before content, a steady rhythm, lines uncovered in place while the page carries the write head, reading that paces the scene, a selection that moves instead of blinking, explanations read at the top next to the question, an explorer that walks the path, the outside of the diff shown and labelled, words kept as data, frames that depend on their time only, and explanations placed where they hide nothing. See [`docs/design-rationale.md`](docs/design-rationale.md).
 
 ## Library use
 

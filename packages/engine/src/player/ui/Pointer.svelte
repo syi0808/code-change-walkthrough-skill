@@ -23,7 +23,7 @@
       return { x: st.left + st.width * 0.62, y: st.top + st.height * 0.88 };
     }
     if (a.kind === 'ex') {
-      const row = document.querySelector<HTMLElement>(`.ex-row[data-file="${CSS.escape(a.path)}"]`);
+      const row = document.querySelector<HTMLElement>(`.ex-row[data-path="${CSS.escape(a.path)}"]`);
       const box = document.querySelector('.ex-body')?.getBoundingClientRect();
       if (!row || !box || !box.width) return null;
       const r = row.getBoundingClientRect();

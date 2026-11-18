@@ -1,10 +1,13 @@
 // The walkthrough state is a pure function of timeline time:
 //   state(T) = reduce(snapshot at scene start, steps started by T, their progress)
 // so play, pause, scrub, speed and scene jumps all just pick a T.
-import { itemMs, openPhases, phaseAt, reached, REFS_HEAD } from '../../shared/timing.ts';
+import { FOLD_CLICK, FOLD_TRAVEL, itemMs, openPhases, phaseAt, reached, REFS_HEAD, walkAt } from '../../shared/timing.ts';
+import { foldMoves } from '../../shared/tree-path.ts';
 import type { DiffSettings, Effect, GraphEdge, GraphNode, LineRange, RefItem, ReplayMode, Side, Step, View } from '../../ir/types.ts';
 import { clamp, clone, ease, IR, t } from './env.ts';
 import { fileSpan, replays, sceneAt, scenes } from './timeline.ts';
+import { dirs } from './tree.ts';
+import { settleTop, walkTop } from './explorer.ts';
 
 export interface ScrollTarget { side: Side; from?: number; to?: number; line?: number }
 export interface Scroll { to: ScrollTarget; mode: 'center' | 'top' | 'ensure' | 'follow'; p: number; prev: Scroll | null }
@@ -50,8 +53,11 @@ export interface State {
   exFocus: string | null;
   /** The explorer moving to a file: linear progress of the "locate" phase (or of the swap after a tab click).
    *  It walks from `from` (the file shown until now) to `file`: folders close and open one at a time
-   *  (shared/tree-path foldMoves) and the selection steps along. */
-  exScroll: { file: string; from: string | null; p: number; key: number } | null;
+   *  (shared/tree-path foldMoves), each clicked by the pointer when `cursor` is set. `pick` is the
+   *  selection's move onto the file itself (the click on its row). */
+  exScroll: { file: string; from: string | null; p: number; pick: number; cursor: boolean; key: number } | null;
+  /** The explorer's scroll (px): kept in the state like everything else on screen (see core/explorer.ts). */
+  exTop: number;
   reveal: { file: string; p: number } | null;
   scene: number;
   sceneP: number;
@@ -68,7 +74,7 @@ const EFFECT_TONE: Record<Effect, string> = { safe: 'info', check: 'warn', break
 
 export const DIFF_DEFAULT: DiffSettings = { mode: 'unified', algorithm: 'patience', granularity: 'word', context: 3, whitespace: 'collapse' };
 const newPane = (): PaneState => ({ tabs: [], file: null, view: 'after', diff: { ...DIFF_DEFAULT }, scroll: null, mem: {}, hl: [], focus: null, notes: [], flash: null, tokline: null, enter: null });
-const initState = (): State => ({ layout: 'single', active: 0, panes: [newPane(), newPane()], pointer: null, pointerAt: null, keys: null, toast: null, refs: null, graph: null, map: null, say: '', typing: [], exFocus: null, exScroll: null, reveal: null, scene: 0, sceneP: 0, sceneT: 0, shown: 0, guideScene: 0, bridge: null });
+const initState = (): State => ({ layout: 'single', active: 0, panes: [newPane(), newPane()], pointer: null, pointerAt: null, keys: null, toast: null, refs: null, graph: null, map: null, say: '', typing: [], exFocus: null, exScroll: null, exTop: 0, reveal: null, scene: 0, sceneP: 0, sceneT: 0, shown: 0, guideScene: 0, bridge: null });
 
 function resetTransient(s: State): void {
   for (const p of s.panes) { p.hl = []; p.focus = null; p.notes = []; p.flash = null; p.tokline = null; p.enter = null; }
@@ -119,10 +125,28 @@ function applyOpen(s: State, st: Step, pi: number, p: number, dur: number): void
   if (kind !== 'same' && !reached(ph, ms, 'swap')) {
     const target: Anchor = kind === 'tree' ? { kind: 'ex', path: file } : { kind: 'tab', pane: pi, file };
     const from = s.pointer?.to || s.pointerAt;
-    // from the file the explorer shows now (the active pane's), through its folders, to this one
-    if (kind === 'tree') { s.exFocus = file; s.exScroll = { file, from: s.panes[s.active].file, p: at.name === 'locate' ? at.p : 1, key: st._id || 0 }; }
-    if (at.name === 'locate') s.pointer = null; // only the explorer moves; the pointer waits
-    else if (at.name === 'travel') s.pointer = { from, to: target, p: ease(at.p) };
+    // from the file the explorer shows now (the active pane's), through its folders, to this one:
+    // the pointer clicks each folder on the way (shared/tree-path foldMoves, timed by walkAt)
+    let last: Anchor | null = from;
+    if (kind === 'tree') {
+      const shown = s.panes[s.active].file;
+      const moves = foldMoves(dirs, shown, file);
+      const folds = moves.length - 1;
+      if (folds > 0) last = { kind: 'ex', path: moves[folds - 1].path };
+      s.exFocus = file;
+      s.exScroll = { file, from: shown, p: at.name === 'locate' ? at.p : 1, pick: at.name === 'press' ? ease(at.p) : reached(ph, ms, 'beat') ? 1 : 0, cursor: true, key: st._id || 0 };
+      s.exTop = walkTop(s.exTop, shown, file, s.exScroll.p, nowT);
+      if (at.name === 'locate') {
+        const { k, local } = walkAt(folds, at.p);
+        if (k < folds) {
+          const row: Anchor = { kind: 'ex', path: moves[k].path };
+          const prev: Anchor | null = k === 0 ? from : { kind: 'ex', path: moves[k - 1].path };
+          s.pointer = local < FOLD_TRAVEL ? { from: prev, to: row, p: ease(local / FOLD_TRAVEL) } : { from: row, to: row, p: 1, click: local < FOLD_CLICK };
+        } else s.pointer = folds > 0 ? { from: last, to: last, p: 1 } : null; // the file's row scrolls into view
+        return;
+      }
+    }
+    if (at.name === 'travel') s.pointer = { from: last, to: target, p: ease(at.p) };
     else s.pointer = { from: target, to: target, p: 1, click: at.name === 'press' };
     return; // nothing opens before the click
   }
@@ -135,7 +159,10 @@ function applyOpen(s: State, st: Step, pi: number, p: number, dur: number): void
   const before = s.panes[s.active].file;
   showFile(s, pi, file, st.view);
   // after a tab click the explorer follows the screen change: its selection glides along
-  if (kind === 'tab' && at.name === 'swap') s.exScroll = { file, from: before, p: at.p, key: st._id || 0 };
+  if (kind === 'tab' && at.name === 'swap') {
+    s.exScroll = { file, from: before, p: at.p, pick: at.p, cursor: false, key: st._id || 0 };
+    s.exTop = walkTop(s.exTop, before, file, at.p, nowT);
+  }
   if (st.diff) Object.assign(pane.diff, st.diff);
   if (kind !== 'same') pane.enter = { key: st._id || 0, p: at.name === 'swap' ? at.p : 1 };
   if (st._r) {
@@ -275,16 +302,28 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
 }
 
 const snapshots: State[] = [];
+/** Forget computed scene starts (the explorer's size or filter changed, and its scroll with them). */
+export function resetSnapshots(): void { snapshots.length = 0; }
+/** The time the steps are being applied at (the explorer hides files that do not exist yet). */
+let nowT = 0;
+/** Apply a step, then let the explorer settle on the file in view unless it is walking to one. */
+function step(s: State, st: Step, p: number, dur: number): void {
+  apply(s, st, p, dur);
+  if (!s.exScroll) s.exTop = settleTop(s.exTop, s.exFocus || s.panes[s.active].file, nowT, s.exFocus);
+}
 function sceneStartState(k: number): State {
   if (snapshots[k]) return snapshots[k];
   let s: State;
   if (k === 0) s = initState();
   else {
     s = clone(sceneStartState(k - 1));
-    for (const t of scenes[k - 1].timed) apply(s, t.st, 1, t.dur);
+    const sc = scenes[k - 1];
+    for (const t of sc.timed) { nowT = sc.t0 + t.start + t.dur; step(s, t.st, 1, t.dur); }
   }
   resetTransient(s);
-  for (const p of s.panes) if (p.scroll) { p.scroll.p = 1; p.scroll.prev = null; }
+  // a scene starts where the last one left the editor: the target keeps the targets before it, so
+  // where it rests is computed the same way at the start of this scene as at the end of the last
+  for (const p of s.panes) if (p.scroll) p.scroll.p = 1;
   snapshots[k] = s;
   return s;
 }
@@ -307,8 +346,11 @@ export function stateAt(T: number): State {
   }
   for (const x of sc.timed) {
     if (t < x.start) continue;
-    apply(s, x.st, x.dur ? clamp((t - x.start) / x.dur, 0, 1) : 1, x.dur);
+    nowT = T;
+    step(s, x.st, x.dur ? clamp((t - x.start) / x.dur, 0, 1) : 1, x.dur);
   }
+  nowT = T;
+  if (!s.exScroll) s.exTop = settleTop(s.exTop, s.exFocus || s.panes[s.active].file, T, s.exFocus);
   s.scene = k;
   s.sceneP = clamp(t / sc.duration, 0, 1);
   s.sceneT = t;

@@ -15,7 +15,7 @@
   .wt-panes.columns .pane + .pane { border-left: 0; border-top: 1px solid var(--line); }
   .row .gn { width: 40px; padding-right: 6px; } .row .gn.n { left: 40px; }
   .row.fold .fold-gut { width: 98px; }
-  .note { margin-left: 16px; }
+  .note.below { left: 16px !important; }
   .wt-ctrl { grid-template-columns: auto minmax(0, 1fr); padding: 6px 16px 8px; }
   .ctrl-right { grid-column: 1 / -1; justify-content: space-between; }
   .ctrl-hint { display: none; }

@@ -119,14 +119,15 @@ export function decorate(ps: PaneState, s: State, m: Model, v: CodeView): Decora
 }
 
 /** Line ranges the walkthrough points at in this pane: folds around them open. */
-export function pointedRanges(ps: PaneState, s: State): { side: 'before' | 'after'; from: number; to: number }[] {
-  const refs: { side: 'before' | 'after'; from: number; to: number }[] = [...ps.hl];
-  if (ps.focus) refs.push(ps.focus);
-  for (const n of ps.notes) refs.push({ side: n.side, from: n.line, to: n.line });
-  if (ps.flash) refs.push(ps.flash);
-  if (ps.tokline) refs.push({ side: ps.tokline.side, from: ps.tokline.line, to: ps.tokline.line });
+/** Ranges the walkthrough points at, with how far the pointing has come (p: a fold it opens grows in by it). */
+export function pointedRanges(ps: PaneState, s: State): { side: 'before' | 'after'; from: number; to: number; p: number }[] {
+  const refs: { side: 'before' | 'after'; from: number; to: number; p: number }[] = ps.hl.map((h) => ({ side: h.side, from: h.from, to: h.to, p: h.p }));
+  if (ps.focus) refs.push({ side: ps.focus.side, from: ps.focus.from, to: ps.focus.to, p: ps.focus.p });
+  for (const n of ps.notes) refs.push({ side: n.side, from: n.line, to: n.line, p: 1 });
+  if (ps.flash) refs.push({ side: ps.flash.side, from: ps.flash.from, to: ps.flash.to, p: 1 });
+  if (ps.tokline) refs.push({ side: ps.tokline.side, from: ps.tokline.line, to: ps.tokline.line, p: 1 });
   const to = ps.scroll?.to;
-  if (to && ps.scroll!.mode !== 'top') refs.push({ side: to.side, from: to.from ?? to.line ?? 1, to: to.to ?? to.line ?? 1 });
-  for (const t of s.typing) if (t.file === ps.file) refs.push(t);
+  if (to && ps.scroll!.mode !== 'top') refs.push({ side: to.side, from: to.from ?? to.line ?? 1, to: to.to ?? to.line ?? 1, p: ps.scroll!.p });
+  for (const t of s.typing) if (t.file === ps.file) refs.push({ side: t.side, from: t.from, to: t.to, p: 1 });
   return refs;
 }

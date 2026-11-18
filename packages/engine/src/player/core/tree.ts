@@ -1,6 +1,7 @@
 // The explorer's file tree (VS Code-like): the repository at head plus every embedded file.
 import { dirIndex } from '../../shared/tree-path.ts';
 import { IR } from './env.ts';
+import { fileBorn } from './timeline.ts';
 
 export interface DirNode { name: string; path: string; dirs: Map<string, DirNode>; dirList: DirNode[]; files: { name: string; path: string }[]; changed: number; partial: boolean }
 export const changedStatus = (p: string): string | null => { const f = IR.files[p]; return f && f.status !== 'context' ? f.status || null : null; };
@@ -82,4 +83,9 @@ export function treeRows(expanded: Set<string>, filter: boolean, hide: (path: st
   };
   walk(treeRoot, 0);
   return rows;
+}
+
+/** Rows the explorer shows for a set of open folders at time T: files added later stay hidden until they exist. */
+export function rowsAt(open: Set<string>, filter: boolean, T: number, focus: string | null, started = true): TreeRow[] {
+  return treeRows(open, filter, (p) => started && changedStatus(p) === 'added' && fileBorn[p] != null && fileBorn[p] > T && p !== focus);
 }
