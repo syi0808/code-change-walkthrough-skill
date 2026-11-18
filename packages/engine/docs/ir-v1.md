@@ -80,7 +80,7 @@ The compiled IR also carries the repository's **file tree** at `head` (`tree`), 
       "goal": "What the viewer knows after this scene (one sentence)",
       "question": "The question the viewer has now, which this scene answers (shown above the code all scene long)",
       "at": { "file": "path/to/file.ts", "hunk": 2 },   // play right after the tour replays this hunk (or this file)
-      "bridge": "Why this comes next: how the previous scene's answer raises this question (transition card)",
+      "bridge": "Why this comes next: how the previous scene's answer raises this question (shown in the heading band when the scene starts)",
       "narration": "One lead sentence (why).\n\n- one bullet per visual beat\n- … (supports `code`, **bold**, *italic*)",
       "steps": [ /* Step */ ]
     }
@@ -99,27 +99,27 @@ By default the compiler builds a **tour** that replays every changed hunk of eve
   | Tempo | Replay | Default for |
   |---|---|---|
   | `key` | typed character by character at a constant cadence (up to ~400 characters; longer hunks fall back to `normal` instead of typing faster) | a hunk a scene is attached to |
-  | `normal` | lines arrive one by one (~80 ms per line) | everything else |
+  | `normal` | lines arrive one by one (~107 ms per line) | everything else |
   | `skim` | the block appears at once | wiring: imports, re-exports, registrations, barrel files |
 
   Removed lines always turn red first.
 - **Files appear and disappear.** An added file appears in the explorer when the tour (or a scene) first reaches it. A deleted file is struck through after its replay. A file's later hunks look unwritten until the tour reaches them.
-- **Segments are light.** Replay segments carry no narration, no transition card, and no end-of-scene pause. The strip shows the file, `hunk i/n`, and a question ("What changed in …?", or `tour.questions`). The walkthrough panel lists them as file rows with one dot per hunk, and its header counts the hunks seen.
+- **Segments are light.** Replay segments carry no narration, no bridge, and no end-of-scene pause. The strip shows the file, `hunk i/n`, and a question ("What changed in …?", or `tour.questions`). The walkthrough panel lists them as file rows with one dot per hunk, and its header counts the hunks seen.
 - **Returning to a file.** When an explanation scene continues in a file the tour has since left, the compiler inserts an `open` (a tab click) so that the switch is visible.
 
 A `replay` step (`{ "do": "replay", "file", "hunk", "tempo" }`) is what the tour generates. Authors rarely write it themselves.
 
 **How the player presents a scene** (see `design-rationale.md`):
-1. Every scene after the first opens with a short **transition card**. It shows what was just seen, the `bridge`, the `question` this scene answers, and the file it goes to. The previous view stays dimmed behind the card, and the structure map marks the next stop.
+1. Every scene after the first opens with a short **bridge** in the heading band at the top of the code: what was just seen, the `bridge`, and the file it goes to, right under the `question` this scene answers (marked in the strip). The code stays visible, receding a little, and the structure map marks the next stop.
 2. While the scene plays, the strip above the code shows the scene number, the **question**, and the file in view.
-3. Only **one explanation is visible at a time**: the current narration item or the latest `note`, whichever is newer. It is attached right under the code range most recently highlighted. When there is no code to attach to, for example the lead sentence or a graph, it appears as a caption at the bottom of the editor.
+3. Only **one explanation is visible at a time**: the current narration item or the latest `note`, whichever is newer. It is attached right under the code range most recently highlighted. When there is no code to attach to, for example the lead sentence or a graph, it appears in the heading band at the top of the code, under the scene's question.
 4. Only the two most recent highlights stay fully salient; older ones recede to a thin bar.
 
-**Narration items.** The narration is split into *items*: each sentence of a prose paragraph, and each `- ` bullet of a list paragraph. Items appear one by one as the scene plays. The current item is emphasised, earlier items stay, and later items are faint. By default the items are spread over the scene's steps by text length. A step can pin an item with **`cue: n`** (1-based), which makes item *n* appear when that step starts. Pin the items that name something on screen.
+**Narration items.** The narration is split into *items*: each sentence of a prose paragraph, and each `- ` bullet of a list paragraph. Items appear one by one as the scene plays. The current item is emphasised, earlier items stay, and later items are faint. A step can pin an item with **`cue: n`** (1-based), which makes item *n* appear when that step starts. Pin the items that name something on screen. An unpinned item arrives with the last unpinned highlight, focus, note, goto, refs, type, reveal or graph step before the next pin; the rest are spread by reading time. Every item and every `note` stays for its reading time: a step that brings in the next item or a note waits until then (they share one voice).
 
 **Scene boundaries.** When a scene ends, highlights, focus, notes, the pointer, the references panel, the graph and the `say` caption are cleared. Open tabs, layout, scroll positions and diff settings carry over, the same way they persist in an IDE.
 
-The scene duration is the longer of two values: the time its steps take, and the reading time of its narration. By default the player pauses at the end of every scene.
+The scene duration is the longer of two values: the time its steps take, and the time its narration items need (each one's reading time, waited for before the next). By default the player pauses at the end of every scene.
 
 ## Step: common fields
 
@@ -147,7 +147,7 @@ The scene duration is the longer of two values: the time its steps take, and the
 | `focus` | `range` | Dims everything outside the range and the current highlights |
 | `unfocus` | `pane?` | Clears the focus |
 | `note` | `at`, `text` (≤ 220 chars, inline markdown), `tone?` `info`·`why`·`risk`·`tip` | Shows an inline callout under the last line of the anchor |
-| `type` | `range` | **Replays an edit.** Until this step runs (within its scene), the range looks *unwritten*: its added lines are hidden and its removed lines look unchanged. When the step runs, removed lines turn red one by one, then added text is typed in with a caret. The duration is derived from the amount of text at one constant cadence (about 38 chars/s at 1×), so a long edit takes longer instead of typing faster. Works in `diff` (unified or split) and in `after` (for example, a new file). Use it for the 1–3 key edits of a walkthrough, each ≤ ~15 lines |
+| `type` | `range` | **Replays an edit.** Until this step runs (within its scene), the range looks *unwritten*: its added lines are hidden and its removed lines look unchanged. When the step runs, removed lines turn red one by one, then added text is typed in with a caret. The duration is derived from the amount of text at one constant cadence (about 29 chars/s at 1×), so a long edit takes longer instead of typing faster. Works in `diff` (unified or split) and in `after` (for example, a new file). Use it for the 1–3 key edits of a walkthrough, each ≤ ~15 lines |
 | `goto` | `from: {at, token}`, `to: {file, at?, view?, pane?}` | Simulates Go to Definition: the pointer moves to `token`, holds ⌘ with the token underlined, clicks, jumps to the target, then flashes and highlights it. `to.at` defaults to `{symbol: token}`. `to.view` defaults to the view already open for that file in the target pane, otherwise `after` (like an IDE, a jump lands in the current code); `before` if the file was deleted. Set `"view": "diff"` to land in the diff |
 | `refs` | `symbol`, `items: [{file, at, label?, view?}]`, `title?` | Opens a "N references" panel and visits each item in order |
 | `graph` | `pin?` (default `true`), `unpin?` with `hide`, `nodes: [{id, label, sub?, file?, status?}]` (`status`: `added`·`modified`·`deleted`·`renamed`·`context`; defaults to the file's status, else `context`. Nodes without `file` are fine for external things such as a cron, a queue or an S3 path), `edges: [{from, to, label?, style?: "dashed"}]`, `highlight?: [nodeId \| "from->to"]`, `title?`, `size?` `panel`·`full`. Alternatives: only `highlight` to update the current graph, or `hide: true` | Draws a layered relationship graph, **full screen by default** (`size: "panel"` for a card). When its scene ends, a pinned graph docks as the **structure map** at the top of the walkthrough panel and stays for the rest of the walkthrough, lighting up the node whose `file` is in view. So give nodes a `file`. A later pinned graph replaces the map; `{ "do": "graph", "hide": true, "unpin": true }` removes it. Clicking a node with `file` opens that file |

@@ -119,10 +119,10 @@ describe('render', () => {
     const res = compileFile(example, { repo });
     res.ir.meta!.title = '{{CSS}} </script><b>x';
     res.ir.files['src/config.ts'].after += '\n// {{JS}} </script> \n';
-    const html = render(res.ir);
+    const html = render(res.ir, { i18n: { language: 'xx', strings: { 'top.theme': '{{IR}} </script>' } } });
     assert.ok(html.includes('<title>{{CSS}} &lt;/script&gt;&lt;b&gt;x</title>'), 'title escaped, not substituted');
-    assert.equal(html.split('{{').length - 1, 3, 'only the literal occurrences in data remain (title, its copy in the IR, the file)');
-    assert.equal((html.match(/<\/script>/g) || []).length, 2, 'IR and player scripts close once each');
+    assert.equal(html.split('{{').length - 1, 4, 'only the literal occurrences in data remain (title, its copy in the IR, the file, the string table)');
+    assert.equal((html.match(/<\/script>/g) || []).length, 3, 'IR, string table and player scripts close once each');
   });
 });
 
@@ -171,5 +171,71 @@ describe('skill scripts', () => {
     const digest = execFileSync(process.execPath, [path.join(SKILL_SCRIPTS, 'collect.mjs'), '--repo', repo, '--out', path.join(tmp, 'ctx')], { encoding: 'utf8' });
     assert.match(digest, /# Change context/);
     assert.ok(fs.existsSync(path.join(tmp, 'ctx', 'context.json')));
+  });
+});
+
+describe('context outside the diff', () => {
+  test('an impact step marks which places are outside the diff and carries verdicts', () => {
+    const ir = load();
+    const file = Object.keys(ir.files).find((f) => ir.files[f].status === 'context') || 'src/config.ts';
+    ir.chapters[ir.chapters.length - 1].scenes!.push({ id: 'impact', question: 'Who else?', bridge: 'Then.', steps: [{ do: 'impact', symbol: 'request', change: 'retries now', items: [{ file, at: 1, effect: 'safe', relation: 'reads' }] }] });
+    ir.meta = { ...(ir.meta || {}), impact: [{ text: 'callers unchanged', effect: 'safe' }] };
+    const res = compile(ir, { repo });
+    assert.equal(res.ok, true, JSON.stringify(res.errors));
+    const st = stepsOf(res.ir).find((x) => x.do === 'impact')!;
+    assert.equal(st._items?.[0].effect, 'safe');
+    assert.equal(st._items?.[0].outside, res.ir.files[file].status === 'context');
+    assert.ok(!res.warnings.some((w) => w.path === 'meta.impact'), 'meta.impact given: no warning');
+  });
+  test('a bad verdict is an error, and a missing meta.impact a warning', () => {
+    const ir = load();
+    delete ir.meta?.impact;
+    ir.meta = { ...(ir.meta || {}), impact: undefined };
+    ir.chapters[ir.chapters.length - 1].scenes!.push({ id: 'impact', steps: [{ do: 'impact', items: [{ file: 'src/config.ts', at: 1, effect: 'maybe' as never }] }] });
+    const res = compile(ir, { repo });
+    assert.match(res.errors.map((e) => e.message).join('\n'), /effect must be one of/);
+    assert.ok(res.warnings.some((w) => w.path === 'meta.impact'));
+  });
+});
+
+describe('explorer walk', () => {
+  test('folders close up to the shared folder, then open down to the file; compact folders are one move', async () => {
+    const { dirIndex, chain, foldMoves } = await import('../src/shared/tree-path.ts');
+    const ix = dirIndex(['src/app/api/a.ts', 'src/app/api/b.ts', 'src/lib/x/y.ts', 'src/lib/z.ts', 'README.md']);
+    assert.deepEqual(chain(ix, 'src/app/api/a.ts'), ['src', 'src/app/api']);
+    assert.deepEqual(foldMoves(ix, 'src/app/api/a.ts', 'src/lib/x/y.ts').map((m) => `${m.kind}:${m.path}`), ['close:src/app/api', 'open:src/lib', 'open:src/lib/x', 'file:src/lib/x/y.ts']);
+    assert.deepEqual(foldMoves(ix, null, 'README.md').map((m) => m.kind), ['file']);
+  });
+  test('tree picks are timed by the number of folder moves', () => {
+    const res = compileFile(example, { repo });
+    const picks = stepsOf(res.ir).filter((st) => st.do === 'open' && st._openKind === 'tree');
+    assert.ok(picks.length > 0 && picks.every((st) => typeof st._fold === 'number' && st._fold >= 0));
+  });
+});
+
+describe('i18n', () => {
+  test('the published Korean table is complete and keeps every placeholder', async () => {
+    const { validateTable, EN } = await import('../src/i18n/index.ts');
+    const raw = JSON.parse(fs.readFileSync(path.join(ROOT, '..', '..', 'i18n', 'ko.json'), 'utf8'));
+    const { table, problems } = validateTable(raw);
+    assert.deepEqual(problems, []);
+    assert.equal(Object.keys(table!.strings).length, Object.keys(EN).length);
+  });
+  test('the compiler names tour scenes from the table, and the page embeds it', () => {
+    const ir = load();
+    const table = { language: 'ko', strings: { 'tour.question': '{name}: 무엇이 바뀌었나' } };
+    ir.meta = { ...(ir.meta || {}), language: 'ko' };
+    const res = compile(ir, { repo, i18n: table });
+    assert.ok(scenesOf(res.ir).some((x) => x.auto && /: 무엇이 바뀌었나$/.test(x.question || '')));
+    const html = render(res.ir, { i18n: res.i18n });
+    assert.match(html, /<script type="application\/json" id="walkthrough-i18n">\{"language":"ko"/);
+    const noTable = compile(load(), { repo });
+    assert.ok(!noTable.warnings.some((w) => w.path === 'meta.language') || /^en/.test(load().meta?.language || 'en') === false);
+  });
+  test('a table with unknown keys or broken placeholders keeps only what is valid', async () => {
+    const { validateTable } = await import('../src/i18n/index.ts');
+    const { table, problems } = validateTable({ language: 'xx', strings: { 'nope': 'a', 'refs.count': 'no hole', 'top.theme': 'T' } });
+    assert.deepEqual(Object.keys(table!.strings), ['top.theme']);
+    assert.ok(problems.some((p) => /unknown key/.test(p)) && problems.some((p) => /placeholders/.test(p)));
   });
 });

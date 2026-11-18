@@ -1,4 +1,5 @@
 // The explorer's file tree (VS Code-like): the repository at head plus every embedded file.
+import { dirIndex } from '../../shared/tree-path.ts';
 import { IR } from './env.ts';
 
 export interface DirNode { name: string; path: string; dirs: Map<string, DirNode>; dirList: DirNode[]; files: { name: string; path: string }[]; changed: number; partial: boolean }
@@ -45,6 +46,12 @@ export const treeRoot: DirNode = (() => {
   sortTree(root);
   return root;
 })();
+
+/** The same folders as an index for walking paths (shared with the compiler, which times the walk). */
+export const dirs = dirIndex(
+  [...(IR.tree ? IR.tree.files.map(([d, name]) => (IR.tree!.dirs[d] ? `${IR.tree!.dirs[d]}/${name}` : name)) : []), ...Object.keys(IR.files)],
+  IR.tree?.partial || [],
+);
 
 /** Follow single-child directory chains (VS Code "compact folders"). */
 export function compact(dir: DirNode): { node: DirNode; label: string } {

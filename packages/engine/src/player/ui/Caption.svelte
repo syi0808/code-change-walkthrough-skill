@@ -1,20 +1,50 @@
 <script lang="ts">
-  // The voice when it has no code line to sit under (the scene's lead sentence, graph
-  // scenes): a caption over the bottom of the editor, in a fixed layer (no layout shift).
+  // The heading band: one place, at the top of the code (under the question strip, the tabs and
+  // the path), for everything said without a code line to sit under. Between scenes it carries
+  // the bridge (why this comes next); then the scene's lead sentence; in graph scenes, the
+  // narration. It unrolls downwards and rolls back up, and the code under it stays sharp:
+  // a scene change is told next to the question, not in a card over the code.
   import { onDestroy } from 'svelte';
   import { ORDER, player } from '../app/player.svelte.ts';
+  import { baseName, fileIcon, IR, mdInline, t } from '../core/env.ts';
+  import { scenes } from '../core/timeline.ts';
   import { voiceHtml } from './voice-html.ts';
 
-  const v = $derived(player.voice && !player.voicePlaced ? player.voice : null);
+  const s = $derived(player.frame);
+  const sc = $derived(scenes[s.scene]);
+  const prev = $derived(scenes[s.scene - 1]);
+  const bridging = $derived(player.live && !!s.bridge && !sc.auto);
+  const v = $derived(!bridging && player.voice && !player.voicePlaced ? player.voice : null);
   let cap: HTMLDivElement | undefined = $state();
   const off = player.layout(ORDER.caption, () => {
-    if (!cap || !v) return;
+    if (!cap) return;
+    // hang from the top of the active editor (under its tabs and path), across the panes
     const pr = document.querySelector('.wt-panes')!.getBoundingClientRect();
-    Object.assign(cap.style, { left: `${pr.left + 24}px`, width: `${pr.width - 48}px`, top: `${pr.bottom - 24}px` });
+    const ed = document.querySelectorAll('.wt-panes .pane')[s.active]?.querySelector('.editor');
+    const top = ed ? ed.getBoundingClientRect().top : pr.top;
+    Object.assign(cap.style, { left: `${pr.left}px`, width: `${pr.width}px`, top: `${top}px` });
   });
   onDestroy(off);
 </script>
 
-<div class="wt-caption" class:show={!!v} aria-live="polite" bind:this={cap}>
-  {#if v}{#key v.key}<div class="cap-in swap">{@html voiceHtml(v)}</div>{/key}{/if}
+<div class="wt-caption" class:show={bridging || !!v} class:bridge={bridging} aria-live="polite" bind:this={cap}>
+  <div class="cap-band">
+    {#if bridging}
+      {#key s.scene}
+        <div class="cap-in br swap">
+          <div class="br-eyebrow">
+            {#if sc.si === 0}<span class="br-ch">{t('bridge.chapter', { n: sc.ci + 1, title: sc.chapter.title || '' })}</span>{/if}
+            {#if prev}<span class="br-from">{t('bridge.justSaw', { title: prev.title || '' })}</span>{/if}
+          </div>
+          {#if sc.bridge}<div class="br-why">{@html mdInline(sc.bridge)}</div>{/if}
+          {#if sc.where}
+            {@const icon = fileIcon(baseName(sc.where))}
+            <div class="br-where"><span class="br-to">{t('bridge.next')}</span><span class="o-file" title={sc.where}><span class="fi {icon[1]}">{icon[0]}</span><span class="nm">{baseName(sc.where)}</span>{#if IR.files[sc.where]?.role}<span class="role">{IR.files[sc.where].role}</span>{/if}</span></div>
+          {/if}
+        </div>
+      {/key}
+    {:else if v}
+      {#key v.key}<div class="cap-in swap">{@html voiceHtml(v)}</div>{/key}
+    {/if}
+  </div>
 </div>

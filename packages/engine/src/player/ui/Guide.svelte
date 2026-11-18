@@ -4,7 +4,7 @@
   // the timeline clock, so it never moves at the same moment as the code.
   import { onDestroy } from 'svelte';
   import { ORDER, player } from '../app/player.svelte.ts';
-  import { fileIcon, fmt, ICON, IR, md, mdInline, T_ } from '../core/env.ts';
+  import { fileIcon, fmt, ICON, IR, md, mdInline, t } from '../core/env.ts';
   import { replays, scenes, total, type SceneRT } from '../core/timeline.ts';
   import { Tween } from '../core/tween.ts';
 
@@ -79,17 +79,18 @@
   onDestroy(off);
 </script>
 
-<aside class="wt-guide" aria-label={T_('워크스루', 'Walkthrough')}>
-  <div class="gd-head"><span>{T_('워크스루', 'Walkthrough')}</span><span class="gd-meta">
-    {#if replays.length}{T_('변경', 'Changes')} <b>{seen}</b>/{replays.length} hunk · {fmt(total)}{:else}{scenes.length} {T_('장면', 'scenes')} · {fmt(total)}{/if}
+<aside class="wt-guide" aria-label={t('guide.title')}>
+  <div class="gd-head"><span>{t('guide.title')}</span><span class="gd-meta">
+    {#if replays.length}{t('guide.changes', { seen, n: replays.length, time: fmt(total) })}{:else}{t('guide.scenes', { n: scenes.length, time: fmt(total) })}{/if}
   </span></div>
   <div class="gd-map" hidden></div>
   <div class="gd-body" bind:this={body}>
     <section class="gd-sec gd-overview" class:open={cur < 0 || pinned.overview}>
-      <button class="gd-sec-h" onclick={() => (pinned.overview = !(cur < 0 || pinned.overview))}>{T_('개요', 'Overview')}</button>
+      <button class="gd-sec-h" onclick={() => (pinned.overview = !(cur < 0 || pinned.overview))}>{t('guide.overview')}</button>
       <div class="gd-detail"><div class="gd-inner">
         <div class="gd-text">{@html md(meta.summary || '')}</div>
-        {#if meta.strategy}<div class="gd-strategy"><b>{T_('진행 방식', 'How this is ordered')}{meta.strategy.order ? ` · ${meta.strategy.order}` : ''}</b>{@html md(meta.strategy.rationale || '')}</div>{/if}
+        {#if meta.impact?.length}<div class="gd-impact"><b>{t('guide.impact')}</b><ul>{#each meta.impact as n, i (i)}<li class={n.effect ? `e-${n.effect}` : ''}>{#if n.effect}<span class="eff e-{n.effect}">{t(`impact.${n.effect}`)}</span>{/if}<span>{@html mdInline(n.text)}</span></li>{/each}</ul></div>{/if}
+        {#if meta.strategy}<div class="gd-strategy"><b>{t('guide.order')}{meta.strategy.order ? ` · ${meta.strategy.order}` : ''}</b>{@html md(meta.strategy.rationale || '')}</div>{/if}
       </div></div>
     </section>
     <ol class="gd-chapters">
@@ -107,7 +108,7 @@
                 <li class="gd-sc" class:cur={k === cur} class:done={cur >= 0 && k < cur} class:open={k === cur} data-scene={k}>
                   <button class="gd-sc-h" onclick={() => player.gotoScene(k, false)}><span class="bullet">{@html ICON.check}</span><span class="t">{S.title || S.id}</span><span class="dur">{fmt(S.duration)}</span></button>
                   <div class="gd-detail"><div class="gd-inner">
-                    {#if S.goal}<div class="gd-goal"><b>{T_('목표', 'Goal')}</b>{S.goal}</div>{/if}
+                    {#if S.goal}<div class="gd-goal"><b>{t('guide.goal')}</b>{S.goal}</div>{/if}
                     <div class="gd-text">{@html narrationHtml(S)}</div>
                     {#if k === cur && s.say}<div class="gd-say">{@html md(s.say)}</div>{/if}
                   </div></div>
@@ -120,15 +121,15 @@
       {/each}
     </ol>
     <section class="gd-sec gd-recap" class:open={player.atEnd || pinned.recap} class:cur={player.atEnd}>
-      <button class="gd-sec-h" onclick={() => (pinned.recap = !(player.atEnd || pinned.recap))}>{T_('정리', 'Recap')}</button>
+      <button class="gd-sec-h" onclick={() => (pinned.recap = !(player.atEnd || pinned.recap))}>{t('guide.recap')}</button>
       <div class="gd-detail"><div class="gd-inner">
-        {#if meta.takeaways?.length}<h4>{T_('핵심 요약', 'Key takeaways')}</h4><ul>{#each meta.takeaways as t, i (i)}<li>{@html mdInline(t)}</li>{/each}</ul>{/if}
-        {#if meta.reviewFocus?.length}<h4>{T_('리뷰 때 확인할 것', 'Review checklist')}</h4><ul class="rf">{#each meta.reviewFocus as t, i (i)}<li>{@html mdInline(t)}</li>{/each}</ul>{/if}
-        <p class="muted">{T_('일시정지 중에는 탐색기에서 파일을 열거나 ⌘/Ctrl+클릭으로 정의로 이동할 수 있습니다.', 'While paused, open files from the explorer or ⌘/Ctrl+Click to go to a definition.')}</p>
+        {#if meta.takeaways?.length}<h4>{t('guide.takeaways')}</h4><ul>{#each meta.takeaways as t, i (i)}<li>{@html mdInline(t)}</li>{/each}</ul>{/if}
+        {#if meta.reviewFocus?.length}<h4>{t('guide.review')}</h4><ul class="rf">{#each meta.reviewFocus as t, i (i)}<li>{@html mdInline(t)}</li>{/each}</ul>{/if}
+        <p class="muted">{t('guide.explore')}</p>
       </div></div>
     </section>
   </div>
   {#if IR.glossary?.length}
-    <div class="gd-foot"><details><summary>{T_('용어', 'Glossary')} ({IR.glossary.length})</summary><dl>{#each IR.glossary as g, i (i)}<dt>{g.term}</dt><dd>{g.definition}</dd>{/each}</dl></details></div>
+    <div class="gd-foot"><details><summary>{t('guide.glossary', { n: IR.glossary.length })}</summary><dl>{#each IR.glossary as g, i (i)}<dt>{g.term}</dt><dd>{g.definition}</dd>{/each}</dl></details></div>
   {/if}
 </aside>

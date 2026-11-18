@@ -78,3 +78,8 @@
 .gd-foot:empty { display: none; }
 .gd-foot summary { cursor: pointer; color: var(--fg-2); }
 .gd-foot dl { margin: 6px 0 0; max-height: 30vh; overflow: auto; } .gd-foot dt { font-family: var(--mono); color: var(--fg); } .gd-foot dd { margin: 0 0 6px 0; }
+.gd-impact { margin-top: 8px; font-size: 12.5px; line-height: 1.55; color: var(--fg-2); }
+.gd-impact b { display: block; color: var(--fg); font-size: 12px; margin-bottom: 2px; }
+.gd-impact ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; }
+.gd-impact li { display: flex; gap: 6px; align-items: baseline; }
+.gd-impact li .eff { flex: none; }

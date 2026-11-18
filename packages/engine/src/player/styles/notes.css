@@ -1,9 +1,11 @@
 /* ---------------------------------------------------------------- notes */
-/* An explanation makes room first (grid row 0fr -> 1fr, set by the player on the timeline clock),
-   then fades in; leaving, it fades and gives the room back. The code below moves, never jumps. */
-.note { display: grid; grid-template-rows: 1fr; margin: 0 12px 0 74px; position: relative; z-index: 3; }
+/* An explanation is a layer laid over the code right under its line: it unfolds downwards
+   (grid row 0fr -> 1fr, on the timeline clock) and fades in, and folds away the same way. It never
+   takes room in the code, so no line moves when it comes or goes (the code is not reflowed). */
+.note { display: grid; grid-template-rows: 1fr; position: absolute; left: 0; right: 12px; margin-left: 74px; z-index: 6; pointer-events: none; }
+.note .note-in { pointer-events: auto; }
 .note-clip { overflow: hidden; min-height: 0; }
-.note-in { margin: 3px 0 8px; padding: 7px 11px; background: var(--note-bg); border: 1px solid var(--line-2); border-left: 3px solid var(--note-edge, var(--t-focus)); border-radius: 6px; font: 13px/1.55 var(--sans); white-space: normal; max-width: 660px; box-shadow: 0 2px 8px rgba(0,0,0,.12); color: var(--fg-strong); }
+.note-in { margin: 3px 0 8px; padding: 7px 11px; background: var(--note-bg); border: 1px solid var(--line-2); border-left: 3px solid var(--note-edge, var(--t-focus)); border-radius: 0 6px 6px 0; font: 13px/1.55 var(--sans); white-space: normal; max-width: 660px; box-shadow: 0 6px 16px -4px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.2); color: var(--fg-strong); }
 @keyframes noteIn { from { opacity: 0; transform: translateY(-4px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
 .note .tag { font: 700 10px var(--sans); text-transform: uppercase; letter-spacing: .05em; color: var(--note-edge, var(--t-focus)); margin-right: 7px; }
 .note.tone-why { --note-edge: var(--t-info); } .note.tone-risk { --note-edge: var(--t-remove); } .note.tone-tip { --note-edge: var(--t-add); }

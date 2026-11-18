@@ -2,11 +2,13 @@
 // walkthrough runs, and records what the player needs (resolved ranges, how a file
 // is reached, what a replay animates).
 import { narrationItems } from '../shared/timing.ts';
-import type { Action, Scene, Step, View } from '../ir/types.ts';
+import { foldMoves } from '../shared/tree-path.ts';
+import type { Action, RefItem, Scene, Step, View } from '../ir/types.ts';
 import { resolvePoint, resolveRange } from './anchors.ts';
 import type { CompileContext } from './context.ts';
 
-const KNOWN = new Set<Action>(['open', 'layout', 'diffView', 'reveal', 'highlight', 'focus', 'unfocus', 'note', 'type', 'replay', 'goto', 'refs', 'graph', 'say', 'wait', 'clear', 'close']);
+const KNOWN = new Set<Action>(['open', 'layout', 'diffView', 'reveal', 'highlight', 'focus', 'unfocus', 'note', 'type', 'replay', 'goto', 'refs', 'impact', 'graph', 'say', 'wait', 'clear', 'close']);
+const EFFECTS = new Set(['safe', 'check', 'breaks', 'updated']);
 const VIEWS = new Set<View>(['after', 'before', 'diff']);
 /** Above this many characters a key hunk is replayed line by line: typing keeps one constant cadence. */
 const TYPE_MAX_CHARS = 400;
@@ -16,9 +18,10 @@ interface PaneTrack { file: string | null; view: View; tabs: Set<string> }
 export function resolveScenes(cx: CompileContext): void {
   const ir = cx.ir;
   const panes: PaneTrack[] = [{ file: null, view: 'after', tabs: new Set() }, { file: null, view: 'after', tabs: new Set() }];
-  const setPane = (p: number, file: string, view: View) => { panes[p].tabs.add(file); panes[p].file = file; panes[p].view = view; };
+  // what each pane really shows at runtime (tour included): tour scenes restore `panes`, never this
+  const onScreen: (string | null)[] = [null, null];
+  const setPane = (p: number, file: string, view: View) => { panes[p].tabs.add(file); panes[p].file = file; panes[p].view = view; onScreen[p] = file; };
   let active = 0;
-  const realFiles: (string | null)[] = [null, null]; // what each pane really shows at runtime (tour included)
   const sceneIds = new Set<string>();
   let authored = 0;
 
@@ -27,7 +30,7 @@ export function resolveScenes(cx: CompileContext): void {
     const p = paneOf(st);
     if (st.file) {
       if (!ir.files[st.file]) cx.err(W, `unknown file "${st.file}"`);
-      if (panes[p].file !== st.file) setPane(p, st.file, st.view || panes[p].view || 'after');
+      if (panes[p].file !== st.file || onScreen[p] !== st.file) setPane(p, st.file, st.view || panes[p].view || 'after');
     }
     if (st.view) panes[p].view = st.view;
     if (!panes[p].file) { cx.err(W, 'no file open in this pane: add "file" or an "open" step first'); return null; }
@@ -43,13 +46,16 @@ export function resolveScenes(cx: CompileContext): void {
     if (st.view && !VIEWS.has(st.view)) cx.err(W, 'view must be one of after|before|diff');
     switch (st.do) {
       case 'open': {
+        const shown = onScreen[active];
         const p = paneOf(st);
         if (!st.file || !ir.files[st.file]) { cx.err(W, `unknown file "${st.file}"`); return; }
         const f = ir.files[st.file];
         const view = st.view || viewOf(st.file);
         st.view = view;
-        // how the player gets there: through the explorer, by clicking an open tab, or not at all
-        st._openKind = panes[p].file === st.file ? 'same' : panes[p].tabs.has(st.file) ? 'tab' : 'tree';
+        // how the player gets there: through the explorer, by clicking an open tab, or not at all.
+        // Judged by what is on screen, not by what the author's scenes assume is open.
+        st._openKind = onScreen[p] === st.file ? 'same' : panes[p].tabs.has(st.file) ? 'tab' : 'tree';
+        if (st._openKind === 'tree') st._fold = foldMoves(cx.dirs, shown, st.file).length - 1;
         // a file with changes plays a top-to-bottom reveal after it opens
         st._reveal = !st.noReveal && st._openKind !== 'same' && view !== 'before' && f.status !== 'context' && !(view === 'after' && f.before == null && f.status !== 'added');
         setPane(p, st.file, view);
@@ -113,8 +119,8 @@ export function resolveScenes(cx: CompileContext): void {
         active = tp;
         return;
       }
-      case 'refs': {
-        if (!Array.isArray(st.items) || !st.items.length) { cx.err(W, 'refs needs "items": [{file, at, label?}]'); return; }
+      case 'refs': case 'impact': {
+        if (!Array.isArray(st.items) || !st.items.length) { cx.err(W, `${st.do} needs "items": [{file, at, label?${st.do === 'impact' ? ', effect?, relation?' : ''}}]`); return; }
         const p = paneOf(st);
         st._pane = p;
         st._items = st.items.flatMap((it, i) => {
@@ -122,8 +128,15 @@ export function resolveScenes(cx: CompileContext): void {
           const view = it.view || viewOf(it.file);
           const r = resolvePoint(cx, it.at, it.file, view, `${W}.items[${i}]`);
           if (!r) return [];
-          return [{ file: it.file, view, side: r.side, line: r.line, label: it.label || null, text: cx.lineText(it.file, r.side, r.line).trim().slice(0, 160) }];
+          const item: RefItem = { file: it.file, view, side: r.side, line: r.line, label: it.label || null, text: cx.lineText(it.file, r.side, r.line).trim().slice(0, 160) };
+          if (st.do === 'impact') {
+            if (it.effect !== undefined && !EFFECTS.has(it.effect)) cx.err(`${W}.items[${i}]`, `effect must be one of ${[...EFFECTS].join('|')}`);
+            Object.assign(item, { effect: it.effect, relation: it.relation, outside: ir.files[it.file].status === 'context' });
+          }
+          return [item];
         });
+        // an impact step is for what the diff does not show: places the change reaches but did not edit
+        if (st.do === 'impact' && st._items.length && !st._items.some((x) => x.outside)) cx.warn(W, 'every impact item is a changed file: show the places outside the diff that depend on the change (callers, consumers, config), or use refs');
         for (const it of st._items) panes[p].tabs.add(it.file);
         const last = st._items[st._items.length - 1];
         if (last) setPane(p, last.file, last.view);
@@ -178,12 +191,11 @@ export function resolveScenes(cx: CompileContext): void {
       if (!sc.auto && steps.length) {
         const first = steps[0];
         const p0 = first.pane !== undefined ? (first.pane ? 1 : 0) : active;
-        const explicit = ['open', 'goto', 'layout', 'graph', 'refs'].includes(first.do) || !!first.file;
+        const explicit = ['open', 'goto', 'layout', 'graph', 'refs', 'impact'].includes(first.do) || !!first.file;
         const want = panes[p0].file;
-        if (!explicit && want && realFiles[p0] && want !== realFiles[p0]) steps.unshift({ do: 'open', file: want, view: panes[p0].view, pane: p0, noReveal: true });
+        if (!explicit && want && onScreen[p0] && want !== onScreen[p0]) steps.unshift({ do: 'open', file: want, view: panes[p0].view, pane: p0, noReveal: true });
       }
       steps.forEach((st, ti) => resolveStep(st, `${W}.steps[${ti}]`));
-      panes.forEach((x, i) => { realFiles[i] = x.file; });
       if (snap) { panes.forEach((x, i) => { x.file = snap.panes[i].file; x.view = snap.panes[i].view; }); active = snap.active; }
       const items = narrationItems(sc.narration);
       steps.forEach((st, ti) => {

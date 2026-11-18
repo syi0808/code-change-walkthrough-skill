@@ -1,6 +1,8 @@
 // Shared state of one compilation: the IR being compiled, diagnostics, and cached
 // views of file contents (lines per side, change blocks).
+import { translator, type Table, type Translate } from '../i18n/index.ts';
 import { compute, splitLines } from '../shared/diff.ts';
+import { dirIndex, type DirIndex } from '../shared/tree-path.ts';
 import type { Diagnostic, LineRange, Side, View, Walkthrough } from '../ir/types.ts';
 
 export interface ChangeBlock { oldFrom: number | null; oldTo: number | null; newFrom: number | null; newTo: number | null }
@@ -11,7 +13,12 @@ export class CompileContext {
   private readonly lines = new Map<string, string[] | null>();
   private readonly blocks = new Map<string, ChangeBlock[]>();
 
-  constructor(readonly ir: Walkthrough) {}
+  /** The explorer's folders (the repository tree when there is one), to time file picks. */
+  dirs: DirIndex = dirIndex([]);
+  /** UI strings for names the compiler generates (tour scenes). */
+  readonly t: Translate;
+
+  constructor(readonly ir: Walkthrough, i18n: Table | null = null) { this.t = translator(i18n); }
 
   err(path: string, message: string): void { this.errors.push({ path, message }); }
   warn(path: string, message: string): void { this.warnings.push({ path, message }); }

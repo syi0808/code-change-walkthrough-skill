@@ -5,6 +5,8 @@ import { clamp, easeOut } from './env.ts';
 import { rangeRows, type CodeView, type Model } from './model.ts';
 import type { PaneState, State } from './state.ts';
 
+export interface Head { vi: number; prev: number | null; g: number }
+
 export interface Decorations {
   /** extra classes per view row */
   cls: string[];
@@ -14,10 +16,17 @@ export interface Decorations {
   labels: Map<number, { text: string; tone: string }>;
   /** rows being typed: where the caret is */
   caret: { vi: number; offset: number; half: 0 | 1 }[];
+  /** The write head: the row being written now (vi), the last row written before it, and how far
+   *  the head has come from that row to this one (0..1). The editor follows it (scroll mode "follow"). */
+  head: Head | null;
 }
 
 /** A row that appears pushes the rows below smoothly: it grows from zero height. */
 const GROW_CHARS = 4;
+/** How many line beats a just-written line stays marked as new (its added colour settles back). */
+const FRESH_BEATS = 5;
+/** A block waits this share of its time while the editor brings its place into view. */
+const BLOCK_LEAD = 0.3;
 
 export function decorate(ps: PaneState, s: State, m: Model, v: CodeView): Decorations {
   const n = v.rows.length;
@@ -26,6 +35,7 @@ export function decorate(ps: PaneState, s: State, m: Model, v: CodeView): Decora
   const add = (i: number, c: string) => { cls[i] = cls[i] ? cls[i] + ' ' + c : c; };
   const labels = new Map<number, { text: string; tone: string }>();
   const caret: Decorations['caret'] = [];
+  let head: Head | null = null;
 
   // attention budget: only the two most recent highlights are fully salient
   const own = (k: string | number) => !String(k).startsWith('g');
@@ -51,7 +61,12 @@ export function decorate(ps: PaneState, s: State, m: Model, v: CodeView): Decora
     for (let k = shown; k < changed.length; k++) add(changed[k], 'chg-pend');
   }
 
-  const grow = (vi: number, g: number) => { if (g < 1) { add(vi, 'grow'); style[vi] = `--g:${easeOut(g).toFixed(3)}`; } };
+  // A new line opens its slot top-down and is uncovered by it (no fade, no sideways motion):
+  // the edge moves at one constant speed, so the eye can ride it or the page can carry it.
+  const grow = (vi: number, g: number, curve = easeOut) => { if (g < 1) { add(vi, 'grow'); style[vi] = `--g:${curve(g).toFixed(3)}`; } };
+  const linear = (x: number) => x;
+  // a just-written line is marked by a brighter added colour that settles over a few beats
+  const markNew = (vi: number, fr: number) => { if (fr > 0.01) { add(vi, 'ln-fresh'); style[vi] = (style[vi] ? style[vi] + ';' : '') + `--fr:${Math.min(1, fr).toFixed(3)}`; } };
   for (const t of s.typing) {
     if (t.file !== ps.file || t.p >= 1) continue;
     const items: { vi: number; del?: boolean; add?: string | null; onlyAdd?: boolean }[] = [];
@@ -72,31 +87,35 @@ export function decorate(ps: PaneState, s: State, m: Model, v: CodeView): Decora
     // a row not written yet takes no space (unified) or keeps an empty slot (split)
     const pend = (x: { vi: number; onlyAdd?: boolean }) => add(x.vi, x.onlyAdd && !m.split ? 'typ-hidden' : 'typ-add-pend');
     if (t.mode === 'lines' || t.mode === 'block') {
-      if (t.mode === 'block') {
-        // the whole block arrives together and grows in as one
-        adds.forEach((x) => { if (t.p <= 0 || typeP <= 0) pend(x); else if (typeP < 1) { add(x.vi, 'ln-new'); if (!m.split) grow(x.vi, clamp(typeP / 0.6, 0, 1)); } });
-        continue;
-      }
-      const pos = typeP * adds.length; // one line per beat, constant cadence
+      // lines: one line per beat at a constant cadence. block: the same wipe, run fast and
+      // landing softly, so the block opens as one gap instead of every row growing at once.
+      const pos = t.mode === 'block' ? easeOut(clamp((typeP - BLOCK_LEAD) / 0.5, 0, 1)) * adds.length : typeP * adds.length;
       adds.forEach((x, idx) => {
-        if (t.p <= 0 || typeP <= 0 || idx > pos) pend(x);
-        else if (idx > pos - 1 && typeP < 1) { add(x.vi, 'ln-new'); if (!m.split && x.onlyAdd) grow(x.vi, clamp(pos - idx, 0, 1)); }
+        if (t.p <= 0 || typeP <= 0 || idx >= pos || pos <= 0) { pend(x); return; }
+        if (!m.split && x.onlyAdd) grow(x.vi, clamp(pos - idx, 0, 1), linear);
+        if (pos - idx < 1) head = { vi: x.vi, prev: idx ? adds[idx - 1].vi : null, g: pos - idx };
+        // settles by the end of the replay, so nothing changes when the replay hands over
+        const tail = clamp((1 - t.p) / 0.12, 0, 1);
+        markNew(x.vi, tail * (t.mode === 'block' ? 1 - clamp((typeP - BLOCK_LEAD - 0.5) / (0.5 - BLOCK_LEAD), 0, 1) : 1 - Math.max(0, pos - idx - 1) / FRESH_BEATS));
       });
+      if (!head && adds.length && typeP > 0 && typeP < 1) { const k = Math.min(adds.length - 1, Math.floor(pos)); head = { vi: adds[k].vi, prev: k ? adds[k - 1].vi : null, g: 0 }; }
       continue;
     }
     const len = (x: { add?: string | null }) => (x.add || '').replace(/^\s+/, '').length;
     let budget = typeP * (adds.reduce((a, x) => a + len(x), 0) || 1);
+    let before: number | null = null;
     for (const x of adds) {
       const L = len(x);
       if (t.p <= 0 || budget <= 0) { pend(x); continue; }
-      if (budget >= L) { budget -= L; continue; }
+      if (budget >= L) { budget -= L; before = x.vi; continue; }
       add(x.vi, 'typ-cur');
+      head = { vi: x.vi, prev: before, g: clamp(budget / GROW_CHARS, 0, 1) };
       if (!m.split && x.onlyAdd) grow(x.vi, clamp(budget / GROW_CHARS, 0, 1));
       caret.push({ vi: x.vi, offset: (x.add || '').length - L + Math.floor(budget), half: m.split ? 1 : 0 });
       budget = 0;
     }
   }
-  return { cls, style, labels, caret };
+  return { cls, style, labels, caret, head };
 }
 
 /** Line ranges the walkthrough points at in this pane: folds around them open. */

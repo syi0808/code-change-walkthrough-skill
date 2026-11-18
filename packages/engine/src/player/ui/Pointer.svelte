@@ -3,7 +3,7 @@
   // tabs, reference entries, code tokens), measured after everything else has moved.
   import { onDestroy } from 'svelte';
   import { ORDER, player } from '../app/player.svelte.ts';
-  import { clamp, ICON, T_ } from '../core/env.ts';
+  import { clamp, ICON, t } from '../core/env.ts';
   import type { Anchor } from '../core/state.ts';
   import type Pane from './Pane.svelte';
 
@@ -66,4 +66,4 @@
 </script>
 
 <div class="wt-pointer" bind:this={ptr} hidden>{@html ICON.pointer}<span class="ripple"></span></div>
-<div class="wt-keys" bind:this={keys} hidden>{#each s.keys || [] as k (k)}<kbd>{k}</kbd>{/each}<kbd>{T_('클릭', 'Click')}</kbd></div>
+<div class="wt-keys" bind:this={keys} hidden>{#each s.keys || [] as k (k)}<kbd>{k}</kbd>{/each}<kbd>{t('pointer.click')}</kbd></div>

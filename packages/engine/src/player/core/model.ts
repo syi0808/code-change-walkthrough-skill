@@ -3,7 +3,7 @@
 import { compute, splitLines, type Segment } from '../../shared/diff.ts';
 import { highlightFile, highlightLine, type HlState } from '../../shared/highlight.ts';
 import type { DiffSettings, LineRange, Side, View } from '../../ir/types.ts';
-import { esc, ICON, IR, T_ } from './env.ts';
+import { esc, ICON, IR, t } from './env.ts';
 
 export interface Half { n: number; html: string; raw: string; k?: 'add' | 'del' | 'ws' }
 export interface Row {
@@ -153,7 +153,7 @@ export function foldsOf(m: Model, ctx: number | null): Fold[] {
 function rowHtml(m: Model, vr: ViewRow): string {
   if (vr.fold) {
     const f = vr.fold;
-    return `<span class="fold-gut">${ICON.unfold}</span><span class="txt">${f.header ? `<span class="hunk">${esc(f.header)}</span>` : ''}<span class="fold-n">${f.b - f.a + 1} ${T_('줄 숨김', 'hidden lines')}</span></span>`;
+    return `<span class="fold-gut">${ICON.unfold}</span><span class="txt">${f.header ? `<span class="hunk">${esc(f.header)}</span>` : ''}<span class="fold-n">${esc(t('pane.hiddenLines', { n: f.b - f.a + 1 }))}</span></span>`;
   }
   const r = m.rows[vr.i];
   if (r.split) {

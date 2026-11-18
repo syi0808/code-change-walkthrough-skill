@@ -30,3 +30,19 @@
 .wt-refs .loc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .wt-refs .loc i { font-style: normal; color: var(--fg-3); }
 .wt-refs .snip { white-space: pre; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
 .wt-refs .lbl { font-family: var(--sans); color: var(--fg-3); margin-left: 10px; }
+/* impact peek: the places a change reaches, each with where it is (outside the diff or not) and a verdict */
+.wt-refs.impact header { align-items: center; flex-wrap: wrap; row-gap: 2px; }
+.wt-refs.impact header .kind { font: 600 11px var(--sans); letter-spacing: .04em; text-transform: uppercase; color: var(--fg-strong); }
+.wt-refs.impact header .chg { color: var(--fg); }
+.wt-refs.impact header .sum { margin-left: auto; color: var(--fg-3); }
+.wt-refs.impact li button { grid-template-columns: minmax(110px, 22%) minmax(90px, 16%) 1fr auto; align-items: center; }
+.wt-refs.impact .snip { font-family: var(--sans); white-space: nowrap; }
+.wt-refs .where { display: flex; gap: 6px; align-items: center; font: 11px var(--sans); white-space: nowrap; overflow: hidden; }
+.wt-refs .where .out { padding: 0 5px; border-radius: 3px; border: 1px dashed var(--fg-3); color: var(--fg-2); }
+.wt-refs .where .in { padding: 0 5px; border-radius: 3px; background: color-mix(in srgb, var(--git-mod) 18%, transparent); color: var(--git-mod); }
+.wt-refs .where .rel { color: var(--fg-3); overflow: hidden; text-overflow: ellipsis; }
+.eff { font: 600 11px var(--sans); padding: 0 6px; border-radius: 3px; white-space: nowrap; }
+.eff.e-safe { color: var(--t-info); background: color-mix(in srgb, var(--t-info) 14%, transparent); }
+.eff.e-check { color: var(--t-warn); background: color-mix(in srgb, var(--t-warn) 16%, transparent); }
+.eff.e-breaks { color: var(--t-remove); background: color-mix(in srgb, var(--t-remove) 16%, transparent); }
+.eff.e-updated { color: var(--t-add); background: color-mix(in srgb, var(--t-add) 16%, transparent); }

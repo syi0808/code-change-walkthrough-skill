@@ -2,3 +2,6 @@
 node_modules/
 out/
 packages/engine/dist/
+
+# UI string tables the skill downloads on first use
+skills/code-change-walkthrough/i18n/

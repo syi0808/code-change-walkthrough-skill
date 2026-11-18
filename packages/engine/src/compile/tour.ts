@@ -9,7 +9,7 @@ import type { CompileContext } from './context.ts';
 export function stepFiles(st: Step): string[] {
   const out = [st.file];
   if (st.do === 'goto') out.push(st.to && st.to.file);
-  if (st.do === 'refs') for (const it of st.items || []) out.push(it.file);
+  if (st.do === 'refs' || st.do === 'impact') for (const it of st.items || []) out.push(it.file);
   return out.filter((x): x is string => !!x);
 }
 
@@ -22,7 +22,6 @@ export function expandTour(cx: CompileContext): void {
   const ir = cx.ir;
   if (ir.tour === false) return;
   const tour: TourConfig = ir.tour && typeof ir.tour === 'object' ? ir.tour : {};
-  const ko = String(ir.meta?.language || '').startsWith('ko');
   const changed = Object.entries(ir.files)
     .filter(([p, f]) => f.status !== 'context' && !isGeneratedFile(p) && (f.before != null || f.after != null) && !(f.before != null && f.after != null && f.before === f.after && !f.oldPath))
     .map(([p]) => p);
@@ -72,8 +71,8 @@ export function expandTour(cx: CompileContext): void {
       const cont = hunks[0].hunk > 1;
       out.push({
         id: `tour-${++tk}`, auto: true, narration: '',
-        title: name + (cont ? (ko ? ' (이어서)' : ' (cont.)') : ''),
-        question: tour.questions?.[p] || (ko ? `${name}에서 무엇이 바뀌었나?` : `What changed in ${name}?`),
+        title: cont ? cx.t('tour.cont', { name }) : name,
+        question: tour.questions?.[p] || cx.t('tour.question', { name }),
         tour: { file: p, hunks: hunks.map((h) => h.hunk), of: hunks[0].of },
         steps: [
           { do: 'open', file: p, view: viewFor(p), noReveal: true, fast: hunks.every((h) => h.tempo === 'skim') },
@@ -100,7 +99,7 @@ export function expandTour(cx: CompileContext): void {
     }
     chapters.push({ ...ch, scenes: scs });
   }
-  if (next < items.length) chapters.push({ id: 'tour-rest', title: ko ? '나머지 변경' : 'Remaining changes', goal: ko ? '아직 보지 않은 변경을 모두 훑는다' : 'Go through every change not yet shown', scenes: take(items.length - 1) });
+  if (next < items.length) chapters.push({ id: 'tour-rest', title: cx.t('tour.rest.title'), goal: cx.t('tour.rest.goal'), scenes: take(items.length - 1) });
   ir.chapters = chapters;
   ir.tourStats = { hunks: items.length, files: new Set(items.map((x) => x.file)).size };
 }

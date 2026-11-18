@@ -3,7 +3,7 @@
   // (docked in the outline panel as a structure map, never over code), panel (a card).
   import { onDestroy } from 'svelte';
   import { ORDER, player } from '../app/player.svelte.ts';
-  import { ICON, T_ } from '../core/env.ts';
+  import { ICON, t } from '../core/env.ts';
   import { graphSvg } from '../core/graph-layout.ts';
   import { scenes } from '../core/timeline.ts';
 
@@ -30,7 +30,11 @@
     if (box !== lastBox) { lastBox = box; rectSig = hlSig = ''; }
     const st = document.querySelector('.wt-panes')!.getBoundingClientRect();
     let r: { left: number; top: number; width: number; height: number };
-    if (mode === 'full') r = { left: st.left + 14, top: st.top + 14, width: st.width - 28, height: st.height - 28 - 64 };
+    // full: room at the top for the heading band, where the narration is read. A fixed room,
+    // so the graph does not move when a sentence is one line longer.
+    const ed = document.querySelectorAll('.wt-panes .pane')[s.active]?.querySelector('.editor');
+    const top = Math.max(st.top + 14, (ed ? ed.getBoundingClientRect().top : st.top) + 76);
+    if (mode === 'full') r = { left: st.left + 14, top, width: st.width - 28, height: st.bottom - 14 - top };
     else if (mode === 'mini' && guideVisible && slot) { const g = slot.getBoundingClientRect(); r = { left: g.left, top: g.top, width: g.width, height: g.height }; }
     else if (mode === 'mini') r = { left: st.right - 254, top: st.top + 66, width: 240, height: 150 };
     else { const w = Math.min(620, st.width - 28); r = { left: st.right - 14 - w, top: st.top + 70, width: w, height: Math.min(340, st.height - 90) }; }
@@ -71,8 +75,8 @@
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="wt-graph in {mode}" bind:this={box} onclick={nodeClick}>
       <header><span class="t">{content.title}</span>
-        {#if !(mode === 'panel' || (mode === 'full' && s.graph))}<button class="icon-btn sm" title={T_('크게/작게', 'Expand / dock')} onclick={toggleSize}>{@html mode === 'mini' ? ICON.expand : ICON.shrink}</button>{/if}
-        <button class="icon-btn sm" title={T_('닫기', 'Close')} onclick={close}>{@html ICON.close}</button></header>
+        {#if !(mode === 'panel' || (mode === 'full' && s.graph))}<button class="icon-btn sm" title={t('graph.size')} onclick={toggleSize}>{@html mode === 'mini' ? ICON.expand : ICON.shrink}</button>{/if}
+        <button class="icon-btn sm" title={t('graph.close')} onclick={close}>{@html ICON.close}</button></header>
       <div class="gbody">{@html svg}</div>
     </div>
   {/key}

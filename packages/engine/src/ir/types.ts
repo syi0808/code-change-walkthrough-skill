@@ -47,11 +47,14 @@ export interface DiffSettings {
   whitespace: 'collapse' | 'show';
 }
 
-export interface RefItem { file: string; view: View; side: Side; line: number; label: string | null; text: string }
+export interface RefItem { file: string; view: View; side: Side; line: number; label: string | null; text: string; effect?: Effect; relation?: string; outside?: boolean }
 
 export type Action =
   | 'open' | 'layout' | 'diffView' | 'reveal' | 'highlight' | 'focus' | 'unfocus' | 'note'
-  | 'type' | 'replay' | 'goto' | 'refs' | 'graph' | 'say' | 'wait' | 'clear' | 'close';
+  | 'type' | 'replay' | 'goto' | 'refs' | 'impact' | 'graph' | 'say' | 'wait' | 'clear' | 'close';
+
+/** What a change does to a place that depends on it: still fine, needs a look, broken, or changed along with it. */
+export type Effect = 'safe' | 'check' | 'breaks' | 'updated';
 
 export interface Step {
   do: Action;
@@ -77,7 +80,9 @@ export interface Step {
   diff?: Partial<DiffSettings>;
   from?: { file?: string; at?: Anchor; token?: string; view?: View };
   to?: { file?: string; at?: Anchor; pane?: number; view?: View };
-  items?: { file: string; at?: Anchor; label?: string; view?: View }[];
+  items?: { file: string; at?: Anchor; label?: string; view?: View; effect?: Effect; relation?: string }[];
+  /** impact: the contract that changed, in a few words. */
+  change?: string;
   symbol?: string;
   title?: string;
   nodes?: GraphNode[];
@@ -94,6 +99,8 @@ export interface Step {
 
   // ---- added by the compiler
   _openKind?: OpenKind;
+  /** Explorer folders closed and opened on the way to a file picked from the tree (see shared/tree-path). */
+  _fold?: number;
   _reveal?: boolean;
   _r?: LineRange | null;
   _first?: LineRange;
@@ -110,6 +117,8 @@ export interface Step {
 
   // ---- added by the timing model (player and compiler share it)
   _dp?: number;
+  /** The narration item this step brings in: `cue`, or one inferred for an unpinned item (see inferCues). */
+  _cue?: number;
   _id?: number;
   _start?: number;
 }
@@ -146,7 +155,11 @@ export interface Meta {
   strategy?: { order?: string; rationale?: string };
   takeaways?: string[];
   reviewFocus?: string[];
+  /** What outside the diff the change reaches (callers, data, config, other services), and how. */
+  impact?: ImpactNote[];
 }
+
+export interface ImpactNote { text: string; effect?: Effect; files?: string[] }
 
 export interface Source {
   repo?: string;

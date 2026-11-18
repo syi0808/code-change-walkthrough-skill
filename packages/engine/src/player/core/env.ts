@@ -1,12 +1,16 @@
 // Player environment: the compiled IR, language, and small DOM/text helpers.
+import { translator, validateTable } from '../../i18n/index.ts';
 import type { Walkthrough } from '../../ir/types.ts';
 
 export const IR: Walkthrough = JSON.parse(document.getElementById('walkthrough-ir')!.textContent || '{}');
-export const LANG = IR.meta?.language || document.documentElement.lang || 'en';
-document.documentElement.lang = LANG;
-const KO = LANG.startsWith('ko');
-/** Pick the UI string for the walkthrough's language. */
-export const T_ = (ko: string, en: string): string => (KO ? ko : en);
+// UI strings come from the table the compiler embedded (#walkthrough-i18n), English otherwise.
+// They are kept apart from the code so a page can be given another language without a rebuild.
+const table = (() => {
+  try { return validateTable(JSON.parse(document.getElementById('walkthrough-i18n')?.textContent || 'null')).table; } catch { return null; }
+})();
+document.documentElement.lang = IR.meta?.language || table?.language || 'en';
+/** A UI string by key, with `{name}` placeholders filled in. Plain text: escape it before using it as HTML. */
+export const t = translator(table);
 
 export const clamp = (x: number, a: number, b: number): number => Math.max(a, Math.min(b, x));
 /** Ease in-out (cubic): movement between two on-screen states. */

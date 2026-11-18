@@ -8,6 +8,7 @@ import { compileFile, IR_VERSION } from '../compile/index.ts';
 import { render } from '../render/render.ts';
 import { serve } from '../serve/serve.ts';
 import { parseArgs, str } from './args.ts';
+import { I18N_DIR, install, tableFor, template } from './i18n.ts';
 
 const HELP = `code-walkthrough ${version}: Walkthrough IR v${IR_VERSION} engine
 
@@ -15,6 +16,9 @@ Usage
   code-walkthrough check  <ir.json> [--repo DIR] [--json] [--resolve]
   code-walkthrough build  <ir.json> [-o out.html] [--repo DIR] [--json]
   code-walkthrough serve  <ir.json|player.html> [--port 4173] [--host 127.0.0.1] [--repo DIR] [--open] [--no-watch]
+  code-walkthrough i18n   <lang> [--force] [--dir DIR] [--from URL]
+                          install the player's UI strings for a language (one download, then offline)
+  code-walkthrough i18n   --template   print the English table, to translate into a new language
   code-walkthrough spec           print the IR v${IR_VERSION} reference (markdown)
   code-walkthrough schema         print the IR v${IR_VERSION} JSON Schema
   code-walkthrough version
@@ -27,10 +31,12 @@ Options
                      stats: chapters, scenes, files, tour, estimatedSeconds (1x), unnarratedFiles
   --resolve          also report where every anchor landed (file, side, lines, line text)
   -o, --out FILE     output path for build (default: <ir>.html)
+  --i18n FILE        UI string table to use (default: the installed table for meta.language,
+                     looked up in ${I18N_DIR}; none: English)
 
-Exit codes: 0 ok · 1 IR errors · 2 usage / runtime error`;
+Exit codes: 0 ok · 1 IR errors · 2 usage / runtime error · 3 no published table for that language`;
 
-const BOOL = ['json', 'open', 'no-watch', 'no-extra-files', 'resolve'];
+const BOOL = ['json', 'open', 'no-watch', 'no-extra-files', 'resolve', 'force', 'template'];
 
 function need(v: string | undefined, msg: string): string {
   if (!v) { console.error(`${msg}\n\n${HELP}`); process.exit(2); }
@@ -45,12 +51,15 @@ async function main(argv: string[]): Promise<void> {
   switch (cmd) {
     case 'check': case 'build': {
       const file = need(a._[0], `${cmd} needs <ir.json>`);
-      const res = compileFile(file, { repo, extraFiles });
+      const ui = tableFor(file, str(a.i18n));
+      if (str(a.i18n) && !ui.table) { console.error(`--i18n: ${ui.problems.join('; ')}`); process.exit(2); }
+      const res = compileFile(file, { repo, extraFiles, i18n: ui.table });
+      for (const m of ui.problems) res.warnings.push({ path: `i18n(${path.basename(ui.file || '')})`, message: m });
       let out: string | null = null;
       if (cmd === 'build' && res.ok) {
         out = path.resolve(str(a.out) || file.replace(/\.json$/i, '') + '.html');
         fs.mkdirSync(path.dirname(out), { recursive: true });
-        fs.writeFileSync(out, render(res.ir));
+        fs.writeFileSync(out, render(res.ir, { i18n: res.i18n }));
       }
       if (a.json) {
         process.stdout.write(JSON.stringify({ ok: res.ok, errors: res.errors, warnings: res.warnings, stats: res.stats, ...(a.resolve ? { resolved: res.resolved } : {}), ...(out ? { out } : {}) }, null, 2) + '\n');
@@ -71,8 +80,20 @@ async function main(argv: string[]): Promise<void> {
     case 'serve': {
       const file = need(a._[0], 'serve needs <ir.json> or <player.html>');
       if (!fs.existsSync(file)) throw new Error(`no such file: ${file}`);
-      await serve({ input: file, repo, port: str(a.port), host: str(a.host), open: !!a.open, watch: !a['no-watch'], extraFiles });
+      await serve({ input: file, repo, port: str(a.port), host: str(a.host), open: !!a.open, watch: !a['no-watch'], extraFiles, i18n: () => tableFor(file, str(a.i18n)).table });
       return; // keeps running
+    }
+    case 'i18n': {
+      if (a.template) { process.stdout.write(template()); return; }
+      const lang = need(a._[0], 'i18n needs a language tag, e.g. "ko"');
+      const r = await install(lang, { dir: str(a.dir), from: str(a.from), force: !!a.force });
+      if (a.json) process.stdout.write(JSON.stringify(r, null, 2) + '\n');
+      else if (r.status === 'builtin') console.error('English is built in: nothing to install');
+      else if (r.status === 'present') console.error(`✓ ${r.lang}: already installed at ${r.file}`);
+      else if (r.status === 'installed') console.error(`✓ ${r.lang}: installed ${r.file}`);
+      else console.error(`no published table for "${lang}" (tried ${r.tried.join(', ')}).\nTo add one: translate the values of \`i18n --template\` (keep keys and {placeholders}), set "language", and save it as ${r.file}`);
+      for (const m of r.problems) console.error(`  note: ${m}`);
+      process.exit(r.status === 'missing' ? 3 : 0);
     }
     case 'spec': process.stdout.write(spec); return;
     case 'schema': process.stdout.write(schema); return;

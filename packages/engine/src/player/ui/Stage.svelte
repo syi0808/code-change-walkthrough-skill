@@ -1,8 +1,9 @@
 <script lang="ts">
   // The editor stage: orientation strip (where am I, what question), the panes, the
-  // references peek, the bridge card between scenes, and the start overlay.
+  // references peek, and the start overlay. The bridge between scenes is told in the heading
+  // band under the strip (Caption.svelte).
   import { player } from '../app/player.svelte.ts';
-  import { baseName, fileIcon, fmt, ICON, IR, mdInline, T_ } from '../core/env.ts';
+  import { baseName, fileIcon, fmt, ICON, IR, mdInline, t } from '../core/env.ts';
   import { scenes, total } from '../core/timeline.ts';
   import Pane from './Pane.svelte';
 
@@ -19,8 +20,6 @@
     if (s.shown === s.scene) for (const x of shown.timed) if (x.st.do === 'replay' && s.sceneT >= x.start) h = x.st.hunk ?? null;
     return `${h || shown.tour.hunks[0]}/${shown.tour.of}`;
   });
-  const sc = $derived(scenes[s.scene]);
-  const prev = $derived(scenes[s.scene - 1]);
 </script>
 
 {#snippet chip(path: string)}
@@ -45,12 +44,25 @@
     <Pane idx={1} bind:this={panes[1]} />
   </div>
   {#if s.refs}
-    <div class="wt-refs in">
-      <header><b>{s.refs.symbol || ''}</b><span>{s.refs.title || T_(`참조 ${s.refs.items.length}곳`, `${s.refs.items.length} references`)}</span></header>
+    {@const impact = s.refs.kind === 'impact'}
+    <div class="wt-refs in" class:impact>
+      {#if impact}
+        <header><span class="kind">{t('impact.title')}</span>{#if s.refs.symbol}<b>{s.refs.symbol}</b>{/if}{#if s.refs.change}<span class="chg">{s.refs.change}</span>{/if}
+          <span class="sum">{s.refs.title || t('impact.summary', { outside: s.refs.items.filter((x) => x.outside).length, n: s.refs.items.length })}</span></header>
+      {:else}
+        <header><b>{s.refs.symbol || ''}</b><span>{s.refs.title || t('refs.count', { n: s.refs.items.length })}</span></header>
+      {/if}
       <ol>
         {#each s.refs.items as it, i (i)}
           <li class:on={i === s.refs.active} class:seen={i < s.refs.active}><button onclick={() => player.exploreOpen(it.file, { line: it.line, side: it.side, view: it.view })}>
-            <span class="loc">{baseName(it.file)}<i>:{it.line}</i></span><span class="snip">{it.text}{#if it.label}<span class="lbl">{it.label}</span>{/if}</span>
+            <span class="loc">{baseName(it.file)}<i>:{it.line}</i></span>
+            {#if impact}
+              <span class="where">{#if it.outside}<span class="out">{t('impact.outside')}</span>{:else}<span class="in">{t('impact.inDiff')}</span>{/if}{#if it.relation}<span class="rel">{it.relation}</span>{/if}</span>
+              <span class="snip">{it.label || it.text}</span>
+              {#if it.effect}<span class="eff e-{it.effect}">{t(`impact.${it.effect}`)}</span>{:else}<span></span>{/if}
+            {:else}
+              <span class="snip">{it.text}{#if it.label}<span class="lbl">{it.label}</span>{/if}</span>
+            {/if}
           </button></li>
         {/each}
       </ol>
@@ -58,23 +70,9 @@
   {/if}
   {#if s.toast}{#key s.toast}<div class="wt-toast in">{s.toast}</div>{/key}{/if}
 
-  <div class="wt-bridge" class:show={player.live && !!s.bridge} aria-live="polite">
-    {#if player.live && !sc.auto}
-      {#key s.scene}
-        <div class="br-card">
-          <div class="br-eyebrow">{#if sc.si === 0}<span class="br-ch">{T_('챕터', 'Chapter')} {sc.ci + 1} · {sc.chapter.title || ''}</span>{:else}<span>{sc.chapter.title || ''}</span>{/if}<span class="br-n">{s.scene + 1}/{scenes.length}</span></div>
-          {#if prev}<div class="br-from">{T_('방금', 'Just saw')}: {prev.title || ''}</div>{/if}
-          {#if sc.bridge}<div class="br-why">{@html mdInline(sc.bridge)}</div>{/if}
-          <div class="br-title">{@html mdInline(sc.question || sc.title || '')}</div>
-          {#if sc.question && sc.title}<div class="br-sub">{sc.title}</div>{/if}
-          {#if sc.where}<div class="br-where">{@render chip(sc.where)}</div>{/if}
-        </div>
-      {/key}
-    {/if}
-  </div>
   <div class="wt-start" class:gone={player.started}>
     <button aria-label="play" onclick={() => player.play()}>{@html ICON.play}</button>
     <div class="t">{meta.title || ''}</div>
-    <div class="s">{scenes.length} {T_('장면', 'scenes')} · {T_('약', '~')} {fmt(total)} · {T_('Space로 시작', 'Space to start')}</div>
+    <div class="s">{t('start.summary', { n: scenes.length, time: fmt(total) })}</div>
   </div>
 </section>

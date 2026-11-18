@@ -18,9 +18,9 @@
 /* where the next scene goes: marked, not blinking (no motion outside the point of focus) */
 .g-node.next rect { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 4 3; fill: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
 .g-node.visited rect { stroke-width: 1.8; fill: color-mix(in srgb, var(--t-focus) 6%, var(--bg)); }
-.g-node, .g-edge { animation: gIn var(--d-l) var(--ease) both; animation-delay: calc(var(--i, 0) * 70ms / var(--rate)); transition: opacity .35s var(--ease); }
+.g-node, .g-edge { animation: gIn var(--d-l) var(--ease) both; animation-delay: calc(var(--i, 0) * 93ms / var(--rate)); transition: opacity .35s var(--ease); }
 @keyframes gIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-.g-edge path { stroke-dasharray: 1; stroke-dashoffset: 0; animation: draw var(--d-xl) var(--ease) both; animation-delay: calc(var(--i, 0) * 70ms / var(--rate)); }
+.g-edge path { stroke-dasharray: 1; stroke-dashoffset: 0; animation: draw var(--d-xl) var(--ease) both; animation-delay: calc(var(--i, 0) * 93ms / var(--rate)); }
 @keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 /* the docked map follows the code (delayed), it does not change at the same moment */
 .g-node rect { fill: var(--bg); stroke: var(--line-2); stroke-width: 1.2; transition: fill var(--d-m) var(--d-m), stroke var(--d-m) var(--d-m), stroke-width var(--d-m) var(--d-m); }

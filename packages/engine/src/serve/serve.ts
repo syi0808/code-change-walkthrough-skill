@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { compileFile, type CompileResult } from '../compile/index.ts';
 import { render } from '../render/render.ts';
+import type { Table } from '../i18n/index.ts';
 import type { Diagnostic, Walkthrough } from '../ir/types.ts';
 
 const LIVE = `<script>(function(){
@@ -37,7 +38,7 @@ function errorPage(diag: { errors: Diagnostic[]; warnings: Diagnostic[] }, file:
 <body><h1>${esc(path.basename(file))}: ${diag.errors.length} error(s)</h1><ul>${diag.errors.map((e) => `<li class="e">${esc(e.path)}: ${esc(e.message)}</li>`).join('')}${diag.warnings.map((w) => `<li class="w">warn ${esc(w.path)}: ${esc(w.message)}</li>`).join('')}</ul><p>Fix the IR and save: this page reloads automatically.</p>${LIVE}</body></html>`;
 }
 
-export interface ServeOptions { input: string; repo?: string; port?: number | string; host?: string; watch?: boolean; open?: boolean; extraFiles?: boolean; log?: (m: string) => void }
+export interface ServeOptions { input: string; repo?: string; port?: number | string; host?: string; watch?: boolean; open?: boolean; extraFiles?: boolean; i18n?: () => Table | null; log?: (m: string) => void }
 export interface Server { url: string; port: number; server: http.Server; close: () => Promise<void> }
 
 export function serve(o: ServeOptions): Promise<Server> {
@@ -51,10 +52,10 @@ export function serve(o: ServeOptions): Promise<Server> {
   function build(): boolean {
     if (isHtml) { state = { html: fs.readFileSync(file, 'utf8'), ir: null, diag: { errors: [], warnings: [] } }; return true; }
     let res: CompileResult | { ok: false; errors: Diagnostic[]; warnings: Diagnostic[]; stats?: undefined; ir?: undefined };
-    try { res = compileFile(file, { repo: o.repo, extraFiles: o.extraFiles }); }
+    try { res = compileFile(file, { repo: o.repo, extraFiles: o.extraFiles, i18n: o.i18n?.() }); }
     catch (e) { res = { ok: false, errors: [{ path: path.basename(file), message: (e as Error).message }], warnings: [] }; }
     const diag = { errors: res.errors, warnings: res.warnings };
-    if (res.ok) state = { html: render(res.ir, { inject: watch ? LIVE : '' }), ir: res.ir, diag };
+    if (res.ok) state = { html: render(res.ir, { inject: watch ? LIVE : '', i18n: res.i18n }), ir: res.ir, diag };
     else if (!state.ir) state = { html: errorPage(diag, file), ir: null, diag };
     else state = { ...state, diag };
     for (const w of res.warnings) log(`warn  ${w.path}: ${w.message}`);

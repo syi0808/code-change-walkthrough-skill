@@ -2,7 +2,7 @@
   // Layout: [explorer] [editor stage] [walkthrough outline] over the playback controls.
   import { splitLines } from '../../shared/diff.ts';
   import { player } from '../app/player.svelte.ts';
-  import { ICON, IR, shortRef, T_ } from '../core/env.ts';
+  import { ICON, IR, shortRef, t } from '../core/env.ts';
   import { scenes } from '../core/timeline.ts';
   import Caption from './Caption.svelte';
   import Controls from './Controls.svelte';
@@ -91,15 +91,15 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="wt-frame" class:hide-explorer={!player.ui.explorer} class:show-explorer={player.ui.mobileExplorer} class:hide-guide={!player.ui.guide} class:playing={player.playing} class:oriented={player.live} onclick={onClick}>
   <header class="wt-top">
-    <button class="icon-btn" title="{T_('탐색기', 'Explorer')} (B)" onclick={toggleExplorer}>{@html ICON.explorer}</button>
+    <button class="icon-btn" title="{t('top.explorer')} (B)" onclick={toggleExplorer}>{@html ICON.explorer}</button>
     <div class="title">{meta.title || 'Code walkthrough'}</div>
-    {#if src.base}<span class="range" title="{src.base} → {src.head}">{shortRef(src.base)} → {src.head === 'WORKTREE' ? T_('작업 트리', 'working tree') : shortRef(src.head)}</span>{/if}
+    {#if src.base}<span class="range" title="{src.base} → {src.head}">{shortRef(src.base)} → {src.head === 'WORKTREE' ? t('top.workingTree') : shortRef(src.head)}</span>{/if}
     {#if meta.intent}<span class="badge">{meta.intent}</span>{/if}
     <span class="spacer"></span>
-    {#if player.frame.map}<button class="icon-btn" class:on={player.ui.map} title="{T_('구조 지도', 'Structure map')} (M)" onclick={() => { player.ui.map = !player.ui.map; player.ui.mapExpanded = false; player.commit(); }}>{@html ICON.map}</button>{/if}
-    <button class="icon-btn" title={T_('테마', 'Theme')} onclick={toggleTheme}>{@html ICON.theme}</button>
-    <button class="icon-btn" title="{T_('단축키', 'Shortcuts')} (?)" onclick={() => (player.ui.help = !player.ui.help)}>{@html ICON.help}</button>
-    <button class="icon-btn" title="{T_('워크스루 패널', 'Walkthrough panel')} (G)" onclick={toggleGuide}>{@html ICON.guide}</button>
+    {#if player.frame.map}<button class="icon-btn" class:on={player.ui.map} title="{t('top.map')} (M)" onclick={() => { player.ui.map = !player.ui.map; player.ui.mapExpanded = false; player.commit(); }}>{@html ICON.map}</button>{/if}
+    <button class="icon-btn" title={t('top.theme')} onclick={toggleTheme}>{@html ICON.theme}</button>
+    <button class="icon-btn" title="{t('top.shortcuts')} (?)" onclick={() => (player.ui.help = !player.ui.help)}>{@html ICON.help}</button>
+    <button class="icon-btn" title="{t('top.guide')} (G)" onclick={toggleGuide}>{@html ICON.guide}</button>
   </header>
   <div class="wt-main">
     <Explorer />

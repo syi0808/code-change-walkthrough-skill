@@ -41,7 +41,7 @@ The engine replays every changed hunk; you decide the order and where to stop.
   "steps": [ … ] }
 ```
 
-`question` stays above the code for the whole scene. `bridge` is shown on the transition card when the scene starts, so skip it for the first scene. `check` warns when either one is missing.
+`question` stays above the code for the whole scene. `bridge` is shown in the heading band above the code when the scene starts, so skip it for the first scene. `check` warns when either one is missing.
 
 ## Shape to aim for
 
@@ -172,7 +172,7 @@ Write each scene's narration as **a lead sentence plus bullets**, with each bull
   ] }
 ```
 
-The items are numbered 1 (the lead), 2 (first bullet), 3, and so on. An item without a cue is placed between its neighbours automatically. `check` reports a `cue` that is out of range.
+The items are numbered 1 (the lead), 2 (first bullet), 3, and so on. An item without a cue arrives with the last uncued highlight-like step before the next cued item. The engine gives every item its reading time and delays the step that brings in the next item until then, so do not add `hold` or `wait` for reading. `check` reports a `cue` that is out of range.
 
 - Keep each scene to a lead sentence plus 2–4 bullets. Explain **why** and **how things relate**. Never read code aloud.
 - Make the sentence order follow the step order. The thing named first is highlighted first.

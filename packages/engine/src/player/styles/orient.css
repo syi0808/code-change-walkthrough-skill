@@ -11,37 +11,33 @@
 .o-file { display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px; border-radius: 6px; background: var(--bg-3); color: var(--fg); min-width: 0; }
 .o-file .fi { font: 700 9px var(--mono); } .o-file .nm { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 .o-file .role { color: var(--fg-3); font-size: 11.5px; }
-/* floating caption: the voice when it has no code to sit next to (fixed layer, no layout shift) */
-.wt-caption { position: fixed; z-index: 60; transform: translateY(-100%); display: flex; justify-content: center; pointer-events: none; opacity: 0; transition: opacity var(--d-s) var(--ease); }
-.wt-caption.show { opacity: 1; }
-.cap-in { display: inline-flex; gap: 12px; align-items: flex-start; max-width: 100%; padding: 10px 16px; border-radius: 12px; pointer-events: auto;
-  background: color-mix(in srgb, var(--bg-2) 94%, transparent); border: 1px solid var(--line-2); box-shadow: var(--shadow); backdrop-filter: blur(8px); }
-.cap-dots { display: flex; gap: 4px; padding-top: 9px; flex: none; }
-.cap-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-2); transition: background-color var(--d-m) var(--ease), transform var(--d-m) var(--ease); }
-.cap-dots i.past { background: color-mix(in srgb, var(--accent) 45%, var(--line-2)); }
-.cap-dots i.cur { background: var(--accent); transform: scale(1.25); }
-.cap-text { font-size: 15px; line-height: 1.6; color: var(--fg-strong); max-width: 860px; }
+/* the heading band: the voice without a code line, and the bridge between scenes. It hangs from
+   the question strip (fixed layer, no layout shift), unrolls downwards, and is read where the eye
+   starts on the code: top left, next to the question it answers. */
+.wt-caption { position: fixed; z-index: 60; pointer-events: none; clip-path: inset(0 0 100% 0); opacity: 0;
+  transition: clip-path var(--d-m) var(--ease), opacity var(--d-s) var(--ease); }
+.wt-caption.show { clip-path: inset(0 0 -24px 0); opacity: 1; }
+.cap-band { background: var(--bg-2); border-bottom: 1px solid var(--line-2); box-shadow: 0 8px 18px -10px rgba(0,0,0,.45); padding: 10px 20px 12px; pointer-events: auto; }
+.cap-in { display: flex; gap: 12px; align-items: flex-start; max-width: 860px; }
+.cap-text { font-size: 15px; line-height: 1.6; color: var(--fg-strong); }
+/* the bridge, in the same band */
+.cap-in.br { display: block; }
+.br-eyebrow { display: flex; gap: 12px; font-size: 12px; color: var(--fg-3); }
+.br-ch { color: var(--accent); font-weight: 600; }
+.br-why { margin-top: 4px; font-size: 15px; line-height: 1.6; color: var(--fg-strong); }
+.br-where { margin-top: 8px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-3); }
+/* between scenes the question in the strip is the new one: it is marked, so the band and the
+   question are read as one statement; the code stays sharp, only receding a little */
+.wt-stage.bridging .o-q { background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 6px; padding: 1px 8px 1px 4px; }
+.o-q { transition: background-color var(--d-m) var(--ease); }
 /* the callout: the same voice, attached right under the code it explains */
 .note.callout { margin-left: 74px; }
 .note.callout .note-in { display: flex; gap: 10px; align-items: flex-start; border-left-color: var(--accent); font-size: 14px; padding: 8px 12px; }
 .note .note-in { max-width: min(660px, calc(var(--vw, 100%) - 96px)); }
 .note.callout .cap-text { font-size: 14px; }
-.note.callout .cap-dots { padding-top: 7px; }
 .note.callout .tag { padding-top: 2px; }
 .swap { animation: swapIn var(--d-m) var(--ease) both; }
 .swap-soft { display: inline-flex; min-width: 0; animation: fadeIn var(--d-s) var(--ease) both; }
 @keyframes swapIn { from { opacity: 0; transform: translateY(3px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
-.wt-panes, .wt-refs { transition: opacity var(--d-m) var(--ease), filter var(--d-m) var(--ease), transform var(--d-m) var(--ease-drawer); }
-.wt-stage.bridging .wt-panes, .wt-stage.bridging .wt-refs { opacity: .28; filter: blur(2px) saturate(.7); transform: scale(.992); }
-.wt-bridge { position: absolute; inset: 30px 0 0; z-index: 30; display: grid; place-items: center; pointer-events: none; padding: 16px; }
-.br-card { width: min(560px, 100%); padding: 20px 24px; border-radius: 14px; background: color-mix(in srgb, var(--bg-2) 92%, transparent); border: 1px solid var(--line-2); box-shadow: var(--shadow);
-  opacity: 0; transform: translateY(8px) scale(.98); filter: blur(6px); transition: opacity var(--d-m) var(--ease), transform var(--d-l) var(--ease), filter var(--d-m) var(--ease); }
-.wt-bridge.show .br-card { opacity: 1; transform: none; filter: none; }
-.br-eyebrow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--fg-3); letter-spacing: .02em; }
-.br-ch { color: var(--accent); font-weight: 600; }
-.br-n { font-family: var(--mono); }
-.br-from { margin-top: 10px; font-size: 12px; color: var(--fg-3); }
-.br-sub { margin-top: 4px; font-size: 12.5px; color: var(--fg-3); }
-.br-title { margin-top: 6px; font-size: 20px; font-weight: 650; color: var(--fg-strong); line-height: 1.35; }
-.br-why { margin-top: 10px; font-size: 13.5px; line-height: 1.6; color: var(--fg-2); }
-.br-where { margin-top: 14px; }
+.wt-panes, .wt-refs { transition: opacity var(--d-m) var(--ease); }
+.wt-stage.bridging .wt-panes, .wt-stage.bridging .wt-refs { opacity: .5; }

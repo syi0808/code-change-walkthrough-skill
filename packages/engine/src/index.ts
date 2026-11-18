@@ -2,6 +2,8 @@
 export { compile, compileFile, IR_VERSION } from './compile/index.ts';
 export type { CompileOptions, CompileResult, CompileStats, ResolvedAnchor } from './compile/index.ts';
 export { render } from './render/render.ts';
+export { EN, englishTable, translator, validateTable } from './i18n/index.ts';
+export type { Key, Strings, Table, Translate } from './i18n/index.ts';
 export { serve } from './serve/serve.ts';
 export type { ServeOptions, Server } from './serve/serve.ts';
 export { collect, digest } from './analyze/collect.ts';

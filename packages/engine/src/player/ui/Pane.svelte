@@ -3,10 +3,10 @@
   import { onDestroy } from 'svelte';
   import { ORDER, player } from '../app/player.svelte.ts';
   import { decorate, pointedRanges } from '../core/decorate.ts';
-  import { baseName, easeOut, fileIcon, IR, STATUS_LETTER, T_ } from '../core/env.ts';
+  import { baseName, easeOut, fileIcon, IR, STATUS_LETTER, t } from '../core/env.ts';
   import { foldsOf, model, modelRowsOf, rangeRows, viewOf, type CodeView } from '../core/model.ts';
   import { NoteTracker, type NoteView } from '../core/notes.ts';
-  import { scrollPx } from '../core/scroll.ts';
+  import { scrollFrame } from '../core/scroll.ts';
   import { voiceHtml } from './voice-html.ts';
 
   let { idx }: { idx: 0 | 1 } = $props();
@@ -58,6 +58,8 @@
   });
 
   const enter = $derived(ps.enter ? easeOut(ps.enter.p) : 1);
+  /** A long scroll dims the code around its cut (see scrollFrame). */
+  let dim = $state(0);
   const stat = $derived.by(() => {
     if (!m) return null;
     const total = m.adds + m.dels;
@@ -88,13 +90,27 @@
   // ---- layout: scroll (after the DOM is updated), then caret / labels / Cmd underline
   let scrollSig = '';
   let tabSig = '';
+  // A move starts where the editor really is. Recomputing its start from the previous target
+  // can disagree with the screen by a few rows (an explanation moved meanwhile), and the first
+  // frame then jumps, often the wrong way.
+  let move: { key: string; from: number; p: number } | null = null;
   const offScroll = player.layout(ORDER.pane, () => {
     if (!editorEl || !codeEl || !v || !ps.scroll) return;
-    const sig = JSON.stringify([ps.scroll.to, ps.scroll.mode, ps.scroll.p, v.key, notes.size, deco?.caret, player.epoch]);
+    const sig = JSON.stringify([ps.scroll.to, ps.scroll.mode, ps.scroll.p, v.key, notes.size, deco?.caret, deco?.head?.vi, deco?.head?.g, player.epoch]);
     if (sig === scrollSig && !player.playing) return;
     scrollSig = sig;
-    const y = scrollPx({ view: v, row: (i) => rowEls[i], height: editorEl.clientHeight, contentHeight: codeEl.scrollHeight }, ps.scroll);
-    if (y != null && Math.abs(editorEl.scrollTop - y) > 0.5) editorEl.scrollTop = y;
+    const key = JSON.stringify([ps.file, ps.view, ps.scroll.to, ps.scroll.mode]);
+    // a new move: another target, or the same target set again by the next step (its progress restarts)
+    if (!move || move.key !== key || ps.scroll.p < move.p) move = { key, from: editorEl.scrollTop, p: ps.scroll.p };
+    move.p = ps.scroll.p;
+    // while playing, a move (and where it settles) is measured from where it really began;
+    // a seek shows the state as computed
+    const live = player.playing && ps.scroll.mode !== 'follow';
+    if (!live) move = { key, from: NaN, p: ps.scroll.p };
+    const E = { view: v, row: (i: number) => rowEls[i], height: editorEl.clientHeight, contentHeight: codeEl.scrollHeight, head: deco?.head, rowH: parseFloat(getComputedStyle(editorEl).lineHeight) || 20 };
+    const fr = scrollFrame(E, ps.scroll, Number.isNaN(move.from) ? null : move.from);
+    if (fr.y != null && Math.abs(editorEl.scrollTop - fr.y) > 0.5) editorEl.scrollTop = fr.y;
+    dim = fr.dim;
   });
   const offDeco = player.layout(ORDER.decorations, () => {
     if (tabsEl && tabSig !== ps.file + '|' + ps.tabs.length) { tabSig = ps.file + '|' + ps.tabs.length; tabsEl.querySelector('.tab.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
@@ -163,40 +179,41 @@
       {@const st = IR.files[file]?.status}
       {@const icon = fileIcon(baseName(file))}
       {@const on = file === ps.file}
-      <button class="tab{st && st !== 'context' ? ` st-${st}` : ''}" class:on data-file={file} title={file} onclick={() => player.exploreOpen(file, { pane: idx })}>
+      <button class="tab{st && st !== 'context' ? ` st-${st}` : ''}" class:on class:outside={st === 'context'} data-file={file} title={file} onclick={() => player.exploreOpen(file, { pane: idx })}>
         <span class="fi {icon[1]}">{icon[0]}</span><span class="nm">{baseName(file)}</span>
-        {#if on && ps.view !== 'after'}<span class="mode">{ps.view === 'diff' ? 'diff' : T_('이전', 'before')}</span>{/if}
+        {#if on && ps.view !== 'after'}<span class="mode">{ps.view === 'diff' ? 'diff' : t('pane.before')}</span>{/if}
         {#if st && STATUS_LETTER[st]}<span class="sb">{STATUS_LETTER[st]}</span>{/if}
       </button>
     {/each}
   </div>
   {#if !ps.file}
-    <div class="editor"><div class="empty-pane">{T_('열린 파일 없음', 'No file open')}</div></div>
+    <div class="editor"><div class="empty-pane">{t('pane.empty')}</div></div>
   {:else if !f}
     <div class="crumbs"><span class="path">{#each ps.file.split('/') as part, i}{#if i}<i>›</i>{/if}{part}{/each}</span></div>
-    <div class="editor"><div class="empty-pane stub"><div>{T_('이 파일의 내용은 워크스루에 포함되지 않았습니다.', 'This file’s content is not embedded in the walkthrough.')}</div><div class="muted">{T_('변경과 관련된 파일만 내용이 들어 있습니다.', 'Only files related to the change are embedded.')}</div></div></div>
+    <div class="editor"><div class="empty-pane stub"><div>{t('pane.stub')}</div><div class="muted">{t('pane.stubHint')}</div></div></div>
   {:else if m && v && deco}
     <div class="crumbs">
       <span class="path">{#each ps.file.split('/') as part, i}{#if i}<i>›</i>{/if}{part}{/each}</span>
+      {#if f.status === 'context'}<span class="outside" title={t('pane.outsideHint')}>{t('pane.outside')}</span>{/if}
       {#if f.oldPath}<span class="sym">← {f.oldPath}</span>{/if}
       {#if f.role}<span class="sym">{f.role}</span>{/if}
       <span class="vbtns">
         {#if stat}<span class="dstat"><span class="pa">+{stat.adds}</span><span class="pd">−{stat.dels}</span><span class="sq">{#each stat.blocks as b, i (i)}<i class={b}></i>{/each}</span></span>{/if}
         {#if canDiff}
-          {#each [['after', T_('이후', 'after')], ['before', T_('이전', 'before')], ['unified', 'unified'], ['split', 'split']] as [key, label] (key)}
+          {#each [['after', t('pane.after')], ['before', t('pane.before')], ['unified', 'unified'], ['split', 'split']] as [key, label] (key)}
             <button class:on={key === ps.view || (ps.view === 'diff' && key === ps.diff.mode)} onclick={() => setView(key)}>{label}</button>
           {/each}
         {/if}
       </span>
     </div>
     <div class="editor" bind:this={editorEl}>
-      <div class="code" class:split-mode={m.split} class:plain-mode={m.plain} bind:this={codeEl} style:opacity={enter < 1 ? enter : null} style:transform={enter < 1 ? `translateY(${((1 - enter) * 6).toFixed(2)}px)` : null}>
+      <div class="code" class:split-mode={m.split} class:plain-mode={m.plain} bind:this={codeEl} style:opacity={enter < 1 || dim > 0 ? (enter * (1 - 0.75 * dim)).toFixed(3) : null} style:transform={enter < 1 ? `translateY(${((1 - enter) * 6).toFixed(2)}px)` : null}>
         {#each v.rows as vr, vi (vr.fold ? 'f' + vr.fold.id : vr.i)}
           {@const label = deco.labels.get(vi)}
           {#if vr.fold}
             {@const fd = vr.fold}
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-            <div class="{v.cls[vi]} {deco.cls[vi]}" data-v={vi} title={T_('클릭하여 펼치기', 'Click to expand')} bind:this={rowEls[vi]} onclick={() => openFold(fd.id)}>{@html v.html[vi]}</div>
+            <div class="{v.cls[vi]} {deco.cls[vi]}" data-v={vi} title={t('pane.unfold')} bind:this={rowEls[vi]} onclick={() => openFold(fd.id)}>{@html v.html[vi]}</div>
           {:else}
             <div class="{v.cls[vi]} {deco.cls[vi]}" class:unfold-in={vr.unfolded != null && fresh.folds.has(vr.unfolded)} data-v={vi} style={deco.style[vi]} bind:this={rowEls[vi]}>{@html v.html[vi]}{#if label}<span class="hl-label tone-{label.tone}">{label.text}</span>{/if}</div>
           {/if}

@@ -1,9 +1,9 @@
 // The walkthrough state is a pure function of timeline time:
 //   state(T) = reduce(snapshot at scene start, steps started by T, their progress)
 // so play, pause, scrub, speed and scene jumps all just pick a T.
-import { openPhases, phaseAt, reached } from '../../shared/timing.ts';
-import type { DiffSettings, GraphEdge, GraphNode, LineRange, RefItem, ReplayMode, Side, Step, View } from '../../ir/types.ts';
-import { clamp, clone, ease, IR, T_ } from './env.ts';
+import { itemMs, openPhases, phaseAt, reached, REFS_HEAD } from '../../shared/timing.ts';
+import type { DiffSettings, Effect, GraphEdge, GraphNode, LineRange, RefItem, ReplayMode, Side, Step, View } from '../../ir/types.ts';
+import { clamp, clone, ease, IR, t } from './env.ts';
 import { fileSpan, replays, sceneAt, scenes } from './timeline.ts';
 
 export interface ScrollTarget { side: Side; from?: number; to?: number; line?: number }
@@ -41,15 +41,17 @@ export interface State {
   pointerAt: Anchor | null;
   keys: string[] | null;
   toast: string | null;
-  refs: { symbol?: string; title: string | null; items: RefItem[]; active: number } | null;
+  refs: { kind: 'refs' | 'impact'; symbol?: string; title: string | null; change?: string; items: RefItem[]; active: number } | null;
   graph: GraphState | null;
   map: GraphState | null;
   say: string;
   typing: Typing[];
   /** A file being picked in the explorer. */
   exFocus: string | null;
-  /** The explorer scrolling that file into view: progress of the "locate" phase. */
-  exScroll: { file: string; p: number; key: number } | null;
+  /** The explorer moving to a file: linear progress of the "locate" phase (or of the swap after a tab click).
+   *  It walks from `from` (the file shown until now) to `file`: folders close and open one at a time
+   *  (shared/tree-path foldMoves) and the selection steps along. */
+  exScroll: { file: string; from: string | null; p: number; key: number } | null;
   reveal: { file: string; p: number } | null;
   scene: number;
   sceneP: number;
@@ -60,6 +62,9 @@ export interface State {
   guideScene: number;
   bridge: { p: number } | null;
 }
+
+/** An impact item lights up in the colour of its verdict. */
+const EFFECT_TONE: Record<Effect, string> = { safe: 'info', check: 'warn', breaks: 'remove', updated: 'add' };
 
 export const DIFF_DEFAULT: DiffSettings = { mode: 'unified', algorithm: 'patience', granularity: 'word', context: 3, whitespace: 'collapse' };
 const newPane = (): PaneState => ({ tabs: [], file: null, view: 'after', diff: { ...DIFF_DEFAULT }, scroll: null, mem: {}, hl: [], focus: null, notes: [], flash: null, tokline: null, enter: null });
@@ -73,7 +78,8 @@ function resetTransient(s: State): void {
 
 export function setScroll(pane: PaneState, to: ScrollTarget, mode: Scroll['mode'], p: number): void {
   const prev = pane.scroll;
-  if (prev) prev.prev = prev.mode === 'ensure' && prev.prev ? { ...prev.prev, prev: null } : null;
+  // an "ensure" keeps the target before it; a "follow" keeps its chain (see scrollPx)
+  if (prev) prev.prev = prev.mode === 'follow' ? prev.prev : prev.mode === 'ensure' && prev.prev ? { ...prev.prev, prev: null } : null;
   pane.scroll = { to, mode, p, prev: prev && prev.to ? prev : null };
   if (pane.file) pane.mem[pane.file] = to;
 }
@@ -113,7 +119,8 @@ function applyOpen(s: State, st: Step, pi: number, p: number, dur: number): void
   if (kind !== 'same' && !reached(ph, ms, 'swap')) {
     const target: Anchor = kind === 'tree' ? { kind: 'ex', path: file } : { kind: 'tab', pane: pi, file };
     const from = s.pointer?.to || s.pointerAt;
-    if (kind === 'tree') { s.exFocus = file; s.exScroll = { file, p: at.name === 'locate' ? ease(at.p) : 1, key: st._id || 0 }; }
+    // from the file the explorer shows now (the active pane's), through its folders, to this one
+    if (kind === 'tree') { s.exFocus = file; s.exScroll = { file, from: s.panes[s.active].file, p: at.name === 'locate' ? at.p : 1, key: st._id || 0 }; }
     if (at.name === 'locate') s.pointer = null; // only the explorer moves; the pointer waits
     else if (at.name === 'travel') s.pointer = { from, to: target, p: ease(at.p) };
     else s.pointer = { from: target, to: target, p: 1, click: at.name === 'press' };
@@ -125,7 +132,10 @@ function applyOpen(s: State, st: Step, pi: number, p: number, dur: number): void
     s.pointerAt = target;
   }
   s.exFocus = null;
+  const before = s.panes[s.active].file;
   showFile(s, pi, file, st.view);
+  // after a tab click the explorer follows the screen change: its selection glides along
+  if (kind === 'tab' && at.name === 'swap') s.exScroll = { file, from: before, p: at.p, key: st._id || 0 };
   if (st.diff) Object.assign(pane.diff, st.diff);
   if (kind !== 'same') pane.enter = { key: st._id || 0, p: at.name === 'swap' ? at.p : 1 };
   if (st._r) {
@@ -134,8 +144,9 @@ function applyOpen(s: State, st: Step, pi: number, p: number, dur: number): void
     else setScroll(pane, st._r, 'center', 1);
   } else if (st._first && kind !== 'same') setScroll(pane, st._first, 'center', 1);
   if (st._reveal) {
-    const rp = at.name === 'reveal' ? at.p : reached(ph, ms, 'reveal') && ms !== Infinity && at.i < ph.length ? 0 : 1;
-    if (rp < 1) s.reveal = { file, p: at.name === 'reveal' ? at.p : 0 };
+    // the changes are held back from the moment the file appears, never shown and then taken away
+    const rp = ms === Infinity || at.i >= ph.length ? 1 : at.name === 'reveal' ? at.p : 0;
+    if (rp < 1) s.reveal = { file, p: rp };
   }
 }
 
@@ -180,7 +191,9 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
       let e = s.typing.find((x) => x.key === st._id);
       if (!e) { e = { key: st._id || 0, file: st._file!, side: r.side, from: r.from, to: r.to, p: 0, t: 0, mode: 'type' }; s.typing.push(e); }
       e.t = st._start || 0; e.p = p; e.mode = st._mode || 'type'; e.dp = st._dp;
-      if (e.mode === 'block' || r.to - r.from < 6) setScroll(pane, r, 'ensure', ease(clamp(p / 0.15, 0, 1)));
+      // a block or a short hunk: the editor brings its place into view first (BLOCK_LEAD of the
+      // typing part, see decorate), then it opens; a scroll squeezed into a few frames reads as a jump
+      if (e.mode === 'block' || r.to - r.from < 6) setScroll(pane, r, 'ensure', ease(clamp(p / (e.mode === 'block' ? 0.4 : 0.15), 0, 1)));
       else {
         // follow the line being written, like an editor keeping the caret in view
         const dp = st._dp || 0;
@@ -216,19 +229,19 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
         setScroll(tp, r, 'center', same ? ease(clamp((p - JUMP) / 0.25, 0, 1)) : 1);
         tp.hl.push({ ...r, tone: 'focus', label: null, p: clamp((p - JUMP) / 0.3, 0, 1), key: st._id || 0 });
         tp.flash = { side: r.side, from: r.from, to: r.from, key: `${st._id}`, p: clamp((p - JUMP) / (1 - JUMP), 0, 1) };
-        s.toast = `${T_('정의로 이동', 'Go to Definition')}  ${st.from?.token || ''} → ${to.file}:${to.line}`;
+        s.toast = t('goto.toast', { token: st.from?.token || '', to: `${to.file}:${to.line}` });
         if (s.pointer?.to) s.pointerAt = s.pointer.to;
         s.pointer = p < 0.7 && s.pointer ? { ...s.pointer, p: 1, click: false, fade: true } : null;
         s.keys = null;
       }
       return;
     }
-    case 'refs': {
+    case 'refs': case 'impact': {
       const items = st._items || [];
       const n = items.length;
-      const head = 700 / ((st.ms || 700) + 1300 * n);
+      const head = REFS_HEAD / ((st.ms || REFS_HEAD) + itemMs(st) * n);
       const k = p < head ? -1 : Math.min(n - 1, Math.floor(((p - head) / (1 - head)) * n));
-      s.refs = { symbol: st.symbol, title: st.title || null, items, active: k };
+      s.refs = { kind: st.do, symbol: st.symbol, title: st.title || null, change: st.change, items, active: k };
       if (k < 0) return;
       // per item: pointer to the list entry, click, then the editor scrolls to it, then it lights up
       const it = items[k];
@@ -240,11 +253,11 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
       const r: LineRange = { side: it.side, from: it.line, to: it.line };
       setScroll(pn, r, 'center', ease(clamp((local - 0.3) / 0.3, 0, 1)));
       pn.hl = pn.hl.filter((h) => !h.ref);
-      pn.hl.push({ ...r, tone: 'info', ref: true, label: it.label, p: clamp((local - 0.45) / 0.25, 0, 1), key: `${st._id}:${k}` });
+      pn.hl.push({ ...r, tone: it.effect ? EFFECT_TONE[it.effect] : 'info', ref: true, label: it.label, p: clamp((local - 0.45) / 0.25, 0, 1), key: `${st._id}:${k}` });
       return;
     }
     case 'graph': {
-      const title = st.title || T_('관계도', 'Relationships');
+      const title = st.title || t('graph.title');
       if (st.hide) { s.graph = null; if (st.unpin) s.map = null; return; }
       if (st.nodes) {
         s.graph = { nodes: st.nodes, edges: st.edges || [], title, size: st.size || 'full', highlight: st.highlight || [], key: st._id || 0 };

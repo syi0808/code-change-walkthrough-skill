@@ -9,27 +9,27 @@ import { clamp, IR } from '../core/env.ts';
 import { model } from '../core/model.ts';
 import { showFile, stateAt, type State } from '../core/state.ts';
 import { sceneAt, scenes, total } from '../core/timeline.ts';
-import { ancestors, changedStatus } from '../core/tree.ts';
 import { computeVoice, type Voice } from '../core/voice.ts';
 import type { Side, View } from '../../ir/types.ts';
 
 export type UserOp = (s: State) => void;
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 /** Layout hooks run in this order every frame: scroll containers first, then what is measured against them. */
-export const ORDER = { explorer: 10, pane: 20, decorations: 30, guide: 40, graph: 50, caption: 60, pointer: 90 } as const;
+export const ORDER = { explorer: 10, pane: 20, decorations: 30, guide: 40, caption: 45, graph: 50, pointer: 90 } as const;
 
 class Player {
   T = $state(0);
   playing = $state(false);
   speed = $state(1);
-  segPause = $state(true);
+  segPause = $state(false);
   atSceneEnd = $state(false);
   started = $state(false);
   /** Exploration while paused; cleared on play / seek. */
   userOps = $state.raw<UserOp[]>([]);
   ui = $state({ explorer: true, guide: true, mobileExplorer: false, map: true, mapExpanded: false, help: false, exFilter: false });
-  /** Folders open in the explorer. */
+  /** Folders the viewer opened in the explorer; used once they toggle one (manualTree), until playback resumes. */
   expanded = new SvelteSet<string>();
+  manualTree = $state(false);
   /** Bumped when layout must be re-measured (resize, panels sliding). */
   epoch = $state(0);
 
@@ -53,11 +53,6 @@ class Player {
   private hooks: { order: number; fn: () => void }[] = [];
   private raf = 0;
   private lastTs = 0;
-  private revealed: string | null = null;
-
-  constructor() {
-    for (const p of Object.keys(IR.files)) if (changedStatus(p)) for (const a of ancestors(p)) this.expanded.add(a);
-  }
 
   /** Register a layout step (DOM measurement / scroll). Returns an unregister function. */
   layout(order: number, fn: () => void): () => void {
@@ -69,10 +64,6 @@ class Player {
 
   /** Apply the current state to the DOM now, then run the layout steps. */
   commit(): void {
-    const s = this.frame;
-    // the file being picked (or shown) has its folders open before the tree renders
-    const target = s.exFocus || s.panes[s.active].file;
-    if (target && target !== this.revealed) { this.revealed = target; for (const a of ancestors(target)) this.expanded.add(a); }
     flushSync();
     for (const h of this.hooks) h.fn();
   }
@@ -98,6 +89,7 @@ class Player {
     if (this.atSceneEnd) { this.T = Math.min(total, Math.ceil(this.T + 1)); this.atSceneEnd = false; }
     this.started = true;
     this.userOps = [];
+    this.manualTree = false;
     this.playing = true; this.lastTs = 0;
     cancelAnimationFrame(this.raf); this.raf = requestAnimationFrame(this.tick);
     this.commit();
@@ -105,7 +97,7 @@ class Player {
   pause(): void { this.playing = false; cancelAnimationFrame(this.raf); this.commit(); }
   toggle(): void { if (this.playing) this.pause(); else this.play(); }
   seek(t: number, keepPlaying = false): void {
-    this.T = clamp(t, 0, total); this.atSceneEnd = false; this.userOps = []; this.started = true;
+    this.T = clamp(t, 0, total); this.atSceneEnd = false; this.userOps = []; this.started = true; this.manualTree = false;
     if (!keepPlaying) this.playing = false;
     this.commit();
   }

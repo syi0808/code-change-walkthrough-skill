@@ -106,12 +106,17 @@
 .row.chg-pend .mk { visibility: hidden; }
 .row.chg-pend .wd-add, .row.chg-pend .wd-del { background: transparent; }
 
-/* ---------------------------------------------------------------- tour replay: lines / blocks arriving */
-.row.ln-new { animation: lnIn var(--d-s) var(--ease) both; }
-@keyframes lnIn { from { opacity: 0; transform: translateX(-4px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+/* ---------------------------------------------------------------- tour replay: lines / blocks arriving
+   A new line opens its slot (see .grow) and the slot uncovers it; it never fades or slides.
+   It is marked as new by a brighter added colour that settles (--fr: 1..0, timeline driven). */
+.row.ln-fresh { background: color-mix(in srgb, var(--add-word) calc(var(--fr, 0) * 100%), var(--add-line)); }
+.row.ln-fresh .gn { background: color-mix(in srgb, var(--add-fg) calc(var(--fr, 0) * 35%), var(--add-num)); }
+.row.split.ln-fresh { background: none; }
+.row.split.ln-fresh .half:last-child { background: color-mix(in srgb, var(--add-word) calc(var(--fr, 0) * 100%), var(--add-line)); }
 
 /* ---------------------------------------------------------------- typing replay */
-.row.typ-hidden { display: none; }
+/* not written yet: no height, but still in the flow, so scrolling can aim at where it will appear */
+.row.typ-hidden { min-height: 0; height: 0; overflow: hidden; visibility: hidden; }
 /* a row being written grows from zero height (--g: 0..1), pushing the rows below smoothly */
 .row.grow { min-height: 0; height: calc(var(--row-h) * var(--g, 1)); overflow: hidden; }
 .row.typ-del-pend, .row.typ-del-pend .gn, .row.split.typ-del-pend .half.del, .row.split.typ-del-pend .half.del .gn { background: transparent; }
@@ -124,3 +129,6 @@
 .txt.clip { clip-path: inset(-2px calc(100% - var(--clipx, 0px) - 3px) -2px -2px); }
 .txt.clip::after { content: ""; position: absolute; left: var(--clipx, 0px); top: 2px; bottom: 2px; width: 2px; background: var(--accent); animation: caret .9s steps(1) infinite; }
 @keyframes caret { 50% { opacity: 0; } }
+/* code that the change did not touch: said where it is shown, so it is never mistaken for the change */
+.crumbs .outside { flex: none; font: 11px var(--sans); padding: 0 6px; border-radius: 3px; border: 1px dashed var(--fg-3); color: var(--fg-2); }
+.tab.outside .nm { font-style: italic; }

@@ -21,7 +21,8 @@
           "properties": { "order": { "type": "string" }, "rationale": { "type": "string" } }
         },
         "takeaways": { "type": "array", "items": { "type": "string" } },
-        "reviewFocus": { "type": "array", "items": { "type": "string" } }
+        "reviewFocus": { "type": "array", "items": { "type": "string" } },
+        "impact": { "type": "array", "description": "What outside the diff the change reaches (callers, data, config, other services) and how", "items": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" }, "effect": { "$ref": "#/$defs/effect" }, "files": { "type": "array", "items": { "type": "string" } } } } }
       }
     },
     "source": {
@@ -63,6 +64,7 @@
     "chapters": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/chapter" } }
   },
   "$defs": {
+    "effect": { "enum": ["safe", "check", "breaks", "updated"], "description": "safe: unaffected · check: needs a look · breaks: broken by the change · updated: changed along with it" },
     "chapter": {
       "type": "object",
       "required": ["title", "scenes"],
@@ -118,7 +120,7 @@
       "type": "object",
       "required": ["do"],
       "properties": {
-        "do": { "enum": ["open", "close", "layout", "diffView", "reveal", "highlight", "focus", "unfocus", "note", "type", "replay", "goto", "refs", "graph", "say", "wait", "clear"] },
+        "do": { "enum": ["open", "close", "layout", "diffView", "reveal", "highlight", "focus", "unfocus", "note", "type", "replay", "goto", "refs", "impact", "graph", "say", "wait", "clear"] },
         "pane": { "$ref": "#/$defs/pane" },
         "file": { "type": "string" },
         "view": { "$ref": "#/$defs/view" },
@@ -140,6 +142,7 @@
         { "if": { "properties": { "do": { "const": "goto" } } }, "then": { "required": ["from", "to"], "properties": {
           "from": { "type": "object", "required": ["at", "token"], "properties": { "at": { "$ref": "#/$defs/anchor" }, "token": { "type": "string" }, "file": { "type": "string" }, "view": { "$ref": "#/$defs/view" } } },
           "to": { "type": "object", "required": ["file"], "properties": { "file": { "type": "string" }, "at": { "$ref": "#/$defs/anchor" }, "view": { "$ref": "#/$defs/view" }, "pane": { "$ref": "#/$defs/pane" } } } } } },
+        { "if": { "properties": { "do": { "const": "impact" } } }, "then": { "required": ["items"], "properties": { "symbol": { "type": "string" }, "change": { "type": "string" }, "title": { "type": "string" }, "items": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["file", "at"], "properties": { "file": { "type": "string" }, "at": { "$ref": "#/$defs/anchor" }, "label": { "type": "string" }, "view": { "$ref": "#/$defs/view" }, "effect": { "$ref": "#/$defs/effect" }, "relation": { "type": "string" } } } } } } },
         { "if": { "properties": { "do": { "const": "refs" } } }, "then": { "required": ["items"], "properties": { "symbol": { "type": "string" }, "title": { "type": "string" }, "items": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["file", "at"], "properties": { "file": { "type": "string" }, "at": { "$ref": "#/$defs/anchor" }, "label": { "type": "string" }, "view": { "$ref": "#/$defs/view" } } } } } } },
         { "if": { "properties": { "do": { "const": "graph" } } }, "then": { "properties": {
           "hide": { "type": "boolean" }, "title": { "type": "string" }, "size": { "enum": ["panel", "full"] },
