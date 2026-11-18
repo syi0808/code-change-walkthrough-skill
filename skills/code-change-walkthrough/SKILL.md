@@ -19,11 +19,11 @@ Your job is to **author Walkthrough IR**. The engine replays the **whole diff** 
 ## Principles
 
 1. **Comprehension over spectacle.** Every motion must be a real IDE action (open, scroll, go to definition, find references). Nothing decorative.
-2. **Evidence-based design.** Follow the design rules R1–R33 in `references/design-rules.md`.
-3. **Whole-codebase context.** Explain through call, dependency, and data relations and the intent of the change, not file by file. Show unchanged code when understanding needs it.
+2. **Evidence-based design.** Follow the design rules R1–R36 in `references/design-rules.md`.
+3. **Whole-codebase context.** A diff shows what was edited, not what the edit reaches or answers to. Explain through call, dependency, and data relations and the intent of the change, not file by file. Bring in unchanged code a reviewer needs (R34–R36): the dependents of every changed contract, and the constraints an edit answers.
 4. **Only verified claims.** Confirm every statement in the narration by reading the code. If an intent is unverified, turn it into a `reviewFocus` question instead of asserting it.
 5. **Language- and framework-agnostic.** The analysis script uses heuristics. Treat its output as leads, and confirm them in the code.
-6. **Write for the user.** Write the IR's narration in the user's language (`meta.language`), even though this skill is written in English.
+6. **Write for the user, in note form.** Write the IR's prose in the user's language (`meta.language`), even though this skill is written in English, and in note form: Korean 개조식, English telegraphic style (R32).
 
 ## Workflow
 
@@ -37,6 +37,16 @@ Your job is to **author Walkthrough IR**. The engine replays the **whole diff** 
 | a commit range | `--range A..B` |
 
 If the request is ambiguous, pick the default and tell the user which range you used. Also settle the **audience**: `reviewer` by default, `newcomer` if the user mentions onboarding or unfamiliarity, `author` for self-review or PR descriptions.
+
+### 0b. Install the player's UI language (first use per language)
+
+The player's buttons and labels come from a string table per language. English is built in. For any other `meta.language`, install its table once:
+
+```bash
+node "<skill>/scripts/engine.mjs" i18n <lang>
+```
+
+It downloads `i18n/<lang>.json` from the skill's GitHub repository into `<skill>/i18n/`, validates it, and exits 0; afterwards `check`, `build`, and `serve` pick it up offline. If the table is already installed it does nothing. Exit code 3 means no table is published for that language: translate the values of `engine.mjs i18n --template` into the language (keep every key and `{placeholder}`, set `"language"`, use the note-form register of R32), save it at the path the command printed, and tell the user it can be contributed upstream. Without a table the walkthrough still works, with an English UI, and `check` warns.
 
 ### 1. Collect context
 
@@ -65,6 +75,12 @@ Write down for yourself, before you design anything:
 - **Why**: the problem or requirement
 - **How**: the mechanism, the critical path, and the beacon lines
 - **Impact**: who is affected (callers, data, config), and what stays the same
+
+Then map the **context outside the diff** (R34–R36), because a reviewer cannot see it in a code review tool:
+- for each changed contract (signature, return shape, thrown errors, data written or read, config, events, routes): its unchanged dependents. Start from the digest's fan-in (`[import]` references), then read each one and decide its effect: `safe` (and why), `check`, `breaks`, or `updated`
+- the constraints the change answers to that live elsewhere: the caller's expectation, an invariant, a default, an existing helper it mirrors or bypasses
+- reach beyond the repository: other services, clients, schedulers, migrations
+Keep the list; it becomes `meta.impact`, the `impact` step items, and `reviewFocus` entries for every `check` or `breaks`.
 - **Risk**: what a reviewer must decide
 
 ### 3. Design the explanation
@@ -83,10 +99,11 @@ Read `references/ir-authoring.md` for patterns and pitfalls. Run `node "<skill>/
 - Use `find` and `symbol` anchors; use line numbers only as a last resort
 - Set `tour.order`: every changed file in the order of your question chain. Attach each explanation scene to the hunk or file it explains with `at` (it plays right after that hunk is replayed). Mark the hunks worth typing out with `tour.tempo` `"key"`, and anything that is wiring with `"skim"` (most wiring is detected automatically)
 - Give every scene a `question` and every scene after the first a `bridge` (R29, R30)
-- Write in plain, short sentences without em dashes (R32)
-- Write narration as **one lead sentence (the why) + 2–4 bullets**, one bullet per visual beat in step order, each pinned to its step with `cue`. Say where you are going before a `goto` or `refs`
+- Write every piece of prose in note form, without em dashes (R32): 개조식 in Korean, telegraphic style in English. Only `question` is a full question
+- Write narration as **one lead line (the why) + 2–4 bullets**, one bullet per visual beat in step order, each pinned to its step with `cue`. Say where you are going before a `goto`, `refs`, or `impact`
+- Show the context outside the diff (R34, R35): an `impact` scene after the change it is about (or at the end) with the unchanged dependents and their effects, and a `goto` to a constraint before an edit that answers it
 - Give scene 1's graph nodes a `file`: the graph docks as a structure map that tracks the file in view
-- Fill in `meta.summary`, `strategy.rationale`, `takeaways`, and `reviewFocus`
+- Fill in `meta.summary` (note-form bullets), `strategy.rationale`, `takeaways`, `reviewFocus`, and `meta.impact` (R36; `check` warns when it is empty)
 
 ### 5. Validate until clean
 
@@ -97,7 +114,7 @@ node "<skill>/scripts/engine.mjs" check <dir>/walkthrough.json --repo <repo> --j
 - **errors**: each one has a path (`chapters[i].scenes[j](id).steps[k]`) and a precise message, such as the text that was not found or the actual content of the line. Fix the IR and re-run until `ok: true`
 - **warnings**: cognitive-load guards, and ambiguous anchors (a `find` that matches several lines without `nth`). Fix ambiguous anchors; split or trim scenes rather than ignoring load warnings
 - **`resolved`** (with `--resolve`): every anchor's `file:line` and the line's text. Skim it to confirm each highlight, note, and `goto` lands where you meant. A clean `check` only proves the anchors exist, not that they are the right ones
-- **`stats`**: `estimatedSeconds` (playback length at 1×) and `unnarratedFiles` (changed files no step touches). Use both in the report
+- **`stats`**: `estimatedSeconds` (playback length at 1×), `unnarratedFiles` (changed files no step touches), and `outsideDiff` (unchanged files the walkthrough shows). Use them in the report
 
 ### 6. Deliver
 
@@ -119,6 +136,7 @@ In both cases, report:
 - the number of scenes and the duration (`stats.estimatedSeconds`)
 - the order strategy and its one-line rationale
 - changed files left out of the narration (`stats.unnarratedFiles`; they are still browsable in the file tree)
+- the context outside the diff: `meta.impact` in a line or two, and how many unchanged files are shown (`stats.outsideDiff`)
 - the controls: Space play/pause, ←/→ scenes, `[`/`]` speed, and ⌘/Ctrl+Click to go to a definition while paused
 
 The page embeds source code. Do not upload or publish it anywhere unless the user explicitly asks.
@@ -129,7 +147,9 @@ The page embeds source code. Do not upload or publish it anywhere unless the use
 - [ ] Is the order an execution or dependency order, not file order? (R14)
 - [ ] One idea per scene, and at most 1–2 simultaneous highlights? (R1, R11)
 - [ ] New files open in `after`, deleted files in `before`, and in-place rewrites in `split`? (R26–R28)
-- [ ] Is unchanged code that the reader needs (callers, definitions) connected through `goto` or `refs`? (principle 3)
+- [ ] Is unchanged code that the reader needs (callers, definitions) connected through `goto`, `refs`, or `impact`? (principle 3, R34, R35)
+- [ ] Does `meta.impact` say what outside the diff the change reaches, even if nothing? (R36)
+- [ ] Is all prose except `question` in note form (개조식, telegraphic)? (R32)
 - [ ] Are repetitive mechanical edits collapsed into one scene? (R3)
 - [ ] Is every claim verified in code, and does the narration explain instead of reading code aloud? (principle 4, R9)
 - [ ] Are `takeaways` and `reviewFocus` present? (R24)
@@ -139,12 +159,13 @@ The page embeds source code. Do not upload or publish it anywhere unless the use
 | Path | Purpose |
 |---|---|
 | `scripts/collect.mjs` | Change analysis: range, symbols, fan-in and fan-out, graph, clusters, reading orders |
-| `scripts/engine.mjs` | The `code-walkthrough` engine CLI: check, build, serve, spec, schema |
+| `scripts/engine.mjs` | The `code-walkthrough` engine CLI: check, build, serve, spec, schema, i18n |
+| `i18n/<lang>.json` | Installed UI string tables (created by `engine.mjs i18n`; not shipped) |
 
 Both scripts are generated bundles (built from `packages/engine` in the source repository). They are self-contained: don't edit them, and don't look for an engine elsewhere.
-| `references/design-rules.md` | Design rules R1–R33 |
+| `references/design-rules.md` | Design rules R1–R36 |
 | `references/strategy-playbook.md` | Change types → order, outline, views, size budget, audience |
 | `references/ir-authoring.md` | How to write good IR: scene recipes, anchors, common errors |
 | `docs/` | Background only (research rationale for the rules). Not needed to run the skill |
 
-Requirements: Node.js 18 or later and git, on macOS, Linux, or Windows. No network access is needed.
+Requirements: Node.js 18 or later and git, on macOS, Linux, or Windows. Network access is needed only once per UI language, for `engine.mjs i18n`.

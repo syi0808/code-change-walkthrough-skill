@@ -2,12 +2,12 @@
   "version": 1,
   "meta": {
     "title": "Retry idempotent requests with exponential backoff",
-    "summary": "`request()` now retries failed **idempotent (GET) requests** up to 3 times with exponential backoff. The retry logic lives in a new `retry.ts` module, and an `HttpError` type lets it retry only transient failures (5xx, 429).",
+    "summary": "- `request()`: retries failed **idempotent (GET) requests**, up to 3 times, exponential backoff\n- Retry logic in a new `retry.ts` module\n- New `HttpError` → only transient failures (5xx, 429) retried",
     "intent": "feature",
     "language": "en",
     "strategy": {
       "order": "top-down",
-      "rationale": "Start from what callers see (what changed), then go down into the new module (how it works), and finish with the blast radius (existing callers) and tests."
+      "rationale": "What callers see (what changed) → the new module (how it works) → reach outside the diff (existing callers) and tests"
     },
     "takeaways": [
       "GET retries by default; other methods only with `idempotent: true`",
@@ -15,8 +15,28 @@
       "`fetchUser` gets retries without any code change; `renameUser` (PATCH) is unaffected"
     ],
     "reviewFocus": [
-      "Are any PATCH/POST callers idempotent and should pass `idempotent: true`?",
-      "Does the total backoff (200+400+800 ms) fit within `timeoutMs`?"
+      "PATCH/POST callers that are idempotent: should pass `idempotent: true`?",
+      "Total backoff (200+400+800 ms) within `timeoutMs`?"
+    ],
+    "impact": [
+      {
+        "effect": "check",
+        "text": "`fetchUser` (unchanged caller, GET): now retried with no code change",
+        "files": [
+          "src/users/service.ts"
+        ]
+      },
+      {
+        "effect": "safe",
+        "text": "`renameUser` (unchanged caller, PATCH): sent once, as before",
+        "files": [
+          "src/users/service.ts"
+        ]
+      },
+      {
+        "effect": "safe",
+        "text": "Errors thrown: now `HttpError`, a subclass of `Error` → existing `catch` blocks still match"
+      }
     ]
   },
   "source": {
@@ -72,7 +92,7 @@
           "id": "map",
           "title": "Map of the change",
           "goal": "Know the three files' roles and how they relate",
-          "narration": "The change has three parts. **client.ts** starts using the new **retry.ts** module, and the policy values come from **config.ts**. The existing caller `service.ts` inherits the new behaviour without any code change.",
+          "narration": "Change in three parts\n\n- **client.ts** starts using the new **retry.ts** module\n- Policy values from **config.ts**; existing caller `service.ts` inherits the new behaviour, no code change",
           "steps": [
             {
               "do": "graph",
@@ -153,7 +173,7 @@
           "id": "request-diff",
           "title": "request() now wraps send",
           "goal": "The request moved into a send closure that is retried conditionally",
-          "narration": "The old request logic moved, unchanged, into a `send` closure. Two things differ: on failure it throws **`HttpError`** instead of `Error`, and the last line wraps the call in `withRetry` **only for idempotent requests**.",
+          "narration": "Old request logic moved, unchanged, into a `send` closure\n\n- Two differences: failure throws **`HttpError`** instead of `Error` / last line wraps the call in `withRetry` **for idempotent requests only**",
           "steps": [
             {
               "do": "open",
@@ -191,12 +211,12 @@
               "at": {
                 "find": "const idempotent"
               },
-              "text": "Unless `idempotent` is set explicitly, **only GET** is retried.",
+              "text": "Unless `idempotent` set explicitly: **GET only** retried",
               "tone": "why"
             }
           ],
           "question": "What happens now when a request fails?",
-          "bridge": "The map has one entry point, request(), so start there.",
+          "bridge": "Map has one entry point, request() → start there",
           "at": {
             "file": "src/api/client.ts"
           }
@@ -205,7 +225,7 @@
           "id": "request-split",
           "title": "Side by side",
           "goal": "Tell moved code apart from new code",
-          "narration": "In the split view it is clear the `fetch` block **only changed indentation**. The real changes to review are `HttpError` and the final branch.",
+          "narration": "Split view: `fetch` block **only re-indented**\n\n- Real changes to review: `HttpError` and the final branch",
           "steps": [
             {
               "do": "diffView",
@@ -236,7 +256,7 @@
             }
           ],
           "question": "Which lines actually changed, and which only moved?",
-          "bridge": "The unified diff mixes moved and new code; side by side separates them."
+          "bridge": "Unified diff mixes moved and new code → side by side separates them"
         }
       ]
     },
@@ -249,7 +269,7 @@
           "id": "goto-withretry",
           "title": "Into withRetry",
           "goal": "Know the loop's exit conditions",
-          "narration": "Jump to the definition of `withRetry`. The loop returns as soon as `fn` succeeds. On failure it waits `base × 2^attempt` and tries again **only if the error is transient and retries remain**.",
+          "narration": "Jump to the definition of `withRetry`\n\n- Returns as soon as `fn` succeeds\n- On failure: waits `base × 2^attempt`, retries **only if transient and retries remain**",
           "steps": [
             {
               "do": "goto",
@@ -287,12 +307,12 @@
               "at": {
                 "find": "await sleep"
               },
-              "text": "200 → 400 → 800 ms: up to ~1.4 s of extra waiting with 3 retries.",
+              "text": "200 → 400 → 800 ms: up to ~1.4 s extra waiting with 3 retries",
               "tone": "risk"
             }
           ],
           "question": "How does the retry loop decide to try again?",
-          "bridge": "request() hands failures to withRetry, so follow that call.",
+          "bridge": "request() hands failures to withRetry → follow that call",
           "at": {
             "file": "src/api/retry.ts"
           }
@@ -301,7 +321,7 @@
           "id": "transient",
           "title": "What counts as transient",
           "goal": "Know retries are limited to 5xx and 429",
-          "narration": "`isTransient` is true only for an `HttpError` with status **5xx or 429**, so client errors such as 404 fail immediately. That check is why `client.ts` now throws `HttpError` instead of a plain `Error`.",
+          "narration": "`isTransient`: true only for an `HttpError` with status **5xx or 429** → client errors such as 404 fail at once\n\n- This check = why `client.ts` now throws `HttpError` instead of a plain `Error`",
           "steps": [
             {
               "do": "focus",
@@ -326,17 +346,17 @@
             },
             {
               "do": "say",
-              "text": "Keeping `status` around is the reason `HttpError` exists."
+              "text": "`HttpError` exists to keep `status`"
             }
           ],
           "question": "Which failures count as worth retrying?",
-          "bridge": "The loop only retries transient errors, so what is transient?"
+          "bridge": "Loop retries only transient errors → what is transient?"
         },
         {
           "id": "config",
           "title": "Policy lives in config",
           "goal": "Know where to tune retries",
-          "narration": "The policy values live in `config.retry`; tuning retries in production means changing this one place.",
+          "narration": "Policy values in `config.retry` → one place to tune retries in production",
           "steps": [
             {
               "do": "layout",
@@ -366,7 +386,7 @@
             }
           ],
           "question": "Where are the retry numbers set?",
-          "bridge": "The backoff uses policy values; they come from config.",
+          "bridge": "Backoff uses policy values → where they come from",
           "at": {
             "file": "src/config.ts"
           }
@@ -382,14 +402,14 @@
           "id": "callers",
           "title": "What about existing callers?",
           "goal": "Tell which calls become retried",
-          "narration": "Find the callers of `request`. `fetchUser` is a GET, so it is **retried automatically**; `renameUser` is a PATCH and behaves **exactly as before**.",
+          "narration": "Callers of `request` outside the diff\n\n- `fetchUser`: GET → **retried automatically** / `renameUser`: PATCH → **exactly as before**",
           "steps": [
             {
               "do": "layout",
               "mode": "single"
             },
             {
-              "do": "refs",
+              "do": "impact",
               "pane": 0,
               "symbol": "request",
               "items": [
@@ -398,34 +418,39 @@
                   "at": {
                     "find": "return request<User>(`/users/${id}`);"
                   },
-                  "label": "GET → retried"
+                  "label": "now retried",
+                  "relation": "caller, GET",
+                  "effect": "check"
                 },
                 {
                   "file": "src/users/service.ts",
                   "at": {
                     "find": "method: 'PATCH'"
                   },
-                  "label": "PATCH → unchanged"
+                  "label": "sent once, as before",
+                  "relation": "caller, PATCH",
+                  "effect": "safe"
                 }
-              ]
+              ],
+              "change": "GET now retried"
             },
             {
               "do": "note",
               "at": {
                 "find": "method: 'PATCH'"
               },
-              "text": "If this PATCH is idempotent, pass `idempotent: true` to opt in.",
+              "text": "PATCH idempotent? → pass `idempotent: true` to opt in",
               "tone": "tip"
             }
           ],
           "question": "Which existing calls are affected?",
-          "bridge": "The behaviour is clear; now check who calls request()."
+          "bridge": "Behaviour clear → who calls request()?"
         },
         {
           "id": "tests",
           "title": "What the tests pin down",
           "goal": "Know both core behaviours are covered",
-          "narration": "The tests pin down two behaviours: a **503 is retried until it succeeds**, and a **404 fails without retrying**. Note that no test covers the idempotency branch in `request()` itself.",
+          "narration": "Tests pin two behaviours: **503 retried until success**, **404 fails without retry**\n\n- No test for the idempotency branch in `request()` itself",
           "steps": [
             {
               "do": "open",
@@ -452,7 +477,7 @@
             }
           ],
           "question": "What do the tests guarantee?",
-          "bridge": "Finally, check which of these rules the tests pin down.",
+          "bridge": "Last: which rules the tests pin down",
           "at": {
             "file": "test/retry.test.ts"
           }

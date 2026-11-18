@@ -1,4 +1,4 @@
-# Cognitive foundations: rationale for R1–R28
+# Cognitive foundations: rationale for R1–R36
 
 This is background material and is not loaded at runtime. The operational rules live in `../references/design-rules.md`. This document gives the research basis for each rule and notes how the engine and the skill implement it.
 
@@ -76,7 +76,8 @@ This is background material and is not loaded at runtime. The operational rules 
 | Finding focus points | entry-point introduction | `open` + `focus` |
 | Expanding focus points | follow a definition or caller | `goto`, `refs` |
 | Understanding a subgraph | trace a flow | chained `goto`, `columns` |
-| Relating subgraphs | impact, structure | `graph`, `refs` |
+| Relating subgraphs | structure | `graph`, `refs` |
+| "What will be affected by this change?" | impact (§11) | `impact` |
 
 ## 6. Code review research
 
@@ -111,14 +112,15 @@ This is background material and is not loaded at runtime. The operational rules 
 - **R27. Use patience for moved blocks and brace-heavy code.** Its unique-line anchors match the correspondence a human expects. Use myers for short edits where a minimal edit script matters.
 - **R28. Open new files in `after`, not `diff`,** because all-green carries no information. Open deleted files in `before`.
 
-## 9. Text structure of the narration (lead sentence + bullets)
+## 9. Text structure of the narration (lead line + note-form bullets)
 
 **Basis**
 - **Signaling with structure.** Headings, lists, and enumeration help readers find a text's structure and remember it (Lorch, 1989). For *procedural* content, a step-by-step format improves comprehension and execution over continuous prose (Ganier, 2004).
-- **Cohesion.** Connectives such as "because", "so", and "instead" make causal relations explicit. Cohesive text helps readers with less domain knowledge most (McNamara, Kintsch, Songer & Kintsch, 1996). Fragmented bullets that drop the connectives hide the reasoning (Tufte, 2003, a critical essay rather than an experiment).
+- **Reading competes with looking.** The narration is read while the code moves (the split-attention and redundancy findings in Mayer, 2021). Every word spent on sentence frame (subject, auxiliaries, politeness endings) is time not spent on the code. Reading time grows with length and with the number of words to integrate (Just & Carpenter, 1980), and a short line can be taken in with few fixations (Rayner, 1998).
+- **Cohesion still matters.** Explicit relations ("because", "so", "instead") help readers with less domain knowledge most (McNamara, Kintsch, Songer & Kintsch, 1996), and fragments that drop the relation hide the reasoning (Tufte, 2003, a critical essay rather than an experiment).
 - **Segmenting and temporal contiguity** (Mayer, 2021): one segment per visual beat, presented together with that beat.
 
-**Rule.** R8 combines these. A prose lead sentence carries the *why*. Short full-sentence bullets then carry the procedure, one per visual beat, each keeping its connective, and the player reveals each bullet in sync with its step (`cue`).
+**Rule.** R8 and R32 combine these. A lead line carries the *why*; bullets carry the procedure, one per visual beat, revealed in sync with its step (`cue`). All of it is written in note form (Korean 개조식, English telegraphic style): the sentence frame goes, the relation stays, written as a symbol (`→` cause or sequence, `:` definition, `/` contrast). The reasoning remains explicit, as cohesion research asks, at a fraction of the reading cost. `question` is the exception: it is the viewer's own question, so it stays a question.
 
 ## 10. Question chains and event boundaries (R29–R31)
 
@@ -131,6 +133,21 @@ This is background material and is not loaded at runtime. The operational rules 
 - R29: each scene answers a stated question.
 - R30: each boundary carries a bridge from the last answer to the next question.
 - R31: one explanation at a time, written to sit under the code it explains.
+
+## 11. Context outside the diff (R34–R36)
+
+**Basis**
+- Understanding the change is the main challenge of code review, and reviewers say what they lack most is context: the code around the change and what it affects (Bacchelli & Bird, 2013). Review tools show the edited lines and little else.
+- "What will be (directly or indirectly) affected by this change?" is one of the questions developers ask during change tasks, and one of the hardest to answer with the tools at hand (Sillito, Murphy & De Volder, 2006; 2008). Developers analyse a change's impact mostly by navigating dependencies by hand (Tao, Dang, Xie, Zhang & Kim, 2012).
+- Comprehension builds a *situation model* that integrates the text with what it refers to (Pennington, 1987; Kintsch, 1998). A hunk read without the code it serves gives the reader the text model only: what the lines say, not what they do to the system.
+- What is out of view has no information scent, so it is not foraged (Pirolli & Card, 1999). An unchanged caller never appears in a diff, so a reviewer does not go looking for it.
+- *Source monitoring* (Johnson, Hashtroudi & Lindsay, 1993): people misattribute where information came from unless the source is marked. Unchanged code shown next to changed code must say that it is unchanged.
+
+**Rules and implementation**
+- **R34.** An `impact` step lists the unchanged dependents of a changed contract with a relation and a verdict, and the player walks through them like references, lighting each line in the verdict's colour. The authoring workflow derives the list from the whole repository (collect's import-linked fan-in), not from the diff.
+- **R35.** A `goto` to the constraint before the edit that answers it: the edit then reads as a response, not as an arbitrary change.
+- **R36.** `meta.impact` states the reach (or its absence) in the overview, as an advance organizer for risk (Ausubel, 1960). `check` warns when it is empty.
+- Every unchanged file is badged *outside the diff* in the editor path and in the impact list (source monitoring).
 
 ---
 
@@ -165,3 +182,9 @@ This is background material and is not loaded at runtime. The operational rules 
 - Tao, Y., & Kim, S. (2015). Partitioning composite code changes to facilitate code review. *MSR*.
 - Tversky, B., Morrison, J. B., & Bétrancourt, M. (2002). Animation: can it facilitate? *IJHCS*.
 - von Mayrhauser, A., & Vans, A. M. (1995). Program comprehension during software maintenance and evolution. *IEEE Computer*.
+- Johnson, M. K., Hashtroudi, S., & Lindsay, D. S. (1993). Source monitoring. *Psychological Bulletin*.
+- Just, M. A., & Carpenter, P. A. (1980). A theory of reading: From eye fixations to comprehension. *Psychological Review*.
+- Kintsch, W. (1998). *Comprehension: A Paradigm for Cognition*. Cambridge University Press.
+- Rayner, K. (1998). Eye movements in reading and information processing: 20 years of research. *Psychological Bulletin*.
+- Sillito, J., Murphy, G. C., & De Volder, K. (2008). Asking and answering questions during a programming change task. *IEEE TSE*.
+- Tao, Y., Dang, Y., Xie, T., Zhang, D., & Kim, S. (2012). How do software engineers understand code changes? An exploratory study in industry. *FSE*.

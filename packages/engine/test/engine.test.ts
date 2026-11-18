@@ -176,16 +176,12 @@ describe('skill scripts', () => {
 
 describe('context outside the diff', () => {
   test('an impact step marks which places are outside the diff and carries verdicts', () => {
-    const ir = load();
-    const file = Object.keys(ir.files).find((f) => ir.files[f].status === 'context') || 'src/config.ts';
-    ir.chapters[ir.chapters.length - 1].scenes!.push({ id: 'impact', question: 'Who else?', bridge: 'Then.', steps: [{ do: 'impact', symbol: 'request', change: 'retries now', items: [{ file, at: 1, effect: 'safe', relation: 'reads' }] }] });
-    ir.meta = { ...(ir.meta || {}), impact: [{ text: 'callers unchanged', effect: 'safe' }] };
-    const res = compile(ir, { repo });
+    const res = compileFile(example, { repo });
     assert.equal(res.ok, true, JSON.stringify(res.errors));
     const st = stepsOf(res.ir).find((x) => x.do === 'impact')!;
-    assert.equal(st._items?.[0].effect, 'safe');
-    assert.equal(st._items?.[0].outside, res.ir.files[file].status === 'context');
+    assert.deepEqual(st._items?.map((x) => [x.effect, x.outside]), [['check', true], ['safe', true]], 'callers in service.ts: unchanged, so outside the diff');
     assert.ok(!res.warnings.some((w) => w.path === 'meta.impact'), 'meta.impact given: no warning');
+    assert.ok(res.stats.outsideDiff.includes('src/users/service.ts'));
   });
   test('a bad verdict is an error, and a missing meta.impact a warning', () => {
     const ir = load();

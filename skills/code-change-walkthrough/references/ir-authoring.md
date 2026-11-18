@@ -35,9 +35,9 @@ The engine replays every changed hunk; you decide the order and where to stop.
 { "id": "transient", "title": "What counts as transient",
   "at": { "file": "src/api/retry.ts" },
   "question": "Which failures are worth retrying?",
-  "bridge": "The loop only retries transient errors, so what counts as transient?",
-  "goal": "Know that only 5xx and 429 are retried",
-  "narration": "Only server-side or rate-limit failures are retried.\n\n- `isTransient` is true for an `HttpError` with status 5xx or 429.\n- A 404 fails at once, because retrying would not change the answer.",
+  "bridge": "Loop retries only transient errors → what counts as transient?",
+  "goal": "Only 5xx and 429 retried",
+  "narration": "Retries: server-side and rate-limit failures only\n\n- `isTransient`: `HttpError` with status 5xx or 429\n- 404 fails at once: a retry would get the same answer",
   "steps": [ … ] }
 ```
 
@@ -49,7 +49,8 @@ The engine replays every changed hunk; you decide the order and where to stop.
 {
   "version": 1,
   "meta": { "title", "summary", "intent", "language", "audience",
-            "strategy": { "order", "rationale" }, "takeaways": [], "reviewFocus": [] },
+            "strategy": { "order", "rationale" }, "takeaways": [], "reviewFocus": [],
+            "impact": [ { "text", "effect": "safe|check|breaks|updated", "files": [] } ] },   // what outside the diff the change reaches
   "source": { "range": "<base>...<head>" },              // same range as collect; or { "base", "head" | "WORKTREE" }
   "files": { "<path>": { "role": "2–4 word role" } },   // only files your steps use
   "glossary": [],                                       // domain terms a newcomer would not know
@@ -99,13 +100,23 @@ The `token` must appear literally on the `from` line. Say "let's jump into `with
 ```
 Return to `{ "do": "layout", "mode": "single" }` when the comparison is over.
 
-**Blast radius** (who is affected)
+**Impact outside the diff** (what the change reaches that the diff does not show)
 ```json
-[{ "do": "refs", "symbol": "request", "items": [
-   { "file": "src/users/service.ts", "at": { "find": "request<User>(`/users/${id}`)" }, "label": "GET → retried" },
-   { "file": "src/users/service.ts", "at": { "find": "method: 'PATCH'" }, "label": "PATCH → unchanged" }] }]
+[{ "do": "impact", "symbol": "request", "change": "GET now retried", "items": [
+   { "file": "src/users/service.ts", "at": { "find": "request<User>(`/users/${id}`)" }, "relation": "caller", "effect": "check", "label": "GET → now retried" },
+   { "file": "src/users/service.ts", "at": { "find": "method: 'PATCH'" }, "relation": "caller", "effect": "safe", "label": "PATCH → sent once" },
+   { "file": "src/jobs/sync.ts", "at": { "find": "request(" }, "relation": "caller, loop", "effect": "check", "label": "retries multiply" }] }]
 ```
-Show at most 5–6 items. Use labels to classify them, for example "updated mechanically", "behaviour changes", or "needs review". If there are more, say so in the narration.
+A code review shows only the edited lines; the places those lines reach are invisible unless you bring them in. List the unchanged dependents of each changed contract (signature, return shape, error, data, config, event): callers, consumers, readers of the same table, other implementations of the interface. Each item gets a `relation` (how it is connected) and an `effect`: `safe` (still holds; say why in `label`), `check` (the reviewer must decide), `breaks`, or `updated` (changed in this diff too). Unchanged files are badged **outside the diff** in the panel and the editor, so the viewer never mistakes them for the change. Show at most 5–6 items, `check` and `breaks` first; count the rest in the narration. Place the scene right after the change it is about, or close the walkthrough with it.
+
+**Context before the change** (what the edit only makes sense against): when an edit answers a constraint that lives elsewhere (a caller's expectation, an invariant, a config default, an existing helper it mirrors), `goto` there *before* the edit, then come back. A diff alone gives no reason; one look at the constraint does.
+
+**Mechanical set** (the same edit in many places)
+```json
+[{ "do": "refs", "symbol": "Logger", "items": [
+   { "file": "src/a.ts", "at": { "find": "new Logger(" }, "label": "updated mechanically" },
+   { "file": "src/b.ts", "at": { "find": "new Logger(" }, "label": "updated mechanically" }] }]
+```
 
 **Replay a key edit** (the change happening, instead of a static diff)
 ```json
@@ -159,12 +170,19 @@ Until the `type` step runs, its lines look unwritten: added lines are hidden and
 | warning `ambiguous anchor: … matches N lines` | The first match was used, which may not be the line you meant. Check `resolved` (`check --resolve`), then add `nth` or use a more specific `find` |
 | `unknown file` | The path must be repo-relative and match exactly (case-sensitive), using the new path for renames |
 
-## Narration style
+## Narration style: note form
 
-Write each scene's narration as **a lead sentence plus bullets**, with each bullet cued to its step:
+Write every piece of prose (narration, notes, labels, `bridge`, `goal`, `summary`, `rationale`, `takeaways`, `reviewFocus`, `impact`) in **note form**: one fact per line, no sentence padding. Only `question` stays a real question, because it is what the viewer is asking.
+
+- **Korean: 개조식.** End on a noun or a nominal ending (`~함`, `~음`, `~임`, `확인`, `추가`), never `~다`, `~습니다`, `~요`. Drop particles a reader can infer.
+- **English: telegraphic style** (also called note form; it has no single-word name like 개조식). Drop the subject when it is the code under discussion, drop articles and "is/are", start with a verb in the present tense ("Retries", "Throws") or a noun phrase. No closing period.
+- **Other languages**: the equivalent bullet register of that language's technical writing (short, nominal or verb-first, no polite sentence endings).
+- Relations get symbols instead of connective words: `→` for "so / then / leads to", `:` for "namely / is", `/` for a contrast, `=` for "means".
+
+Each scene's narration is **a lead line plus bullets**, with each bullet cued to its step:
 
 ```json
-{ "narration": "`request()` now retries only the requests that are safe to repeat.\n\n- Failures throw `HttpError`, so the retry logic can read the status code.\n- Only idempotent requests are wrapped in `withRetry`; everything else is sent once.",
+{ "narration": "`request()`: retries only requests safe to repeat\n\n- Failures throw `HttpError` → retry logic can read the status\n- Idempotent requests only wrapped in `withRetry`, the rest sent once",
   "steps": [
     { "do": "open", "file": "src/api/client.ts", "view": "diff" },
     { "do": "highlight", "range": { "find": "throw new HttpError" }, "label": "① HttpError", "cue": 2 },
@@ -174,8 +192,9 @@ Write each scene's narration as **a lead sentence plus bullets**, with each bull
 
 The items are numbered 1 (the lead), 2 (first bullet), 3, and so on. An item without a cue arrives with the last uncued highlight-like step before the next cued item. The engine gives every item its reading time and delays the step that brings in the next item until then, so do not add `hold` or `wait` for reading. `check` reports a `cue` that is out of range.
 
-- Keep each scene to a lead sentence plus 2–4 bullets. Explain **why** and **how things relate**. Never read code aloud.
-- Make the sentence order follow the step order. The thing named first is highlighted first.
+- Keep each scene to a lead line plus 2–4 bullets. Explain **why** and **how things relate**. Never read code aloud.
+- Make the bullet order follow the step order. The thing named first is highlighted first.
 - Put identifiers in backticks. Use at most 1–2 `**bold**` phrases per scene.
-- Put risks in `note` with `tone: "risk"`, worded as something to check, not a verdict.
-- Mark unverified intent as such ("appears to…"), or move it to `reviewFocus`.
+- Put risks in `note` with `tone: "risk"`, worded as something to check, not a verdict ("scope not allowed → every guardian lookup 503, check").
+- Mark unverified intent as such ("looks like…"), or move it to `reviewFocus`.
+- An `impact` step shows its own labels: keep its narration to the lead line and at most one bullet for the item that needs a decision.

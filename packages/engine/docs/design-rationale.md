@@ -1,4 +1,4 @@
-# Player design rationale: rules M1–M27
+# Player design rationale: rules M1–M30
 
 ## Design diagnosis: why viewers lose the thread
 
@@ -23,7 +23,7 @@ The player's visual design and animation follow rules taken from research on per
 → `ui/Graph.svelte`: the same element moves between `full`, `mini` (the `.gd-map` slot), and `panel`; the move finishes before the next scene's pointer sets off (M20). Viewers can toggle it with `M`.
 
 **M3. Navigation is shown, not teleported.** Opening a file is a procedure of separate events (`openPhases`):
-1. *locate*: the explorer expands the folders, scrolls the row toward the centre, and dims the rest. Only the explorer moves.
+1. *locate*: the explorer walks to the file (M28), scrolls each row it steps on into view, and dims the rest. Only the explorer moves.
 2. *travel*: the cursor moves to the row, which is now still.
 3. *press*: the click.
 4. *beat*: a short pause, so cause and effect read as two events.
@@ -167,3 +167,15 @@ All timing values were later raised by 4/3, so that 1x plays at the pace viewers
 - Pashler, H. (1994). Dual-task interference in simple tasks: data and theory. *Psychological Bulletin*.
 - Raymond, J. E., Shapiro, K. L., & Arnell, K. M. (1992). Temporary suppression of visual processing in an RSVP task: an attentional blink? *J. Experimental Psychology: HPP*.
 - Rothkopf, E. Z. (1971). Incidental memory for location of information in text. *J. Verbal Learning and Verbal Behavior*.
+
+## Context and language
+
+**M28. The explorer walks the path.** Folders start closed, and only the path to the file in view is open. Picking a file is shown the way a person does it with the keyboard: the selection steps up the old file's folders, closing them up to the folder both files share, then down the new file's folders, opening each, then onto the file. Each move is one step on the timeline (selection first, then the folder opens or closes in what remains of the step), and the compiler times the locate phase by the number of moves (`_fold`). A tree with every changed folder open is a long list in which the new file's position carries no meaning; a path that closes and opens shows where the new file is *relative to the old one* (how far up they part, how far down the new one sits), which is the spatial relation viewers use to build a map of a code base (Ko et al., 2006, on navigation as relating places). One closed tree also keeps the explorer to a handful of rows, so the spotlight competes with fewer distractors (Treisman & Gelade, 1980). Once the viewer opens or closes a folder while paused, the tree is theirs until playback resumes.
+→ `shared/tree-path.ts` (`chain`, `foldMoves`, shared with the compiler), `ui/Explorer.svelte`, `locateMs` in `shared/timing.ts`.
+
+**M29. The outside of the diff is shown and labelled.** An `impact` step walks the places a change reaches that the diff does not show, each with how it is connected and a verdict, lit in the verdict's colour; `meta.impact` states the reach in the overview. An unchanged file is badged *outside the diff* in the editor path and in the list, and its tab is set in italics: code next to the change must say it is not the change, or viewers attribute it to the wrong source (source monitoring; Johnson et al., 1993). Between two items of a list, the previous item stays on screen until the next is clicked, instead of the editor falling back to where the list started.
+→ `ui/Stage.svelte` (`.wt-refs.impact`), `.crumbs .outside`, `case 'impact'` in `core/state.ts`, `gd-impact` in `ui/Guide.svelte`.
+
+**M30. Words are data.** Every word the player says by itself comes from a string table by key, not from the code: English built in, other languages installed once and embedded in the page next to the IR. A viewer reads the interface in their own language, and the Korean table is written in 개조식 (note form), like the narration, so the interface and the explanation read in one register.
+→ `src/i18n/`, `t()` in `core/env.ts`, `i18n/<lang>.json` at the repository root.
+

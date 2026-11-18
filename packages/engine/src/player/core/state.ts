@@ -244,16 +244,20 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
       s.refs = { kind: st.do, symbol: st.symbol, title: st.title || null, change: st.change, items, active: k };
       if (k < 0) return;
       // per item: pointer to the list entry, click, then the editor scrolls to it, then it lights up
-      const it = items[k];
       const local = ((p - head) / (1 - head)) * n - k;
       const target: Anchor = { kind: 'ref', index: k };
       s.pointer = k === n - 1 && local > 0.7 ? null : { from: k > 0 ? { kind: 'ref', index: k - 1 } : s.pointerAt, to: target, p: ease(clamp(local / 0.2, 0, 1)), click: local > 0.2 && local < 0.3 };
-      if (local < 0.3) return;
-      const pn = showFile(s, pi, it.file, it.view);
-      const r: LineRange = { side: it.side, from: it.line, to: it.line };
-      setScroll(pn, r, 'center', ease(clamp((local - 0.3) / 0.3, 0, 1)));
-      pn.hl = pn.hl.filter((h) => !h.ref);
-      pn.hl.push({ ...r, tone: it.effect ? EFFECT_TONE[it.effect] : 'info', ref: true, label: it.label, p: clamp((local - 0.45) / 0.25, 0, 1), key: `${st._id}:${k}` });
+      const show = (j: number, sp: number, hp: number) => {
+        const x = items[j];
+        const pn = showFile(s, pi, x.file, x.view);
+        const r: LineRange = { side: x.side, from: x.line, to: x.line };
+        setScroll(pn, r, 'center', sp);
+        pn.hl = pn.hl.filter((h) => !h.ref);
+        pn.hl.push({ ...r, tone: x.effect ? EFFECT_TONE[x.effect] : 'info', ref: true, label: x.label, p: hp, key: `${st._id}:${j}` });
+      };
+      // until the next item is clicked, the previous one stays on screen
+      if (local < 0.3) { if (k > 0) show(k - 1, 1, 1); return; }
+      show(k, ease(clamp((local - 0.3) / 0.3, 0, 1)), clamp((local - 0.45) / 0.25, 0, 1));
       return;
     }
     case 'graph': {

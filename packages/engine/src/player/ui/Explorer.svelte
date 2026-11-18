@@ -57,7 +57,8 @@
   /** The row the walk is on now: lit while everything else recedes. */
   const cur = $derived(motion && motion.local < 1 ? motion.moves[motion.k].path : null);
   // a folder opens or closes in what is left of its move
-  const rowDur = $derived(Math.round((FOLD_STEP * (1 - FOLD_SELECT) - 20) / player.speed));
+  // (paused, a seek lands at once: nothing would re-measure the rows after a slide ends)
+  const rowDur = $derived(player.playing ? Math.round((FOLD_STEP * (1 - FOLD_SELECT) - 20) / player.speed) : 0);
 
   let body: HTMLDivElement | undefined = $state();
   let sel: HTMLDivElement | undefined = $state();

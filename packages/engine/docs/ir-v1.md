@@ -14,7 +14,7 @@ So an IR never contains copied source code (unless the code is not in git), rare
 
 Pipeline: `authoring IR ──compile──► compiled IR (self-contained) ──render──► standalone HTML` (`code-walkthrough build`), or the same HTML served on localhost (`code-walkthrough serve`).
 
-The compiled IR also carries the repository's **file tree** at `head` (`tree`), so the player's explorer shows the real directory structure, not only the changed files. Only the files listed in `files` (plus the other changed files) have content. Opening any other file shows a "content not embedded" placeholder. Very large repositories (over 25,000 files) are pruned to the directories that lead to embedded files.
+The compiled IR also carries the repository's **file tree** at `head` (`tree`), so the player's explorer shows the real directory structure, not only the changed files. Folders start closed; picking a file closes the old file's folders and opens the new one's, one at a time, and the compiler times the pick by that number of moves (`_fold`). Only the files listed in `files` (plus the other changed files) have content. Opening any other file shows a "content not embedded" placeholder. Very large repositories (over 25,000 files) are pruned to the directories that lead to embedded files.
 
 ---
 
@@ -27,14 +27,17 @@ The compiled IR also carries the repository's **file tree** at `head` (`tree`), 
     "title": "One-line title",
     "summary": "What changed and why, 1–3 sentences (inline markdown)",
     "intent": "feature | bugfix | refactor | api-change | perf | config | mixed",  // free text, shown as a badge
-    "language": "en",                 // BCP-47; drives player UI strings (ko/en) and reading-time estimates
+    "language": "en",                 // BCP-47; picks the UI string table (see "UI strings") and reading-time estimates
     "audience": "reviewer | newcomer | author",
     "strategy": {
       "order": "top-down | bottom-up | data-flow | symptom-cause-fix | before-after | clusters",
       "rationale": "Why this order, 1–2 sentences (shown on the overview card)"
     },
     "takeaways": ["2–4 key points shown on the recap screen"],
-    "reviewFocus": ["Open questions the reviewer must decide"]
+    "reviewFocus": ["Open questions the reviewer must decide"],
+    "impact": [                       // what outside the diff the change reaches; `check` warns when empty
+      { "text": "Callers of request(): GET now retried", "effect": "check", "files": ["src/users/service.ts"] }
+    ]                                 // effect: safe | check | breaks | updated; files: optional, must be in `files`
   },
   "source": {
     "repo": "path (optional; relative to the IR file; --repo overrides)",
@@ -150,10 +153,24 @@ The scene duration is the longer of two values: the time its steps take, and the
 | `type` | `range` | **Replays an edit.** Until this step runs (within its scene), the range looks *unwritten*: its added lines are hidden and its removed lines look unchanged. When the step runs, removed lines turn red one by one, then added text is typed in with a caret. The duration is derived from the amount of text at one constant cadence (about 29 chars/s at 1×), so a long edit takes longer instead of typing faster. Works in `diff` (unified or split) and in `after` (for example, a new file). Use it for the 1–3 key edits of a walkthrough, each ≤ ~15 lines |
 | `goto` | `from: {at, token}`, `to: {file, at?, view?, pane?}` | Simulates Go to Definition: the pointer moves to `token`, holds ⌘ with the token underlined, clicks, jumps to the target, then flashes and highlights it. `to.at` defaults to `{symbol: token}`. `to.view` defaults to the view already open for that file in the target pane, otherwise `after` (like an IDE, a jump lands in the current code); `before` if the file was deleted. Set `"view": "diff"` to land in the diff |
 | `refs` | `symbol`, `items: [{file, at, label?, view?}]`, `title?` | Opens a "N references" panel and visits each item in order |
+| `impact` | `symbol?`, `change?`, `items: [{file, at, relation?, effect?, label?, view?}]`, `title?` | Like `refs`, for the places a change reaches outside the diff. The panel marks each item *outside the diff* (an unchanged file) or *changed here*, shows its `relation` and a verdict (`effect`: `safe`, `check`, `breaks`, `updated`), and lights each line in the verdict's colour. `check` warns when no item is outside the diff, and errors on an unknown `effect` |
 | `graph` | `pin?` (default `true`), `unpin?` with `hide`, `nodes: [{id, label, sub?, file?, status?}]` (`status`: `added`·`modified`·`deleted`·`renamed`·`context`; defaults to the file's status, else `context`. Nodes without `file` are fine for external things such as a cron, a queue or an S3 path), `edges: [{from, to, label?, style?: "dashed"}]`, `highlight?: [nodeId \| "from->to"]`, `title?`, `size?` `panel`·`full`. Alternatives: only `highlight` to update the current graph, or `hide: true` | Draws a layered relationship graph, **full screen by default** (`size: "panel"` for a card). When its scene ends, a pinned graph docks as the **structure map** at the top of the walkthrough panel and stays for the rest of the walkthrough, lighting up the node whose `file` is in view. So give nodes a `file`. A later pinned graph replaces the map; `{ "do": "graph", "hide": true, "unpin": true }` removes it. Clicking a node with `file` opens that file |
 | `say` | `text` | Replaces the caption under the narration and dwells for its reading time |
 | `wait` | `ms` | Pause |
 | `clear` | `pane?` | Clears highlights, notes and focus |
+
+## UI strings
+
+The player's own words (buttons, labels, tooltips, the names of generated tour scenes) come from a string table, never from the code. English is built in (`src/i18n/en.ts`, the source of truth for keys). A table for another language is a JSON file:
+
+```json
+{ "language": "ko", "strings": { "explorer.title": "탐색기", "refs.count": "참조 {n}곳" } }
+```
+
+- `code-walkthrough i18n <lang>` downloads the published table (`i18n/<lang>.json` at the repository root) once, validates it, and installs it next to the engine (`<engine dir>/../i18n/`, which is `<skill>/i18n/` for the skill). `check`, `build`, and `serve` then use the installed table for `meta.language` offline; `--i18n FILE` names one explicitly. `i18n --template` prints the English table to translate.
+- Validation keeps only known keys with non-empty string values that keep their `{placeholders}`; anything missing falls back to English. Values are plain text and are always escaped.
+- The compiler uses the table for the tour's generated scene titles and questions, and embeds it in the page as `<script type="application/json" id="walkthrough-i18n">`, separate from the IR, so a page can be given another language without recompiling the IR.
+- `check` warns when `meta.language` is not English and no table was found.
 
 ## Anchors
 
