@@ -1,0 +1,35 @@
+/* ================================================================ explorer */
+.wt-explorer { background: var(--bg-side); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }
+.ex-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 20px; height: 35px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--fg-2); flex: none; }
+.ex-head .ex-actions { display: flex; gap: 2px; opacity: .7; }
+.wt-explorer:hover .ex-head .ex-actions { opacity: 1; }
+.ex-root { display: flex; align-items: center; gap: 2px; height: 22px; padding: 0 8px 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 700; letter-spacing: .02em; color: var(--fg); flex: none; }
+.ex-body { overflow: auto; flex: 1; padding-bottom: 16px; font-size: 13px; scrollbar-width: thin; }
+.ex-row { position: relative; display: flex; align-items: center; gap: 4px; height: 22px; padding-right: 10px; white-space: nowrap; cursor: pointer; color: var(--fg); }
+.ex-row:hover { background: var(--bg-hover); }
+.ex-row .ig { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-2); opacity: .55; }
+.ex-row .tw { width: 16px; height: 16px; flex: none; display: grid; place-items: center; color: var(--fg-2); }
+.ex-row .tw svg, .ex-root .tw svg { width: 14px; height: 14px; transition: transform .2s var(--ease); }
+.tw.open svg { transform: rotate(90deg); }
+.ex-root .tw { width: 16px; display: grid; place-items: center; }
+.ex-row .nm { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.ex-row .fi { flex: none; width: 18px; text-align: center; font: 700 9px/1 var(--mono); letter-spacing: -.02em; }
+.ex-row .sb { flex: none; font: 600 11px var(--mono); margin-left: 6px; }
+.ex-row .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--git-mod); opacity: .8; margin-left: 6px; }
+.ex-row.dir.has-changes .nm { color: var(--git-mod); }
+.ex-row.st-modified .nm, .ex-row.st-modified .sb { color: var(--git-mod); }
+.ex-row.st-added .nm, .ex-row.st-added .sb, .ex-row.st-renamed .nm, .ex-row.st-renamed .sb, .ex-row.st-copied .nm, .ex-row.st-copied .sb { color: var(--git-add); }
+.ex-row.st-deleted .nm { color: var(--git-del); text-decoration: line-through; } .ex-row.st-deleted .sb { color: var(--git-del); }
+.ex-row.stub .nm { opacity: .8; }
+.ex-row.active, .ex-row.selecting { background: color-mix(in srgb, var(--bg-sel) 70%, transparent); }
+.ex-row.active .nm, .ex-row.selecting .nm { font-weight: 600; }
+/* spotlight: everything but the file in focus (and its folder path) recedes; hover brings it all back */
+/* the dimming finishes inside the locate phase (380ms of timeline), before the pointer sets off */
+.ex-body .ex-row { transition: opacity var(--d-m) var(--ease), background-color var(--d-m); }
+.ex-body.spot .ex-row { opacity: .24; }
+.ex-body.spot .ex-row.path { opacity: .72; }
+.ex-body.spot .ex-row.target { opacity: 1; }
+.wt-explorer:hover .ex-body.spot .ex-row { opacity: 1; transition-delay: .12s; }
+.ex-row.gone .nm { text-decoration: line-through; } .ex-row.gone { opacity: .45; }
+.ex-row.more { color: var(--fg-3); font-style: italic; cursor: default; }
+.i-blue { color: #519aba; } .i-yellow { color: #cbcb41; } .i-green { color: #8dc149; } .i-red { color: #cc3e44; } .i-orange { color: #e37933; } .i-purple { color: #a074c4; } .i-pink { color: #f55385; } .i-cyan { color: #519aba; } .i-gray { color: #8b949e; }

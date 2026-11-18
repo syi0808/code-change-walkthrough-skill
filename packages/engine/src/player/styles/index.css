@@ -1,0 +1,12 @@
+/* Player styles: IDE chrome (VS Code), diff colours (GitHub), and motion tokens. */
+@import './tokens.css';
+@import './frame.css';
+@import './explorer.css';
+@import './editor.css';
+@import './notes.css';
+@import './orient.css';
+@import './overlays.css';
+@import './graph.css';
+@import './guide.css';
+@import './controls.css';
+@import './responsive.css';

@@ -1,0 +1,11 @@
+/* ---------------------------------------------------------------- notes */
+/* An explanation makes room first (grid row 0fr -> 1fr, set by the player on the timeline clock),
+   then fades in; leaving, it fades and gives the room back. The code below moves, never jumps. */
+.note { display: grid; grid-template-rows: 1fr; margin: 0 12px 0 74px; position: relative; z-index: 3; }
+.note-clip { overflow: hidden; min-height: 0; }
+.note-in { margin: 3px 0 8px; padding: 7px 11px; background: var(--note-bg); border: 1px solid var(--line-2); border-left: 3px solid var(--note-edge, var(--t-focus)); border-radius: 6px; font: 13px/1.55 var(--sans); white-space: normal; max-width: 660px; box-shadow: 0 2px 8px rgba(0,0,0,.12); color: var(--fg-strong); }
+@keyframes noteIn { from { opacity: 0; transform: translateY(-4px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+.note .tag { font: 700 10px var(--sans); text-transform: uppercase; letter-spacing: .05em; color: var(--note-edge, var(--t-focus)); margin-right: 7px; }
+.note.tone-why { --note-edge: var(--t-info); } .note.tone-risk { --note-edge: var(--t-remove); } .note.tone-tip { --note-edge: var(--t-add); }
+.tokline { position: absolute; height: 2px; background: var(--accent); pointer-events: none; z-index: 5; border-radius: 1px; animation: fadeIn var(--d-s); }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

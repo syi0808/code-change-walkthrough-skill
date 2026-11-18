@@ -1,0 +1,126 @@
+/* ================================================================ stage & panes */
+.wt-stage { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; isolation: isolate; }
+.wt-panes { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 0fr; min-height: 0; transition: grid-template-columns .5s var(--ease-drawer); }
+.wt-panes.columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.wt-panes .pane + .pane { border-left: 1px solid var(--line); }
+.wt-panes:not(.columns) .pane:nth-child(2) { visibility: hidden; border: 0; }
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; overflow: hidden; }
+.tabs { display: flex; background: var(--bg-side); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; min-height: 35px; flex: none; }
+.tab { display: flex; align-items: center; gap: 6px; padding: 0 12px 0 10px; height: 35px; font-size: 13px; color: var(--fg-2); border-right: 1px solid var(--line); white-space: nowrap; position: relative; max-width: 240px; transition: background-color .2s, color .2s; }
+.tab .nm { overflow: hidden; text-overflow: ellipsis; }
+.tab .fi { font: 700 9px var(--mono); }
+.tab.on { background: var(--bg); color: var(--fg-strong); }
+.tab.on::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--accent-strong); }
+.pane:not(.active) .tab.on::after { background: var(--fg-3); }
+.wt-panes:not(.columns) .pane .tab.on::after { background: var(--accent-strong); }
+.tab .mode { font: 10px var(--mono); color: var(--fg-3); border: 1px solid var(--line-2); border-radius: 3px; padding: 0 4px; }
+.tab .sb { font: 600 11px var(--mono); }
+.tab.st-modified .nm, .tab.st-modified .sb { color: var(--git-mod); }
+.tab.st-added .nm, .tab.st-added .sb { color: var(--git-add); }
+.tab.st-deleted .nm { color: var(--git-del); text-decoration: line-through; } .tab.st-deleted .sb { color: var(--git-del); }
+.tab { animation: tabIn var(--d-m) var(--ease) both; }
+@keyframes tabIn { from { opacity: 0; transform: translateY(4px); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+.crumbs { display: flex; align-items: center; gap: 10px; padding: 2px 8px 2px 14px; font-size: 12.5px; color: var(--fg-2); min-height: 26px; white-space: nowrap; overflow: hidden; flex: none; box-shadow: 0 2px 4px -3px rgba(0,0,0,.4); position: relative; z-index: 4; background: var(--bg); }
+.crumbs .path { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.crumbs .path i { font-style: normal; color: var(--fg-3); margin: 0 5px; }
+.crumbs .sym { color: var(--fg-3); }
+.crumbs .vbtns { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.crumbs .vbtns button { font: 11px var(--sans); padding: 1px 8px; border-radius: 4px; color: var(--fg-2); transition: background-color .15s; }
+.crumbs .vbtns button:hover { background: var(--bg-hover); }
+.crumbs .vbtns button.on { background: var(--bg-sel); color: var(--fg-strong); }
+.dstat { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--mono); margin-right: 8px; }
+.dstat .pa { color: var(--add-fg); } .dstat .pd { color: var(--del-fg); }
+.dstat .sq { display: inline-flex; gap: 1px; }
+.dstat .sq i { width: 8px; height: 8px; border-radius: 1px; }
+.dstat .sq i.a { background: var(--add-fg); } .dstat .sq i.d { background: var(--del-fg); }
+.editor { flex: 1; overflow: auto; position: relative; font: 12.5px/var(--row-h) var(--mono); tab-size: 4; }
+.code { position: relative; min-width: max-content; padding-bottom: 40vh; }
+.empty-pane { display: grid; place-items: center; align-content: center; gap: 6px; height: 100%; min-height: 240px; color: var(--fg-3); text-align: center; padding: 24px; font-family: var(--sans); }
+
+/* ---------------------------------------------------------------- rows (GitHub diff) */
+.row { display: flex; min-height: var(--row-h); position: relative; transition: opacity var(--d-m) var(--ease), background-color var(--d-l) var(--ease); }
+.row .gn { flex: none; width: 50px; padding: 0 10px 0 6px; text-align: right; color: var(--fg-3); user-select: none; background: var(--bg); position: sticky; left: 0; z-index: 1; transition: background-color var(--d-l) var(--ease), color var(--d-l); }
+.row .gn.n { left: 50px; }
+.row .mk { flex: none; width: 18px; text-align: center; user-select: none; color: var(--fg-3); }
+.row .txt { white-space: pre; padding-right: 24px; flex: 1; position: relative; }
+.row.plain .gn { width: 56px; }
+.row.plain .cg { flex: none; width: 4px; margin-right: 10px; }
+/* unified */
+.row.add { background: var(--add-line); } .row.add .gn { background: var(--add-num); color: var(--fg); } .row.add .mk { color: var(--add-fg); }
+.row.del { background: var(--del-line); } .row.del .gn { background: var(--del-num); color: var(--fg); } .row.del .mk { color: var(--del-fg); }
+.row .wd-add { background: var(--add-word); border-radius: 3px; }
+.row .wd-del { background: var(--del-word); border-radius: 3px; }
+.row.ws .mk::before { content: "⇥"; color: var(--fg-3); }
+/* after-view change gutter (VS Code) */
+.row.ch-add .cg { background: var(--git-add); }
+.row.ch-mod .cg { background: #1b81a8; }
+.row.ch-delpt .cg::after { content: ""; position: absolute; left: 56px; bottom: -4px; border: 4px solid transparent; border-left-color: var(--git-del); z-index: 2; }
+/* split */
+.row.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.row.split .half { display: flex; min-width: 0; overflow: hidden; transition: background-color var(--d-l) var(--ease); }
+.row.split .half + .half { border-left: 1px solid var(--line); }
+.row.split .gn { position: static; width: 46px; }
+.row.split .half.add { background: var(--add-line); } .row.split .half.add .gn { background: var(--add-num); color: var(--fg); } .row.split .half.add .mk { color: var(--add-fg); }
+.row.split .half.del { background: var(--del-line); } .row.split .half.del .gn { background: var(--del-num); color: var(--fg); } .row.split .half.del .mk { color: var(--del-fg); }
+.row.split .half.empty { background: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--line-2) 55%, transparent) 5px 6px); }
+.code.split-mode { min-width: 0; }
+.code.split-mode .txt { white-space: pre-wrap; word-break: break-all; }
+/* hunk header / fold */
+.row.fold { background: var(--hunk-bg); color: var(--hunk-fg); cursor: pointer; }
+.row.fold .fold-gut { flex: none; width: 118px; display: grid; place-items: center; background: var(--hunk-num); color: var(--hunk-fg); position: sticky; left: 0; z-index: 1; }
+.code.split-mode .row.fold .fold-gut { width: 64px; }
+.code.plain-mode .row.fold .fold-gut { width: 70px; }
+.row.fold .fold-gut svg { width: 14px; height: 14px; }
+.row.fold:hover .fold-gut { color: var(--accent); }
+.row.fold .txt { padding-left: 10px; display: flex; gap: 12px; }
+.row.fold .fold-n { font-family: var(--sans); font-size: 11.5px; opacity: .8; }
+/* rows of a fold that opens grow in: the code below is pushed, never jumps */
+.row.unfold-in { animation: unfold var(--d-m) var(--ease) both; overflow: hidden; }
+@keyframes unfold { from { max-height: 0; min-height: 0; opacity: 0; } to { max-height: 64px; opacity: 1; } }
+
+/* ---------------------------------------------------------------- walkthrough highlight: a ring + accent bar that keeps diff colours visible */
+.row::before { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2; opacity: 0;
+  background: color-mix(in srgb, var(--t, var(--t-focus)) 9%, transparent);
+  box-shadow: inset 3px 0 var(--t, var(--t-focus));
+  transition: opacity var(--d-m) var(--ease), box-shadow var(--d-m) var(--ease), background-color var(--d-m) var(--ease); }
+.row.hl { --t: var(--t-focus); }
+.row.hl-info { --t: var(--t-info); } .row.hl-warn { --t: var(--t-warn); } .row.hl-add { --t: var(--t-add); } .row.hl-remove { --t: var(--t-remove); }
+.row.hl::before { opacity: 1; box-shadow: inset 3px 0 var(--t), inset -1px 0 color-mix(in srgb, var(--t) 55%, transparent); }
+.row.hl.hl-first::before { box-shadow: inset 3px 0 var(--t), inset -1px 0 color-mix(in srgb, var(--t) 55%, transparent), inset 0 1px color-mix(in srgb, var(--t) 70%, transparent); }
+.row.hl.hl-last::before { box-shadow: inset 3px 0 var(--t), inset -1px 0 color-mix(in srgb, var(--t) 55%, transparent), inset 0 -1px color-mix(in srgb, var(--t) 70%, transparent); }
+.row.hl.hl-first.hl-last::before { box-shadow: inset 3px 0 var(--t), inset 0 0 0 1px color-mix(in srgb, var(--t) 60%, transparent); }
+/* older highlights recede to a thin bar (attention budget, M14) */
+.row.hl.hl-old::before { opacity: 1; background: transparent; box-shadow: inset 2px 0 color-mix(in srgb, var(--fg-3) 70%, transparent); }
+.row.dim { opacity: .3; }
+/* a jump target flashes once; the fade follows the timeline (--fo) */
+.row.flash::after { content: ""; position: absolute; inset: 0; background: var(--flash); pointer-events: none; opacity: var(--fo, 1); z-index: 2; }
+.hl-label { position: absolute; left: calc(var(--vw, 100%) - 12px); transform: translateX(-100%); top: 1px; white-space: nowrap; z-index: 3; font: 600 10.5px/16px var(--sans); padding: 0 7px; border-radius: 9px; pointer-events: none;
+  --c: var(--t-focus); color: var(--c); background: color-mix(in srgb, var(--c) 16%, var(--bg)); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.hl-label.tone-info { --c: var(--t-info); } .hl-label.tone-warn { --c: var(--t-warn); } .hl-label.tone-add { --c: var(--t-add); } .hl-label.tone-remove { --c: var(--t-remove); }
+.hl-label { animation: labelIn var(--d-m) var(--ease) both; }
+@keyframes labelIn { from { opacity: 0; transform: translateX(calc(-100% + 6px)); filter: blur(3px); } to { opacity: 1; transform: translateX(-100%); filter: none; } }
+
+/* ---------------------------------------------------------------- diff reveal (changes sweep in after a file opens) */
+.row.chg-pend, .row.chg-pend .gn, .row.split.chg-pend .half, .row.split.chg-pend .half .gn { background: transparent !important; }
+.row.chg-pend .gn, .row.split.chg-pend .half .gn { background: var(--bg) !important; color: var(--fg-3); }
+.row.chg-pend .mk { visibility: hidden; }
+.row.chg-pend .wd-add, .row.chg-pend .wd-del { background: transparent; }
+
+/* ---------------------------------------------------------------- tour replay: lines / blocks arriving */
+.row.ln-new { animation: lnIn var(--d-s) var(--ease) both; }
+@keyframes lnIn { from { opacity: 0; transform: translateX(-4px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+
+/* ---------------------------------------------------------------- typing replay */
+.row.typ-hidden { display: none; }
+/* a row being written grows from zero height (--g: 0..1), pushing the rows below smoothly */
+.row.grow { min-height: 0; height: calc(var(--row-h) * var(--g, 1)); overflow: hidden; }
+.row.typ-del-pend, .row.typ-del-pend .gn, .row.split.typ-del-pend .half.del, .row.split.typ-del-pend .half.del .gn { background: transparent; }
+.row.typ-del-pend .gn { background: var(--bg); color: var(--fg-3); }
+.row.typ-del-pend .mk, .row.split.typ-del-pend .half.del .mk { visibility: hidden; }
+.row.typ-del-pend .wd-del { background: transparent; }
+.row.typ-add-pend:not(.split) .txt, .row.split.typ-add-pend .half:last-child .txt { visibility: hidden; }
+.row.split.typ-add-pend .half:last-child, .row.split.typ-add-pend .half:last-child .gn { background: transparent; }
+.row.split.typ-add-pend .half:last-child .mk, .row.split.typ-add-pend .half:last-child .gn { visibility: hidden; }
+.txt.clip { clip-path: inset(-2px calc(100% - var(--clipx, 0px) - 3px) -2px -2px); }
+.txt.clip::after { content: ""; position: absolute; left: var(--clipx, 0px); top: 2px; bottom: 2px; width: 2px; background: var(--accent); animation: caret .9s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }

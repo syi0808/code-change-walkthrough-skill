@@ -2,7 +2,7 @@
 // Creates a tiny TypeScript repo whose last commit adds retry-with-backoff,
 // matching examples/retry/walkthrough.json. Cross-platform (Node + git only).
 //   node make-demo-repo.mjs <dir>
-//   node ../../bin/code-walkthrough.mjs build walkthrough.json --repo <dir> -o demo.html
+//   node ../../dist/cli.mjs build walkthrough.json --repo <dir> -o demo.html
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';

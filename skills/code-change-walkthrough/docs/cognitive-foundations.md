@@ -15,7 +15,7 @@ This is background material and is not loaded at runtime. The operational rules 
 - **R1. One idea per scene.** Introduce at most about 4 new identifiers, files, or concepts per scene.
   → engine warnings: narration over 600 characters, more than 12 steps in a scene, more than 7 scenes in a chapter.
 - **R2. Remove extraneous load.** Collapse lines whose only change is whitespace, and show word-level diffs so only the changed tokens stand out. Keep lock files and generated files out of the narration. Fold large files (`context`) or `focus` the relevant part.
-  → engine: whitespace-only pair detection and word diff (`player/diff.js`). Skill: `isGeneratedFile`.
+  → engine: whitespace-only pair detection and word diff (`src/shared/diff.ts`). Skill: `isGeneratedFile`.
 - **R3. Chunk repetitive mechanical edits.** When one pattern repeats (for example, 30 call sites updated for a new signature), show one representative instance and a `refs` list, and say that the rest follow the same pattern.
 
 ## 2. Multimedia learning principles (Mayer, *Multimedia Learning*, 3rd ed., 2021)

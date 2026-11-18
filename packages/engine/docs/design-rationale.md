@@ -1,4 +1,4 @@
-# Player design rationale: rules M1–M18
+# Player design rationale: rules M1–M22
 
 ## Design diagnosis: why viewers lose the thread
 
@@ -10,44 +10,48 @@ Viewers watch a walkthrough the way they watch a video: attention follows one th
 
 The mismatch: early versions reproduced **what an IDE does**, while the viewer needs **what to look at now and why, delivered where they are already looking**. Rules M13–M16 address this directly, and the other rules serve it.
 
-The player's visual design and animation follow rules taken from research on perception, attention, and learning. Every rule below names its basis and the place in the player that implements it. These rules govern the **engine**. The rules for planning an explanation (R1–R28) belong to the authoring skill.
+A second round of feedback (speed not applying to the cursor, file switches, or captions; layout jumping when an explanation appeared; several animations at once while switching files) also had one cause: **the viewer predicts the next frame, and the player broke the prediction.** The player had two clocks. Timeline time followed the speed control, but a large share of the motion (CSS fades, browser smooth-scrolling, elements inserted into the flow) ran on wall-clock time, overlapped the timeline's steps, and pushed content instantly. Measured on a real walkthrough, two or more screen regions moved at once in 69% of frames. Rules M19–M22 make one clock and one moving region the structure of the player, not a convention.
+
+The player's visual design and animation follow rules taken from research on perception, attention, and learning. Every rule below names its basis and the place in the player that implements it. These rules govern the **engine**. The rules for planning an explanation (R1–R33) belong to the authoring skill.
 
 ## Orientation: knowing where you are
 
 **M1. One spatial layout that stays put.** The explorer is on the left, the code in the middle, and the walkthrough on the right, and no panel ever jumps or swaps place. Viewers build a spatial map of the screen and rely on it. *Visual momentum* (Woods, 1984): the cost of each view change drops when the new view keeps landmarks from the old one.
-→ `player.css` frame grid; panels collapse with a sliding transition instead of disappearing.
+→ `styles/frame.css` grid; panels collapse with a sliding transition instead of disappearing.
 
 **M2. Overview and detail together.** The first relationship graph is shown full screen as the advance organizer. When its scene ends, it docks into the top of the walkthrough panel as a **structure map** for the rest of the walkthrough, and the node for the file in view lights up. The map never covers code. Basis: *overview+detail* interfaces (Cockburn, Karlson & Bederson, 2009), advance organizers (Ausubel, 1960), and signaling (Mayer).
-→ `renderGraph` / `placeGraph`: the same element moves between `full`, `mini` (the `.gd-map` slot), and `panel`; a CSS transition animates the move. Viewers can toggle it with `M`.
+→ `ui/Graph.svelte`: the same element moves between `full`, `mini` (the `.gd-map` slot), and `panel`; the move finishes before the next scene's pointer sets off (M20). Viewers can toggle it with `M`.
 
-**M3. Navigation is shown, not teleported.** Opening a file is a procedure:
-1. The file is revealed in the explorer (folders expand, the row scrolls to the centre and is marked as being selected).
-2. The cursor moves to it and clicks.
-3. The tab opens and the code fades in.
-4. The file's changes sweep in from top to bottom.
+**M3. Navigation is shown, not teleported.** Opening a file is a procedure of separate events (`openPhases`):
+1. *locate*: the explorer expands the folders, scrolls the row toward the centre, and dims the rest. Only the explorer moves.
+2. *travel*: the cursor moves to the row, which is now still.
+3. *press*: the click.
+4. *beat*: a short pause, so cause and effect read as two events.
+5. *swap*: the tab opens and the code fades in, already at its first change. The orientation strip and the outline change in this same moment.
+6. *reveal* (when asked): the file's changes sweep in from top to bottom.
 
 A jump to a definition scrolls the source token into view first, then the cursor moves to it, then the jump happens, then the target flashes. Basis: change blindness (Rensink, O'Regan & Clark, 1997), because an instant swap hides what changed. Pre-cueing (Posner, 1980) points attention at the location before the event happens there.
-→ `apply('open')` uses `_openKind` (`tree`, `tab`, `same`) from the compiler; `apply('goto')`; `s.reveal`.
+→ `openPhases` in `src/shared/timing.ts` (shared by the compiler's duration estimate and the player), `applyOpen` and `apply('goto')` in `core/state.ts`.
 
 **M4. One thing moves at a time.** Steps run in sequence, and each step owns the screen while it runs: the cursor travels only while nothing else animates, and highlights arrive only after the file has opened. Concurrent motion splits attention, and viewers cannot track more than a few moving objects at once (Pylyshyn & Storm, 1988). Animation that is too fast or too busy is not apprehended (Tversky, Morrison & Bétrancourt, 2002).
-→ The timeline lays steps out back to back (`timing.js`). `with: true` is the explicit, rarely needed exception.
+→ The timeline lays steps out back to back (`layoutScene` in `src/shared/timing.ts`). `with: true` is the explicit, rarely needed exception. M20 extends the rule to everything on screen.
 
 **M5. Reveal things where the eye already is.** A file or line being revealed is scrolled to the **centre** of its panel, never parked at an edge. Items at the periphery are often missed, because the useful field of view shrinks under load (Ball et al., 1988, on the *useful field of view*).
-→ explorer reveal (`renderExplorer`) and editor `center` / `ensure` scrolling.
+→ explorer locate (`ui/Explorer.svelte`) and editor `center` / `ensure` scrolling (`core/scroll.ts`).
 
 ## Motion quality
 
 **M6. Natural, responsive motion (Emil Kowalski's interface-motion practice).** Anything appearing or responding uses a strong ease-out (`cubic-bezier(0.23, 1, 0.32, 1)`), so it starts fast and settles gently and the interface feels immediate. Large surfaces moving (panels, the docking map) use a drawer curve (`cubic-bezier(0.32, 0.72, 0, 1)`). Movement between two on-screen states (scrolling, the cursor) uses ease-in-out, and the cursor travels on a gentle arc. Entrances combine a small translate (≤ 8 px), a slight scale (≥ 0.96, never from 0), and a short blur, rather than a long slide. Transitions are CSS transitions wherever they can be interrupted (highlights fade in *and* out). Pressed buttons scale to 0.97. Motion that follows physical expectations is easier to follow and predict (Chang & Ungar, 1993).
-→ `--ease`, `--ease-drawer`, `--ease-in-out`, the `swapIn` / `codeIn` keyframes, `.row::before`, and `ease()` / the arc in `renderPointer`.
+→ `--ease`, `--ease-drawer`, `--ease-in-out`, the `swapIn` keyframes, `.row::before`, and `ease()` / the arc in `ui/Pointer.svelte`.
 
 **M7. Durations are long enough to perceive and short enough not to stall.** Interface responses run for 150–300 ms, surface moves for 450–600 ms, and actions run for 0.6–2.7 s, which is enough to track an object's path (apprehension principle; Tversky et al., 2002). Highlights sweep in line by line instead of all at once, so their extent is read as a range.
-→ the `BASE` durations in `timing.js`, the highlight sweep (`h.p`), and the CSS transition times.
+→ the `BASE` durations in `src/shared/timing.ts`, the highlight sweep (`h.p`), and the `--d-*` duration tokens.
 
 **M8. Words arrive with the visuals they describe.** The narration is split into items (sentences or bullets). Each item appears when the step it describes runs. The current item is emphasised, past items stay readable, and upcoming items are faint, so the layout never jumps. Basis: temporal contiguity and segmenting (Mayer, 2021). Showing the whole text at once invites reading ahead of the visuals, which splits attention.
-→ `WalkTiming.cueTimes`. An author can pin an item to a step with `cue: n`; otherwise items are spread by text length over the scene's steps.
+→ `cueTimes` in `src/shared/timing.ts`. An author can pin an item to a step with `cue: n`; otherwise items are spread by text length over the scene's steps.
 
 **M9. The change itself can be replayed.** `type` shows an edit happening: removed lines turn red, then the new text is typed in. Until that step runs, the edit appears not yet written. When the motion is congruent with the concept, here a change over time, animation beats static graphics (Tversky et al., 2002). Seeing a state transition prevents the viewer from missing the difference (Rensink et al., 1997).
-→ `apply('type')` and the `typ-*` classes.
+→ `apply('type')` and `core/decorate.ts` (the `typ-*` classes).
 
 ## Salience
 
@@ -56,7 +60,7 @@ The explorer applies the same rule as a spotlight. The file in focus is fully vi
 → `.flash`, `.ripple`, `.dim`, the explorer `.spot` / `.path` / `.target` classes, and fades on every other change.
 
 **M11. Diff colours stay readable under emphasis.** Highlights are drawn as a ring with an accent bar and a faint tint, never as an opaque fill, so the add/delete colours stay visible underneath. The diff palette follows GitHub so that experienced reviewers use colour meanings they already know (pre-existing schemas; Sweller's element interactivity).
-→ `.row.hl::before`, and the diff tokens at the top of `player.css`.
+→ `.row.hl::before`, and the diff tokens in `styles/tokens.css`.
 
 **M12. The viewer controls the pace.** Playback pauses at the end of each scene by default. Viewers can change speed, scrub, jump to a scene, and explore freely while paused. Learner-paced segments outperform system-paced ones (Mayer & Chandler, 2001), and interactivity is the main factor that makes animation useful (Tversky et al., 2002).
 → the controls, keyboard shortcuts, and `userOps` (exploration while paused).
@@ -64,7 +68,7 @@ The explorer applies the same rule as a spotlight. The file in focus is fully vi
 ## Orientation and narrative
 
 **M13. The answer to "why am I looking at this?" is always above the code.** A strip above the editor shows the scene number, the scene's **question** (the question the viewer has now, which the scene answers), and the file in view. Comprehension is driven by questions and hypotheses (Brooks, 1983; Letovsky, 1987; Sillito et al., 2006). A visible question turns watching into checking an answer, so code on screen always has a purpose.
-→ `renderOrient`, scene `question`.
+→ `ui/Stage.svelte` (orientation strip), scene `question`.
 
 **M14. An attention budget per screen.** Working memory holds about four chunks (Cowan, 2001), so the player caps what is salient at once:
 - the strip (where and why): 1–2 chunks
@@ -73,13 +77,13 @@ The explorer applies the same rule as a spotlight. The file in focus is fully vi
 - one structure-map node lit
 
 The explorer and the outline sit outside the budget because they are dimmed or peripheral.
-→ `fresh` highlights in `renderPane`, the single voice, `.hl-old`.
+→ `fresh` highlights in `core/decorate.ts`, the single voice, `.hl-old`.
 
 **M15. One voice, at the point of focus.** Narration items and notes are one channel. Only the newest is shown, and it sits directly under the code range most recently highlighted (spatial contiguity, Mayer, 2021, at its strongest), so the viewer never has to look away from the code to learn why it is highlighted. When no code is in play, such as the lead sentence or a graph scene, the voice is a caption at the bottom of the editor. The right panel stays a reference outline that is not needed to follow along.
-→ `computeVoice`, `.note.callout`, `.wt-caption`.
+→ `computeVoice` (`core/voice.ts`), `.note.callout`, `ui/Caption.svelte`.
 
 **M16. Every scene boundary is bridged.** A boundary between scenes is an event boundary: viewers update their mental model there, and an unexplained cut forces them to rebuild it (event segmentation; Zacks et al., 2007). Each scene after the first opens with a short transition card. The card shows what was just seen, **why this comes next** (`bridge`), the new question, and the file it goes to. The old view stays dimmed behind it, and the structure map pulses the next stop, so the move is previewed instead of cut (visual momentum; Woods, 1984).
-→ `TM.BRIDGE` lead-in, `renderOrient` (bridge card), `.g-node.next`.
+→ `BRIDGE` lead-in, the bridge card in `ui/Stage.svelte`, `.g-node.next`.
 
 ## Coverage
 
@@ -93,7 +97,21 @@ The explorer and the outline sit outside the budget because they are dimmed or p
 - Replay segments have no narration, no transition card, and no end-of-scene pause.
 
 Total length matters less than wasted time, because viewers have speed control, ±5 s seeking (←/→), and scene jumps (Shift+←/→).
-→ `replayMs`, `openMs` (`fast`), the `auto` scene timing in `timing.js`.
+→ `replayMs`, `openPhases` (`fast`), the `auto` scene timing in `src/shared/timing.ts`.
+
+## Motion integrity: one clock, one moving region
+
+**M19. One clock.** Everything that carries meaning moves on timeline time: the cursor, the explorer and editor scrolling, the outline's scrolling, an explanation opening and closing, rows growing in, the code fading in after a click, and the flash after a jump. CSS motion that remains (entrances, fades) has its duration divided by the playback rate (`--rate`). So 2x is 2x everywhere, pausing freezes everything, and seeking shows the end state instead of animating across the jump. A control that only partly obeys breaks the viewer's sense of agency: the felt link between an action and its outcome (Haggard, 2017). Once some motion ignores the speed control, the viewer stops trusting the control.
+→ `app/player.svelte.ts` (`T` advances by wall time × speed; `--rate`), `core/tween.ts`, `core/notes.ts`, `styles/tokens.css` (`--d-*`).
+
+**M20. One region moves at a time; context changes ride on the event.** During a procedure (M3) each phase owns the screen. Peripheral panels (the outline, the structure map, the narration text) never move while the code is being written: they change in the same moment as the screen change they report, or they follow it after a beat (`transition-delay`). Nothing loops forever outside the point of focus (no pulsing markers). Two events within a few hundred milliseconds compete for one processing channel, and the second is processed late or missed (psychological refractory period, Pashler, 1994; attentional blink, Raymond, Shapiro & Arnell, 1992). Observers' eyes move to an action's target before the hand arrives (Flanagan & Johansson, 2003), so a target that is still scrolling defeats the prediction. Cause and effect read as causal only when they are distinct and close in time (Michotte, 1946).
+→ `openPhases`, `State.shown` / `State.guideScene`, and `app/player.svelte.ts` (`commit()`: one DOM update, then layout steps in a fixed order: explorer, editor, decorations, outline, map, caption, pointer).
+
+**M21. Make room first, then show; content is pushed, never jumps.** An explanation under a line first opens its space (its grid row grows from 0 to its height), then fades in. When it leaves, it fades, then gives the space back, and the next one opens after it. A row being written grows from zero height. Rows of a fold that opens grow in. Readers remember where text is on the screen and return to it (Rothkopf, 1971). The visual system treats the screen as an outside memory it can look back at (O'Regan, 1992), and an instant jump invalidates that memory. An object that moves continuously keeps its identity, while one that jumps is processed as a new object (object files; Kahneman, Treisman & Gibbs, 1992). So content may move, but only continuously.
+→ `core/notes.ts` (`NoteTracker`), `.row.grow` / `--g` in `core/decorate.ts`, `.row.unfold-in`.
+
+**M22. A steady rhythm at the point of focus.** Typing runs at one constant cadence (26 ms per character at 1x), and ordinary hunks arrive one line per beat (80 ms). A key hunk too long to type at that cadence is replayed line by line instead of being sped up. A steady, predictable rhythm lowers the attention needed to follow a stream of events (dynamic attending, Jones & Boltz, 1989). Terminal commit replays such as gitlogue feel easy to watch for the same reason: one caret, one rhythm, nothing else moving.
+→ `TYPE_CHAR_MS`, `LINE_MS` in `src/shared/timing.ts`; `TYPE_MAX_CHARS` in `src/compile/steps.ts`.
 
 ---
 
@@ -116,5 +134,14 @@ Total length matters less than wasted time, because viewers have speed control, 
 - Treisman, A. M., & Gelade, G. (1980). A feature-integration theory of attention. *Cognitive Psychology*.
 - Tversky, B., Morrison, J. B., & Bétrancourt, M. (2002). Animation: can it facilitate? *IJHCS*.
 - Woods, D. D. (1984). Visual momentum: a concept to improve the cognitive coupling of person and computer. *IJMMS*.
-- Yantis, S., & Jonides, J. (1984).
-- Zacks, J. M., Speer, N. K., Swallow, K. M., Braver, T. S., & Reynolds, J. R. (2007). Event perception: a mind-brain perspective. *Psychological Bulletin*. Abrupt visual onsets and selective attention. *J. Experimental Psychology: HPP*.
+- Yantis, S., & Jonides, J. (1984). Abrupt visual onsets and selective attention. *J. Experimental Psychology: HPP*.
+- Zacks, J. M., Speer, N. K., Swallow, K. M., Braver, T. S., & Reynolds, J. R. (2007). Event perception: a mind-brain perspective. *Psychological Bulletin*.
+- Flanagan, J. R., & Johansson, R. S. (2003). Action plans used in action observation. *Nature*.
+- Haggard, P. (2017). Sense of agency in the human brain. *Nature Reviews Neuroscience*.
+- Jones, M. R., & Boltz, M. (1989). Dynamic attending and responses to time. *Psychological Review*.
+- Kahneman, D., Treisman, A., & Gibbs, B. J. (1992). The reviewing of object files: object-specific integration of information. *Cognitive Psychology*.
+- Michotte, A. (1946/1963). *The Perception of Causality*. Methuen.
+- O'Regan, J. K. (1992). Solving the "real" mysteries of visual perception: the world as an outside memory. *Canadian Journal of Psychology*.
+- Pashler, H. (1994). Dual-task interference in simple tasks: data and theory. *Psychological Bulletin*.
+- Raymond, J. E., Shapiro, K. L., & Arnell, K. M. (1992). Temporary suppression of visual processing in an RSVP task: an attentional blink? *J. Experimental Psychology: HPP*.
+- Rothkopf, E. Z. (1971). Incidental memory for location of information in text. *J. Verbal Learning and Verbal Behavior*.

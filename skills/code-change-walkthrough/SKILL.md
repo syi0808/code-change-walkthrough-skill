@@ -14,12 +14,12 @@ Your job is to **author Walkthrough IR**. The engine replays the **whole diff** 
                          engine: check ─► build (standalone .html) / serve (localhost)
 ```
 
-**Running commands (all platforms).** `<skill>` below means this skill's base directory. Run every script as `node "<skill>/scripts/<name>.mjs" …` and quote paths. Don't rely on shebangs, the executable bit, or shell-specific variables: the same command line works in bash, zsh, PowerShell, and cmd. Run the engine through `node "<skill>/scripts/engine.mjs" <command>`. It finds the engine through `CODE_WALKTHROUGH_ENGINE`, then the copy next to this skill, then a global npm install, and runs it in-process.
+**Running commands (all platforms).** `<skill>` below means this skill's base directory. Run every script as `node "<skill>/scripts/<name>.mjs" …` and quote paths. Don't rely on shebangs, the executable bit, or shell-specific variables: the same command line works in bash, zsh, PowerShell, and cmd. Run the engine through `node "<skill>/scripts/engine.mjs" <command>`.
 
 ## Principles
 
 1. **Comprehension over spectacle.** Every motion must be a real IDE action (open, scroll, go to definition, find references). Nothing decorative.
-2. **Evidence-based design.** Follow the design rules R1–R28 in `references/design-rules.md`.
+2. **Evidence-based design.** Follow the design rules R1–R33 in `references/design-rules.md`.
 3. **Whole-codebase context.** Explain through call, dependency, and data relations and the intent of the change, not file by file. Show unchanged code when understanding needs it.
 4. **Only verified claims.** Confirm every statement in the narration by reading the code. If an intent is unverified, turn it into a `reviewFocus` question instead of asserting it.
 5. **Language- and framework-agnostic.** The analysis script uses heuristics. Treat its output as leads, and confirm them in the code.
@@ -139,11 +139,12 @@ The page embeds source code. Do not upload or publish it anywhere unless the use
 | Path | Purpose |
 |---|---|
 | `scripts/collect.mjs` | Change analysis: range, symbols, fan-in and fan-out, graph, clusters, reading orders |
-| `scripts/lib/` | Language-agnostic git and code heuristics (vendored from the engine) |
-| `scripts/engine.mjs` | Locates and runs the `code-walkthrough` engine CLI (in-process, cross-platform) |
-| `references/design-rules.md` | Design rules R1–R28 |
+| `scripts/engine.mjs` | The `code-walkthrough` engine CLI: check, build, serve, spec, schema |
+
+Both scripts are generated bundles (built from `packages/engine` in the source repository). They are self-contained: don't edit them, and don't look for an engine elsewhere.
+| `references/design-rules.md` | Design rules R1–R33 |
 | `references/strategy-playbook.md` | Change types → order, outline, views, size budget, audience |
 | `references/ir-authoring.md` | How to write good IR: scene recipes, anchors, common errors |
 | `docs/` | Background only (research rationale for the rules). Not needed to run the skill |
 
-Requirements: Node.js 18 or later, git, and the `code-walkthrough` engine, on macOS, Linux, or Windows. No network access is needed.
+Requirements: Node.js 18 or later and git, on macOS, Linux, or Windows. No network access is needed.

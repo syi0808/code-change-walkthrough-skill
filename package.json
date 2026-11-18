@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm --prefix packages/engine test && node tools/sync-skill-lib.mjs --check"
+    "build": "npm --prefix packages/engine run build",
+    "test": "npm --prefix packages/engine test && npm --prefix packages/engine run check:skill"
   }
 }

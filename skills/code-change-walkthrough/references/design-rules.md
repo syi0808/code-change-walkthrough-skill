@@ -1,4 +1,4 @@
-# Design rules R1–R28
+# Design rules R1–R33
 
 Apply these rules when you design a walkthrough. When two choices seem equally good, the rule decides. Other references cite them as R#.
 

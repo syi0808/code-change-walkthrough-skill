@@ -1,0 +1,78 @@
+/* ================================================================ tokens
+ * IDE chrome follows VS Code (Dark Modern / Light Modern); diff colours follow
+ * GitHub's diff palette so additions and deletions read at a glance. */
+:root {
+  --bg: #1f1f1f; --bg-side: #181818; --bg-2: #252526; --bg-3: #2d2d2d; --bg-hover: #2a2d2e; --bg-sel: #37373d; --bg-active: #04395e;
+  --line: #2b2b2b; --line-2: #3c3c3c; --fg: #cccccc; --fg-strong: #e7e7e7; --fg-2: #9d9d9d; --fg-3: #6e7681;
+  --accent: #4daafc; --accent-strong: #0078d4; --focus-ring: #0078d4;
+  /* GitHub diff (dark) */
+  --add-line: rgba(46, 160, 67, .15); --add-num: rgba(63, 185, 80, .30); --add-word: rgba(46, 160, 67, .40); --add-fg: #3fb950;
+  --del-line: rgba(248, 81, 73, .10); --del-num: rgba(248, 81, 73, .30); --del-word: rgba(248, 81, 73, .40); --del-fg: #f85149;
+  --hunk-bg: rgba(56, 139, 253, .10); --hunk-num: rgba(56, 139, 253, .22); --hunk-fg: #9198a1;
+  /* git decorations (VS Code) */
+  --git-mod: #e2c08d; --git-add: #73c991; --git-del: #c74e39; --git-ren: #73c991;
+  /* walkthrough tones */
+  --t-focus: #4daafc; --t-info: #b392f0; --t-warn: #e3b341; --t-add: #3fb950; --t-remove: #f85149;
+  --flash: rgba(227, 179, 65, .35);
+  --note-bg: #252a33;
+  --tk-kw: #569cd6; --tk-ctrl: #c586c0; --tk-str: #ce9178; --tk-num: #b5cea8; --tk-com: #6a9955; --tk-fn: #dcdcaa; --tk-type: #4ec9b0; --tk-const: #4fc1ff; --tk-meta: #9cdcfe; --tk-p: #d4d4d4;
+  --shadow: 0 8px 28px rgba(0, 0, 0, .5);
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "D2Coding", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Segoe UI", "Noto Sans KR", sans-serif;
+  --row-h: 20px;
+  /* Motion that belongs to playback runs at the playback rate (set by the player on speed change),
+     so a 2x walkthrough is 2x everywhere. Pure UI feedback (hover, press, panels) keeps fixed times. */
+  --rate: 1;
+  --d-xs: calc(120ms / var(--rate)); --d-s: calc(200ms / var(--rate)); --d-m: calc(300ms / var(--rate)); --d-l: calc(450ms / var(--rate)); --d-xl: calc(600ms / var(--rate));
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);          /* ease-out (quint): default for anything entering or responding */
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);   /* on-screen movement between two states */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);    /* large surfaces moving (panels, the docking graph) */
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #ffffff; --bg-side: #f8f8f8; --bg-2: #f3f3f3; --bg-3: #e8e8e8; --bg-hover: #f0f0f0; --bg-sel: #e4e6f1; --bg-active: #cfe4fa;
+    --line: #e5e5e5; --line-2: #d4d4d4; --fg: #3b3b3b; --fg-strong: #1f1f1f; --fg-2: #616161; --fg-3: #8b949e;
+    --accent: #005fb8; --accent-strong: #005fb8; --focus-ring: #005fb8;
+    --add-line: #dafbe1; --add-num: #aceebb; --add-word: #aceebb; --add-fg: #1a7f37;
+    --del-line: #ffebe9; --del-num: #ffcecb; --del-word: #ffcecb; --del-fg: #cf222e;
+    --hunk-bg: #ddf4ff; --hunk-num: #b6e3ff; --hunk-fg: #59636e;
+    --git-mod: #895503; --git-add: #587c0c; --git-del: #ad0707; --git-ren: #587c0c;
+    --t-focus: #0969da; --t-info: #8250df; --t-warn: #9a6700; --t-add: #1a7f37; --t-remove: #cf222e;
+    --flash: rgba(212, 167, 44, .38);
+    --note-bg: #f6f8fa;
+    --tk-kw: #0000ff; --tk-ctrl: #af00db; --tk-str: #a31515; --tk-num: #098658; --tk-com: #008000; --tk-fn: #795e26; --tk-type: #267f99; --tk-const: #0070c1; --tk-meta: #001080; --tk-p: #3b3b3b;
+    --shadow: 0 8px 28px rgba(31, 35, 40, .16);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #ffffff; --bg-side: #f8f8f8; --bg-2: #f3f3f3; --bg-3: #e8e8e8; --bg-hover: #f0f0f0; --bg-sel: #e4e6f1; --bg-active: #cfe4fa;
+  --line: #e5e5e5; --line-2: #d4d4d4; --fg: #3b3b3b; --fg-strong: #1f1f1f; --fg-2: #616161; --fg-3: #8b949e;
+  --accent: #005fb8; --accent-strong: #005fb8; --focus-ring: #005fb8;
+  --add-line: #dafbe1; --add-num: #aceebb; --add-word: #aceebb; --add-fg: #1a7f37;
+  --del-line: #ffebe9; --del-num: #ffcecb; --del-word: #ffcecb; --del-fg: #cf222e;
+  --hunk-bg: #ddf4ff; --hunk-num: #b6e3ff; --hunk-fg: #59636e;
+  --git-mod: #895503; --git-add: #587c0c; --git-del: #ad0707; --git-ren: #587c0c;
+  --t-focus: #0969da; --t-info: #8250df; --t-warn: #9a6700; --t-add: #1a7f37; --t-remove: #cf222e;
+  --flash: rgba(212, 167, 44, .38);
+  --note-bg: #f6f8fa;
+  --tk-kw: #0000ff; --tk-ctrl: #af00db; --tk-str: #a31515; --tk-num: #098658; --tk-com: #008000; --tk-fn: #795e26; --tk-type: #267f99; --tk-const: #0070c1; --tk-meta: #001080; --tk-p: #3b3b3b;
+  --shadow: 0 8px 28px rgba(31, 35, 40, .16);
+  color-scheme: light;
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--sans); }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; transition: transform .16s var(--ease), background-color .16s var(--ease), color .16s var(--ease); }
+button:active { transform: scale(.97); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: -1px; }
+kbd { font: 11px var(--mono); padding: 0 4px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; background: var(--bg-2); }
+code { font-family: var(--mono); font-size: .92em; background: var(--bg-3); padding: 0 4px; border-radius: 4px; }
+.muted { color: var(--fg-3); }
+
+/* syntax tokens */
+.tk-kw { color: var(--tk-kw); } .tk-str { color: var(--tk-str); } .tk-num { color: var(--tk-num); } .tk-com { color: var(--tk-com); font-style: italic; }
+.tk-fn { color: var(--tk-fn); } .tk-type { color: var(--tk-type); } .tk-const { color: var(--tk-const); } .tk-meta { color: var(--tk-meta); } .tk-p { color: var(--tk-p); }
