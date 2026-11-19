@@ -24,6 +24,11 @@
 .cap-in.br { display: block; }
 .br-eyebrow { display: flex; gap: 12px; font-size: 12px; color: var(--fg-3); }
 .br-ch { color: var(--accent); font-weight: 600; }
+.br-map { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--fg-2); }
+.br-map-k { color: var(--fg-3); }
+.br-map b { font: 600 12px var(--mono); color: var(--fg); }
+.br-via { font-size: 11px; padding: 0 6px; border-radius: 8px; background: var(--bg-3); color: var(--fg-2); }
+.br-sub { color: var(--fg-3); }
 .br-why { margin-top: 4px; font-size: 15px; line-height: 1.6; color: var(--fg-strong); }
 .br-where { margin-top: 8px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-3); }
 /* between scenes the question in the strip is the new one: it is marked, so the band and the

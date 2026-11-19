@@ -43,7 +43,7 @@ Apply these rules when you design a walkthrough. When two choices seem equally g
 ## Structure
 - **R21. Make one chapter per independent cluster.** Start from `clusters` in the collect output.
 - **R22. Keep related parts adjacent.** A definition comes right before its usages, and an implementation right before its tests.
-- **R23. Open with a map:** the summary, `strategy.rationale`, chapter goals, and the scene-1 graph.
+- **R23. Open with a map, and walk it.** Scene 1 explains the change on its `graph`, part by part: one bullet per part, each pinned (`cue`) to a `graph` step that highlights that part's nodes, in the order the chapters will take them, named the way the chapters will be. Number the flow on the edges (①, ②, ...) and give every node its `file`. The graph then docks as the map, lights the node of the file in view, and the heading band names the node each scene goes to, so every later scene is placed on the map the viewer was shown first. Add the summary, `strategy.rationale`, and chapter goals around it.
 - **R24. Close with a recap:** `takeaways` (2–4) and `reviewFocus` (open questions for the reviewer).
 - **R25. Scale scaffolding to the audience.** Newcomers get more pre-training. Reviewers get less.
 
@@ -52,7 +52,7 @@ Apply these rules when you design a walkthrough. When two choices seem equally g
 
 ## Narrative thread
 - **R29. Every scene answers a question.** Give each scene a `question`: what the viewer is wondering at that moment, phrased the way they would ask it ("Who is allowed to see this list?"). The player keeps it above the code all scene long, so the code on screen always has a reason. The chain of questions *is* the order of the walkthrough.
-- **R30. Bridge every boundary.** Give every scene after the first a `bridge`, one sentence on how the previous answer raises this question ("Access is settled, so now: what goes into the list?"). The player shows it in the heading band at the top of the code when the scene starts, under the new question.
+- **R30. Bridge with the map, not with the past.** Give every scene after the first a `bridge`: where the scene sits on the scene-1 map (the part, by its number) and what it settles there ("② Query, once access passes: count first, then the page"). Never recap the previous scene ("X done → Y next"): the viewer just saw it, and a recap tells them nothing about where they are going. The player shows the bridge in the heading band at the top of the code when the scene starts, with the chapter and the map node of the scene's file.
 - **R31. Write for one voice at a time.** The player shows one explanation at a time, attached under the newest highlight, and a `note` counts as that voice. Per scene, use one lead line, then one bullet or note per highlight, in the order of the highlights. Only the two newest highlights stay salient, so explain each as it appears and don't refer back to a third.
 - **R32. Write in note form.** All prose except `question` is note form in the viewer's language: Korean 개조식 (noun or nominal endings, never `~다`/`~습니다`), English telegraphic style (no subject, articles, or "is"; verb-first or noun phrase; no period), or the bullet register of the viewer's language. One fact per line; `→`, `:`, `/` instead of connectives. No em dashes, stacked qualifiers, or filler. A reader takes in a note-form line in one fixation span and sees its structure without parsing a sentence; the time saved goes to the code. See `ir-authoring.md`, "Narration style".
 

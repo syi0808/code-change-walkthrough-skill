@@ -88,8 +88,8 @@ Keep the list; it becomes `meta.impact`, the `impact` step items, and `reviewFoc
 Read `references/strategy-playbook.md`, then decide:
 1. the **change type** for each cluster
 2. the **order strategy** (top-down, bottom-up, data-flow, symptom-cause-fix, before-after, clusters) and a one-sentence rationale
-3. a **question chain**: for each scene, the `question` the viewer has at that point and the `bridge` that leads to it from the previous answer (playbook §6). Read the questions as a list: each must follow from the previous one. This list *is* the order.
-4. an **outline**: chapter and scene titles with one-sentence `goal`s only. Check the flow before writing any steps. Scene 1 is the big picture (a `graph`). Put each definition right before its usages, and each implementation right before its tests. Stay within the size budget
+3. a **question chain**: for each scene, the `question` the viewer has at that point and the `bridge` that places it on the scene-1 map (playbook §6). Read the questions as a list: each must follow from the previous one. This list *is* the order.
+4. an **outline**: chapter and scene titles with one-sentence `goal`s only. Check the flow before writing any steps. Scene 1 is the big picture: a `graph` walked part by part, one bullet per part in chapter order (R23). Put each definition right before its usages, and each implementation right before its tests. Stay within the size budget
 5. for each scene, the **view** (after, before, diff; unified or split; single or columns) and the **actions**
 
 ### 4. Write the IR
@@ -98,7 +98,7 @@ Read `references/ir-authoring.md` for patterns and pitfalls. Run `node "<skill>/
 - In `source`, put **the same range you gave `collect`**: `"range": "A...B"` for a branch or PR (the engine resolves the merge-base the same way), or `base`/`head` for explicit refs or `WORKTREE`. Never write a branch tip as `base` when the change is a PR; you would pull in unrelated commits from the base branch. Pass the repository with `--repo`. Sanity check: the file count in `check` should match the digest
 - Use `find` and `symbol` anchors; use line numbers only as a last resort
 - Set `tour.order`: every changed file in the order of your question chain. Attach each explanation scene to the hunk or file it explains with `at` (it plays right after that hunk is replayed). Mark the hunks worth typing out with `tour.tempo` `"key"`, and anything that is wiring with `"skim"` (most wiring is detected automatically)
-- Give every scene a `question` and every scene after the first a `bridge` (R29, R30)
+- Give every scene a `question` and every scene after the first a `bridge` that names its part of the map and what it settles, never a recap of the previous scene (R29, R30)
 - Write every piece of prose in note form, without em dashes (R32): 개조식 in Korean, telegraphic style in English. Only `question` is a full question
 - Write narration as **one lead line (the why) + 2–4 bullets**, one bullet per visual beat in step order, each pinned to its step with `cue`. Say where you are going before a `goto`, `refs`, or `impact`
 - Show the context outside the diff (R34, R35): an `impact` scene after the change it is about (or at the end) with the unchanged dependents and their effects, and a `goto` to a constraint before an edit that answers it
@@ -143,7 +143,8 @@ The page embeds source code. Do not upload or publish it anywhere unless the use
 
 ## Quality checklist (before delivering)
 
-- [ ] Does the first scene alone convey what changed and why? (R13, R23)
+- [ ] Does the first scene alone convey what changed and why, walking the graph part by part in chapter order? (R13, R23)
+- [ ] Does every `bridge` name its part of the map instead of recapping the last scene? (R30)
 - [ ] Is the order an execution or dependency order, not file order? (R14)
 - [ ] One idea per scene, and at most 1–2 simultaneous highlights? (R1, R11)
 - [ ] New files open in `after`, deleted files in `before`, and in-place rewrites in `split`? (R26–R28)

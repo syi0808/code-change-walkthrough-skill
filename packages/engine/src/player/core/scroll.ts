@@ -77,21 +77,13 @@ function writeEdge(E: ScrollEnv): number | null {
   return from + (to - from) * clamp(h.g, 0, 1);
 }
 
-/** Beyond this distance (in viewport heights) a scroll is too fast to follow: it is shortened. */
-const FAR = 1.25;
-/** A shortened scroll glides this far (in viewport heights) into its target. */
-const GLIDE = 0.8;
-/** Share of the move spent dimming before the cut. */
-const CUT = 0.2;
-
 export interface ScrollFrame { y: number | null; dim: number }
 
 /**
  * The scroll for this frame, starting from `from` (where the editor really is when the move
- * began; null: as computed). A move of more than about a screen cannot be followed by the eye at
- * any speed that fits a step, and a blur of passing code reads as a teleport. Such a move dims the
- * code, cuts to just short of the target while dimmed, and glides the rest: the eye sees the
- * direction and the arrival, and the cut falls in the dip (like a blink).
+ * began; null: as computed). It always moves continuously: a long move used to dim the code and cut
+ * to just short of the target, and that cut read as a teleport before the animation. Its time comes
+ * from its distance instead (moveMs: past about a screen, the rest goes faster).
  */
 export function scrollFrame(E: ScrollEnv, scroll: Scroll, from: number | null): ScrollFrame {
   const P: ScrollEnv = { ...E, head: null };
@@ -101,12 +93,8 @@ export function scrollFrame(E: ScrollEnv, scroll: Scroll, from: number | null): 
   const start = from ?? prevPx;
   if (to == null) return { y: start, dim: 0 };
   if (scroll.p >= 1 || start == null) return { y: to, dim: 0 };
-  const d = to - start, H = E.height;
-  if (Math.abs(d) <= H * FAR) return { y: start + d * scroll.p, dim: 0 };
-  if (scroll.p < CUT) return { y: start, dim: scroll.p / CUT };
-  const q = (scroll.p - CUT) / (1 - CUT);
-  const entry = to - Math.sign(d) * H * GLIDE;
-  return { y: entry + (to - entry) * q, dim: clamp(1 - q / 0.3, 0, 1) };
+  // a scroll always moves, never cuts: the compiler gave it the time its distance needs (moveMs)
+  return { y: start + (to - start) * scroll.p, dim: 0 };
 }
 
 export function scrollPx(E: ScrollEnv, scroll: Scroll, fromOverride: number | null = null): number | null {

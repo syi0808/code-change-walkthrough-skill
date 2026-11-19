@@ -8,10 +8,11 @@ import { SvelteSet } from 'svelte/reactivity';
 import { clamp, IR } from '../core/env.ts';
 import { model } from '../core/model.ts';
 import { showFile, stateAt, type State } from '../core/state.ts';
-import { sceneAt, scenes, total } from '../core/timeline.ts';
+import { gates, sceneAt, scenes, total } from '../core/timeline.ts';
 import { settleTop } from '../core/explorer.ts';
 import { computeVoice, type Voice } from '../core/voice.ts';
 import type { Side, View } from '../../ir/types.ts';
+import { narrator } from './narrator.svelte.ts';
 
 export type UserOp = (s: State) => void;
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
@@ -73,6 +74,7 @@ class Player {
   commit(): void {
     flushSync();
     for (const h of this.hooks) h.fn();
+    narrator.sync(this.voice, this.playing, this.speed);
   }
 
   private tick = (ts: number) => {
@@ -82,6 +84,10 @@ class Player {
     const k = sceneAt(this.T);
     const end = scenes[k].t0 + scenes[k].duration;
     const next = this.T + dt * this.speed;
+    // a caption still being read aloud is not replaced: the timeline waits for the sentence to end
+    // and the screen does not move on (a gate) while the sentence before it is still being spoken
+    const gate = gates.some((g) => g > this.T && g <= next);
+    if (narrator.holds(() => (next >= total ? null : computeVoice(stateAt(next))?.key ?? null), gate)) { this.raf = requestAnimationFrame(this.tick); return; }
     if (this.segPause && !scenes[k].auto && this.T < end && next >= end && k < scenes.length - 1) {
       this.T = end - 0.5; this.playing = false; this.atSceneEnd = true; this.commit(); return;
     }
@@ -101,7 +107,7 @@ class Player {
     cancelAnimationFrame(this.raf); this.raf = requestAnimationFrame(this.tick);
     this.commit();
   }
-  pause(): void { this.playing = false; cancelAnimationFrame(this.raf); this.commit(); }
+  pause(): void { this.playing = false; cancelAnimationFrame(this.raf); narrator.stop(); this.commit(); }
   toggle(): void { if (this.playing) this.pause(); else this.play(); }
   seek(t: number, keepPlaying = false): void {
     this.T = clamp(t, 0, total); this.atSceneEnd = false; this.userOps = []; this.started = true; this.manualTree = false;

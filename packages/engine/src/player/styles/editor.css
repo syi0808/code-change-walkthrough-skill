@@ -109,7 +109,13 @@
    It is marked as new by a brighter added colour that settles (--fr: 1..0, timeline driven). */
 .row.ln-fresh { background: color-mix(in srgb, var(--add-word) calc(var(--fr, 0) * 100%), var(--add-line)); }
 .row.ln-fresh .gn { background: color-mix(in srgb, var(--add-fg) calc(var(--fr, 0) * 35%), var(--add-num)); }
+.row.plain.ln-fresh { background: color-mix(in srgb, var(--add-word) calc(var(--fr, 0) * 100%), transparent); }
+.row.plain.ln-fresh .gn { background: color-mix(in srgb, var(--add-fg) calc(var(--fr, 0) * 35%), var(--bg)); }
 .row.split.ln-fresh { background: none; }
+/* the replay owns these colours frame by frame: a CSS transition would start from the empty slot
+   and fade in (light, dark, light) on the wall clock instead of landing at full strength */
+.row.ln-fresh, .row.ln-fresh .gn, .row.ln-fresh .half, .row.ln-fresh .half .gn,
+.row.grow, .row.grow .gn, .row.typ-hidden, .row.typ-hidden .gn, .row.typ-add-pend, .row.typ-add-pend .gn, .row.typ-add-pend .half { transition: none; }
 .row.split.ln-fresh .half:last-child { background: color-mix(in srgb, var(--add-word) calc(var(--fr, 0) * 100%), var(--add-line)); }
 
 /* ---------------------------------------------------------------- typing replay */

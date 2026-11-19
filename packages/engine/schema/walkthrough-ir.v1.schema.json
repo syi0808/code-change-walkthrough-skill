@@ -120,7 +120,7 @@
       "type": "object",
       "required": ["do"],
       "properties": {
-        "do": { "enum": ["open", "close", "layout", "diffView", "reveal", "highlight", "focus", "unfocus", "note", "type", "replay", "goto", "refs", "impact", "graph", "say", "wait", "clear"] },
+        "do": { "enum": ["open", "close", "layout", "diffView", "reveal", "highlight", "focus", "unfocus", "note", "type", "replay", "goto", "refs", "impact", "graph", "say", "wait", "clear", "delete"] },
         "pane": { "$ref": "#/$defs/pane" },
         "file": { "type": "string" },
         "view": { "$ref": "#/$defs/view" },
@@ -132,6 +132,7 @@
       "allOf": [
         { "if": { "properties": { "do": { "const": "open" } } }, "then": { "required": ["file"], "properties": { "at": { "$ref": "#/$defs/anchor" }, "diff": { "$ref": "#/$defs/diffOptions" } } } },
         { "if": { "properties": { "do": { "const": "close" } } }, "then": { "required": ["file"] } },
+        { "if": { "properties": { "do": { "const": "delete" } } }, "then": { "required": ["file"] } },
         { "if": { "properties": { "do": { "const": "layout" } } }, "then": { "required": ["mode"], "properties": { "mode": { "enum": ["single", "columns"] } } } },
         { "if": { "properties": { "do": { "const": "diffView" } } }, "then": { "properties": { "mode": { "enum": ["unified", "split"] }, "algorithm": { "enum": ["patience", "myers"] }, "granularity": { "enum": ["word", "line"] }, "context": { "type": ["integer", "null"] }, "whitespace": { "enum": ["collapse", "show"] } } } },
         { "if": { "properties": { "do": { "const": "reveal" } } }, "then": { "required": ["at"], "properties": { "at": { "$ref": "#/$defs/anchor" }, "align": { "enum": ["center", "top"] } } } },

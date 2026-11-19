@@ -13,8 +13,8 @@
   import { resetSnapshots } from '../core/state.ts';
   import { fileGone } from '../core/timeline.ts';
   import { rowsAt, dirs, type TreeRow } from '../core/tree.ts';
-  import { FOLD_CLICK, FOLD_TRAVEL, walkAt } from '../../shared/timing.ts';
-  import { chain, foldMoves } from '../../shared/tree-path.ts';
+  import { glide, walkAt } from '../../shared/timing.ts';
+  import { chain, foldMoves, inFolder, walkPlan } from '../../shared/tree-path.ts';
 
   const s = $derived(player.frame);
   const activeFile = $derived(s.panes[s.active].file);
@@ -26,16 +26,19 @@
   const motion = $derived.by(() => {
     const ex = s.exScroll;
     if (!ex) return null;
-    const moves = foldMoves(dirs, ex.from, ex.file);
+    const moves = foldMoves(dirs, ex.from, ex.file, ex.keep);
     const folds = moves.length - 1;
-    const { k, local } = walkAt(folds, ex.p);
-    return { moves, folds, k, local, from: ex.from, file: ex.file, pick: ex.pick, cursor: ex.cursor };
+    const { k, local, seg } = walkAt(walkPlan(dirs, ex.from, ex.file, ex.keep), ex.p);
+    return { moves, folds, k, local, seg, from: ex.from, file: ex.file, pick: ex.pick, cursor: ex.cursor };
   });
   /** A folder move: the selection goes to the row on the click, the folder toggles when the click ends. */
-  const clickP = (local: number) => ease(clamp((local - FOLD_TRAVEL) / (FOLD_CLICK - FOLD_TRAVEL), 0, 1));
-  const toggleP = (local: number) => ease(clamp((local - FOLD_CLICK) / (1 - FOLD_CLICK), 0, 1));
+  type Seg = { travel: number; click: number };
+  const clickP = (local: number, g: Seg) => ease(clamp((local - g.travel) / Math.max(1e-6, g.click - g.travel), 0, 1));
+  const toggleP = (local: number, g: Seg) => glide(clamp((local - g.click) / Math.max(1e-6, 1 - g.click), 0, 1));
 
-  interface Row extends TreeRow { g: number }
+  interface Row extends Omit<TreeRow, 'kind'> { kind: TreeRow['kind'] | 'input'; g: number }
+  /** The row that holds the name being typed for a new file (top of its folder, as in VS Code). */
+  const EDIT = '\u0001edit';
   /** Rows on the timeline: the folders open before the current move, plus the one it toggles, growing or shrinking. */
   const model = $derived.by((): { rows: Row[]; y: Map<string, number> } => {
     const T = player.T, focus = s.exFocus;
@@ -48,7 +51,7 @@
       for (let j = 0; j < motion.k; j++) { const mv = motion.moves[j]; if (mv.kind === 'close') before.delete(mv.path); else if (mv.kind === 'open') before.add(mv.path); }
       after = new Set(before);
       const mv = motion.moves[motion.k];
-      if (motion.k < motion.folds && motion.local >= FOLD_CLICK) { if (mv.kind === 'close') after.delete(mv.path); else after.add(mv.path); q = toggleP(motion.local); }
+      if (motion.k < motion.folds && motion.local >= motion.seg.click) { if (mv.kind === 'close') after.delete(mv.path); else after.add(mv.path); q = toggleP(motion.local, motion.seg); }
     }
     const union = new Set([...before, ...after]);
     const filter = player.ui.exFilter;
@@ -57,12 +60,18 @@
     const rows: Row[] = [];
     const y = new Map<string, number>();
     let acc = 0;
+    const ed = s.exEdit && s.exEdit.mode !== 'rename' ? s.exEdit : null;
+    const host = ed ? chain(dirs, inFolder(ed.at)).pop() || '' : null;
+    const push = (r: Row) => { rows.push(r); y.set(r.path, acc); acc += ROW_H * r.g; };
+    const box = (depth: number): Row => ({ kind: 'input', path: EDIT, label: ed!.text, depth, g: 1, open: ed!.mode === 'mkdir' });
+    if (ed && host === '') push(box(0));
     for (const r of rowsAt(union, filter, T, focus, player.started)) {
-      const g = inA.has(r.path) && inB.has(r.path) ? 1 : inA.has(r.path) ? q : 1 - q;
+      let g = inA.has(r.path) && inB.has(r.path) ? 1 : inA.has(r.path) ? q : 1 - q;
+      // a deleted row folds away
+      if (s.exRemove && s.exRemove.path === r.path) g *= 1 - ease(s.exRemove.p);
       if (g <= 0) continue;
-      rows.push({ ...r, open: r.kind === 'dir' ? after.has(r.path) : r.open, g });
-      y.set(r.path, acc);
-      acc += ROW_H * g;
+      push({ ...r, open: r.kind === 'dir' ? after.has(r.path) : r.open, g });
+      if (ed && r.path === host) push(box(r.depth + 1));
     }
     return { rows, y };
   });
@@ -77,7 +86,7 @@
     if (!m) { const y = Y(target); return y == null ? null : { y, o: 1 }; }
     let a: number | null, b: number | null, q: number;
     if (!m.cursor) { a = Y(m.from); b = Y(m.file); q = ease(m.pick); }
-    else if (m.k < m.folds) { a = Y(m.k > 0 ? m.moves[m.k - 1].path : m.from); b = Y(m.moves[m.k].path); q = clickP(m.local); }
+    else if (m.k < m.folds) { a = Y(m.k > 0 ? m.moves[m.k - 1].path : m.from); b = Y(m.moves[m.k].path); q = clickP(m.local, m.seg); }
     else { a = Y(m.folds > 0 ? m.moves[m.folds - 1].path : m.from); b = Y(m.file); q = m.pick; }
     if (b == null) return a == null ? null : { y: a, o: 1 };
     return a == null ? { y: b, o: q } : { y: a + (b - a) * q, o: 1 };
@@ -102,6 +111,8 @@
   let applied: { el: HTMLElement; top: number } | null = null;
   const off = player.layout(ORDER.explorer, () => {
     if (!body) return;
+    // a name box scrolls sideways with its caret (typing at the end), or shows its start while the old name is selected
+    for (const el of body.querySelectorAll<HTMLElement>('.ex-input')) el.scrollLeft = el.querySelector('.tx.sel') ? 0 : el.scrollWidth - el.clientWidth;
     if (setExplorerView(body.clientHeight, player.ui.exFilter)) { resetSnapshots(); player.stateVersion++; queueMicrotask(() => player.commit()); return; }
     if (player.manualTree || !player.started) return;
     // paused with nothing changed: leave the list where the viewer may have scrolled it
@@ -114,6 +125,8 @@
 
 <aside class="wt-explorer" aria-label={t('explorer.title')}>
   <div class="ex-head"><span>{t('explorer.title')}</span><span class="ex-actions">
+    <button class="icon-btn sm ex-new" title={t('explorer.newFile')} tabindex="-1">{@html ICON.newFile}</button>
+    <button class="icon-btn sm ex-newdir" title={t('explorer.newFolder')} tabindex="-1">{@html ICON.newFolder}</button>
     <button class="icon-btn sm" class:on={player.ui.exFilter} title={t('explorer.changedOnly')} onclick={() => { player.ui.exFilter = !player.ui.exFilter; player.commit(); }}>{@html ICON.filter}</button>
     <button class="icon-btn sm" title={t('explorer.collapseAll')} onclick={collapseAll}>{@html ICON.collapse}</button></span></div>
   <div class="ex-root"><span class="tw open">{@html ICON.chevron}</span>{(IR.tree?.root || t('explorer.repository')).toUpperCase()}</div>
@@ -122,22 +135,29 @@
     {#each model.rows as r (r.path)}
       {@const pad = `padding-left:${8 + r.depth * 12}px`}
       <div class="ex-row-wrap" style={r.g < 1 ? `height:${(ROW_H * r.g).toFixed(2)}px;opacity:${r.g.toFixed(3)}` : null}>
-        {#if r.kind === 'more'}
+        {#if r.kind === 'input'}
+          {@const icon = fileIcon(r.label || 'x')}
+          <div class="ex-row editing" class:file={!r.open} class:dir={r.open} style={pad}>{#each { length: r.depth } as _, k}<span class="ig" style="left:{14 + k * 12}px"></span>{/each}{#if r.open}<span class="tw">{@html ICON.chevron}</span>{:else}<span class="tw"></span><span class="fi {r.label.includes('.') ? icon[1] : 'i-gray'}">{@html r.label.includes('.') && icon[0] !== '•' ? icon[0] : ICON.fileDoc}</span>{/if}<span class="ex-input"><span class="tx">{r.label}</span><span class="caret"></span></span></div>
+        {:else if r.kind === 'more'}
           <div class="ex-row more" style={pad}>{#each { length: r.depth } as _, k}<span class="ig" style="left:{14 + k * 12}px"></span>{/each}<span class="tw"></span><span class="nm">{t('explorer.omitted')}</span></div>
         {:else if r.kind === 'dir'}
-          <div class="ex-row dir" class:has-changes={!!r.changed} class:path={onPath(r.path)} class:cur={r.path === cur} data-path={r.path} role="treeitem" aria-selected="false" aria-expanded={r.open} tabindex="-1" title={r.path} style={pad}
+          <div class="ex-row dir" class:drop={!!s.exDrag && s.exDrag.to === r.path && s.exDrag.p > 0.8} class:has-changes={!!r.changed} class:path={onPath(r.path)} class:cur={r.path === cur} data-path={r.path} role="treeitem" aria-selected="false" aria-expanded={r.open} tabindex="-1" title={r.path} style={pad}
             onclick={() => toggleDir(r.path)} onkeydown={(e) => e.key === 'Enter' && toggleDir(r.path)}>
             {#each { length: r.depth } as _, k}<span class="ig" style="left:{14 + k * 12}px"></span>{/each}<span class="tw" class:open={r.open}>{@html ICON.chevron}</span><span class="nm">{r.label}</span>{#if r.changed}<span class="dot"></span>{/if}
           </div>
         {:else}
           {@const icon = fileIcon(r.label)}
-          <div class="ex-row file{r.status ? ` st-${r.status}` : ''}" class:gone={isGone(r.path)} class:open={open.has(r.path)} class:active={r.path === activeFile} class:selecting={r.path === s.exFocus} class:target={r.path === target} class:cur={r.path === cur} class:stub={!r.embedded}
+          {@const edit = s.exEdit?.mode === 'rename' && s.exEdit.at === r.path ? s.exEdit : null}
+          <div class="ex-row file{r.status ? ` st-${r.status}` : ''}" class:dragging={s.exDrag?.path === r.path} class:editing={!!edit} class:menu-on={s.exMenu?.path === r.path} class:gone={isGone(r.path)} class:open={open.has(r.path)} class:active={r.path === activeFile} class:selecting={r.path === s.exFocus} class:target={r.path === target} class:cur={r.path === cur} class:stub={!r.embedded}
             role="treeitem" aria-selected={r.path === activeFile} tabindex="-1" data-file={r.path} data-path={r.path} style={pad} title={r.path + (r.embedded ? '' : ': ' + t('explorer.notEmbedded'))}
             onclick={() => player.exploreOpen(r.path)} onkeydown={(e) => e.key === 'Enter' && player.exploreOpen(r.path)}>
-            {#each { length: r.depth } as _, k}<span class="ig" style="left:{14 + k * 12}px"></span>{/each}<span class="tw"></span><span class="fi {icon[1]}">{icon[0]}</span><span class="nm">{r.label}</span>{#if r.status}<span class="sb">{STATUS_LETTER[r.status] || ''}</span>{/if}
+            {#each { length: r.depth } as _, k}<span class="ig" style="left:{14 + k * 12}px"></span>{/each}<span class="tw"></span><span class="fi {icon[1]}">{#if icon[0] === '•'}{@html ICON.fileDoc}{:else}{icon[0]}{/if}</span>{#if edit}<span class="ex-input"><span class="tx" class:sel={edit.sel}>{edit.text}</span>{#if !edit.sel}<span class="caret"></span>{/if}</span>{:else}<span class="nm">{r.label}</span>{#if r.status}<span class="sb">{STATUS_LETTER[r.status] || ''}</span>{/if}{/if}
           </div>
         {/if}
       </div>
     {/each}
+    {#if s.exMenu && model.y.has(s.exMenu.path)}
+      <div class="ex-menu" style="top:{(model.y.get(s.exMenu.path)! + ROW_H).toFixed(1)}px"><div class="mi">{t('explorer.rename')}</div><div class="mi" class:hot={s.exMenu.hot} data-item="delete">{t('explorer.delete')}</div></div>
+    {/if}
   </div>
 </aside>

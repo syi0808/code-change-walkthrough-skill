@@ -82,17 +82,19 @@ The default audience is `reviewer`.
 
 Before writing any steps, write the scenes' `question`s in order and read them as a list. Each one should follow from the previous answer. If a question comes out of nowhere, the order is wrong, or a bridging scene is missing.
 
-| Scene | `question` | `bridge` (from the previous answer) |
+| Scene | `question` | `bridge` (its place on the scene-1 map) |
 |---|---|---|
-| 1 | What does this change add, and where? | (none) |
-| 2 | What does a request to the new endpoint look like? | The map shows one entry point, so start there. |
-| 3 | Who is allowed to call it? | The controller checks access first, so that comes next. |
-| 4 | What goes into the list? | Access is settled, so now the query itself. |
-| 5 | What do the tests guarantee? | The behaviour is clear; check what is pinned down. |
+| 1 | What does this change add, and where? | (none: this scene walks the map, ① to ④) |
+| 2 | What does a request to the new endpoint look like? | ① Entry: the one route, its parameters and response |
+| 3 | Who is allowed to call it? | ② Access: checked before any query runs |
+| 4 | What goes into the list? | ③ Query, once access passes: count first, then the page |
+| 5 | What do the tests guarantee? | ④ Tests: which of ② and ③ are pinned down |
+
+A bridge names the part of the map and what the scene settles there. It never recaps the previous scene.
 
 ## 7. Narration rules (R8, R9, R16, R18, R31, R32)
 
-- **Shape: one lead sentence, then 2–4 bullets.** The lead sentence (prose) states the point or the *why*. Each bullet then describes one visual beat in the order it appears on screen. Pin each bullet to the step that shows it with `cue` (see ir-authoring). Every bullet is a full short sentence that keeps its connective ("so", "because", "instead of"). Don't reduce it to a noun-phrase fragment, which drops the causal link the viewer needs.
+- **Shape: one lead line, then 2–4 bullets.** The lead line states the point or the *why*. Each bullet then describes one visual beat in the order it appears on screen. Pin each bullet to the step that shows it with `cue` (see ir-authoring). Write them in note form (R32) and keep the causal link as a symbol (`→`, `:`) so the line still says why, not only what.
 - Keep a short prose paragraph only where the whole scene is one causal chain that bullets would break apart.
 - Never read code aloud. Say **why** it is done this way, **how** it relates to other code, and **what changes** as a result.
 - Make the sentence order match the step order. The thing named first is highlighted first.

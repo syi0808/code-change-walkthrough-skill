@@ -3,19 +3,12 @@
 // time by wall time x speed, so everything defined here follows the speed control.
 // The values are set for comfortable watching at 1x (they were raised by 4/3, so 1x now
 // plays at the pace 0.75x used to).
-import type { Scene, Step, Walkthrough } from '../ir/types.ts';
+import type { Step } from '../ir/types.ts';
 
-export const BASE: Partial<Record<Step['do'], number>> = { open: 930, layout: 600, diffView: 930, reveal: 1130, highlight: 870, focus: 1130, unfocus: 470, note: 930, goto: 3600, refs: 930, impact: 930, graph: 1470, say: 0, wait: 0, clear: 330, close: 470 };
 
 /** Shortest lead-in before every author scene but the first: the bridge card says what comes next and why.
  *  A longer bridge sentence gets the time it takes to read (see leadFor), up to BRIDGE_MAX. */
 export const BRIDGE = 2270;
-/** A references step: the list comes in, then each item takes REFS_ITEM (point, click, scroll, light up). */
-export const REFS_HEAD = 930;
-export const REFS_ITEM = 1730;
-/** An impact item also carries a verdict (and a relation) to read. */
-export const IMPACT_ITEM = 2400;
-export const itemMs = (st: Step): number => (st.do === 'impact' ? IMPACT_ITEM : REFS_ITEM);
 export const BRIDGE_MAX = 6930;
 
 /** Typing cadence: one constant rhythm, like a person typing (~29 chars/s at 1x). */
@@ -58,71 +51,77 @@ export function delShare(st: Step, dur: number): number {
   return dur ? Math.min(0.6, d / dur) : 0;
 }
 
-/**
- * Opening a file is a procedure of separate events, never overlapping (one locus of motion):
- *   locate  the explorer scrolls the row into view, dims the rest, and its selection glides from
- *           the open file to the new one (only the explorer moves)
- *   travel  the pointer moves to the row (or tab), which is now still
- *   press   the click
- *   beat    a short pause, so cause and effect read as two events
- *   swap    the file opens, already at its first change; tab, breadcrumbs and orientation update together
- *   land    (same file only) the editor scrolls to the target
- *   reveal  (when asked) the changed lines sweep in
- */
-export type OpenPhaseName = 'locate' | 'travel' | 'press' | 'beat' | 'swap' | 'land' | 'reveal';
-export interface Phase<N extends string = string> { name: N; ms: number }
 
-/** One folder click in the explorer walk: the pointer travels to the folder's row (FOLD_TRAVEL of the
- *  step), presses until FOLD_CLICK, then the folder opens or closes in the rest of the step. */
+/**
+ * How much may change per unit of time. Motion is followed by the eye only up to a speed (smooth
+ * pursuit holds up to roughly 30 degrees per second); a move timed by a fixed duration gets
+ * faster the more there is to move, and past that speed it is seen as a jump, not as motion. So the
+ * time of a motion comes from its amount: content moves at a peak of at most MOVE_V px per ms of
+ * timeline time, along the `glide` curve (whose peak is GLIDE_PEAK times its average). An amount
+ * over CUT_PX (about a screen) cannot be followed at any speed that fits a step: past it, a motion
+ * is shown as a cut (the part beyond is skipped in a dip), so its time stops growing there.
+ */
+export const MOVE_V = 1.55;
+export const CUT_PX = 800;
+/** Cubic Bezier (x1, y1, x2, y2) as a function of progress, solved for x by Newton steps, then bisection. */
+function bezier(x1: number, y1: number, x2: number, y2: number): (p: number) => number {
+  const f = (t: number, a: number, b: number) => 3 * a * t * (1 - t) ** 2 + 3 * b * t * t * (1 - t) + t ** 3;
+  const df = (t: number, a: number, b: number) => 3 * a * (1 - t) ** 2 + 6 * (b - a) * t * (1 - t) + 3 * (1 - b) * t * t;
+  return (p) => {
+    if (p <= 0) return 0;
+    if (p >= 1) return 1;
+    let t = p;
+    for (let i = 0; i < 6; i++) { const d = df(t, x1, x2); if (Math.abs(d) < 1e-6) break; t -= (f(t, x1, x2) - p) / d; }
+    if (!(t >= 0 && t <= 1) || Math.abs(f(t, x1, x2) - p) > 1e-5) {
+      let lo = 0, hi = 1; t = p;
+      for (let i = 0; i < 30; i++) { if (f(t, x1, x2) < p) lo = t; else hi = t; t = (lo + hi) / 2; }
+    }
+    return f(t, y1, y2);
+  };
+}
+/** The curve of a motion whose time follows its amount: it leaves at once (12% of the way in the
+ *  first 10% of the time, so the move reads as a response) and settles long onto the target (95% at
+ *  75%), where the eye has to land and read. Its peak is 1.82 times its average: a curve that starts
+ *  faster peaks higher (2.3 to 2.8), so for the same peak speed its moves take longer. Sine in-out
+ *  (1.57) spent as long getting going as arriving, and read as sluggish. */
+export const glide = bezier(0.2, 0.15, 0.4, 1);
+/** The curve's peak speed as a multiple of its average (measured once). */
+export const GLIDE_PEAK = (() => { let m = 0; for (let i = 0; i < 400; i++) m = Math.max(m, (glide((i + 1) / 400) - glide(i / 400)) * 400); return m; })();
+/** Past CUT_PX a motion still moves (a jump, even dimmed, reads as a teleport), but the part beyond
+ *  goes FAR_X times faster: the eye cannot follow it anyway, and sees the direction and the arrival. */
+export const FAR_X = 3;
+/** Time for a motion of `px` along `glide`, at least `min`. Up to `cap` px at the followable speed,
+ *  the rest FAR_X times faster (the explorer, whose list is short, has no cap). */
+export const moveMs = (px: number, min = 0, cap = CUT_PX): number => {
+  const d = Math.abs(px), near = Math.min(d, cap), far = d - near;
+  return Math.max(min, ((near + far / FAR_X) * GLIDE_PEAK) / MOVE_V);
+};
+/** Height of an explorer row. */
+export const EX_ROW = 22;
+/** Height of an editor row, and how many rows an editor keeps in view on either side of its place
+ *  (estimates for timing a scroll at compile time; the player measures the real ones). */
+export const EDITOR_ROW = 20;
+export const EDITOR_HALF_ROWS = 15;
+
+/** One folder click in the explorer walk, at the least: the pointer travels to the folder's row (FOLD_TRAVEL
+ *  of the step), presses until FOLD_CLICK, then the folder opens or closes in the rest of the step.
+ *  A longer travel or a folder with more rows takes longer (see walkPlan). */
 export const FOLD_STEP = 800;
 export const FOLD_TRAVEL = 0.45;
 export const FOLD_CLICK = 0.6;
 /** The end of the walk: the file's row comes into view before the pointer heads for it. */
 export const WALK_FILE = 400;
-const FOLD_MAX = 8;
-/** The explorer's locate phase for a file pick that closes and opens `folds` folders. */
-export const locateMs = (folds = 0): number => Math.max(610, Math.min(folds, FOLD_MAX) * FOLD_STEP + WALK_FILE);
-/** Where a walk of `folds` folder clicks is at progress p (0..1 of the locate phase):
- *  segment k (k === folds is the final segment, the file's row) and the progress within it. */
-export function walkAt(folds: number, p: number): { k: number; local: number } {
-  if (p >= 1) return { k: folds, local: 1 };
-  const ms = Math.max(0, p) * (folds * FOLD_STEP + WALK_FILE);
-  const k = Math.min(folds, Math.floor(ms / FOLD_STEP));
-  return { k, local: Math.min(1, k < folds ? (ms - k * FOLD_STEP) / FOLD_STEP : (ms - folds * FOLD_STEP) / WALK_FILE) };
+/** Where a walk is at progress p (0..1 of the locate phase): segment k (the last one is the file's
+ *  row), the progress within it, and the segment (its shares of travel and press). */
+export function walkAt(plan: { ms: number; travel: number; click: number }[], p: number): { k: number; local: number; seg: { ms: number; travel: number; click: number } } {
+  const n = plan.length - 1;
+  if (p >= 1 || n < 0) return { k: Math.max(0, n), local: 1, seg: plan[n] || { ms: 0, travel: 1, click: 1 } };
+  const total = plan.reduce((a, x) => a + x.ms, 0);
+  let ms = Math.max(0, p) * total;
+  for (let k = 0; k < n; k++) { if (ms < plan[k].ms) return { k, local: ms / plan[k].ms, seg: plan[k] }; ms -= plan[k].ms; }
+  return { k: n, local: Math.min(1, plan[n].ms ? ms / plan[n].ms : 1), seg: plan[n] };
 }
 
-export function openPhases(st: Step): Phase<OpenPhaseName>[] {
-  const kind = st._openKind || 'tree';
-  const k = st.fast ? 0.55 : 1;
-  const nav = (ms: number) => Math.round(ms * k);
-  const out: Phase<OpenPhaseName>[] = [];
-  // locate: one move per folder closed or opened on the way, then the selection reaches the file
-  if (kind === 'tree') out.push({ name: 'locate', ms: nav(locateMs(st._fold)) }, { name: 'travel', ms: nav(690) }, { name: 'press', ms: nav(210) }, { name: 'beat', ms: nav(150) });
-  if (kind === 'tab') out.push({ name: 'travel', ms: nav(560) }, { name: 'press', ms: nav(210) }, { name: 'beat', ms: nav(120) });
-  if (kind !== 'same') out.push({ name: 'swap', ms: 350 });
-  if (kind === 'same' && st._r) out.push({ name: 'land', ms: 560 });
-  if (st._reveal) out.push({ name: 'reveal', ms: 1270 });
-  return out;
-}
-export const phasesMs = (ph: Phase[]): number => ph.reduce((a, x) => a + x.ms, 0);
-
-/** Which phase a step-local time falls in, and the progress inside it. Past the end: the last phase at 1. */
-export function phaseAt<N extends string>(ph: Phase<N>[], ms: number): { name: N | null; p: number; i: number } {
-  let acc = 0;
-  for (let i = 0; i < ph.length; i++) {
-    if (ms < acc + ph[i].ms) return { name: ph[i].name, p: ph[i].ms ? (ms - acc) / ph[i].ms : 1, i };
-    acc += ph[i].ms;
-  }
-  return { name: ph.length ? ph[ph.length - 1].name : null, p: 1, i: ph.length };
-}
-/** Has the procedure reached (or passed) phase `name`? */
-export function reached<N extends string>(ph: Phase<N>[], ms: number, name: N): boolean {
-  let acc = 0;
-  for (const x of ph) { if (x.name === name) return ms >= acc; acc += x.ms; }
-  return true;
-}
-
-export function openMs(st: Step): number { return Math.max(400, phasesMs(openPhases(st))); }
 
 export interface NarrationItem { kind: 's' | 'li'; para: number; text: string }
 
@@ -149,117 +148,4 @@ export function narrationItems(text: string | undefined): NarrationItem[] {
     for (const t of parts) items.push({ kind: 's', para: pi, text: t });
   });
   return items;
-}
-
-export interface Timed { st: Step; start: number; dur: number }
-
-/** Steps that point the viewer at something: the sentence about it should arrive with them. */
-const POINTING = new Set<Step['do']>(['highlight', 'focus', 'reveal', 'note', 'goto', 'refs', 'impact', 'type', 'graph']);
-
-/**
- * Give unpinned narration items a step to arrive with. Between two pinned items (or the
- * scene start / end), the unpinned items take the last unpinned pointing steps before the
- * next pin, in order: a sentence appears with the code it is about (temporal contiguity),
- * not at an even spread that can come seconds after or before its highlight.
- */
-export function inferCues(steps: Step[], n: number): void {
-  const valid = (c: number | undefined) => c !== undefined && Number.isInteger(c) && c >= 1 && c <= n;
-  for (const st of steps) st._cue = valid(st.cue) ? st.cue : undefined;
-  const pins: { item: number; pos: number }[] = [{ item: 0, pos: -1 }];
-  steps.forEach((st, i) => { if (st._cue && st._cue - 1 > pins[pins.length - 1].item) pins.push({ item: st._cue - 1, pos: i }); });
-  pins.push({ item: n, pos: steps.length });
-  for (let k = 0; k < pins.length - 1; k++) {
-    const a = pins[k], b = pins[k + 1];
-    const free = b.item - a.item - 1;
-    if (free <= 0) continue;
-    const cands: number[] = [];
-    for (let i = a.pos + 1; i < b.pos; i++) if (!steps[i]._cue && !steps[i].with && POINTING.has(steps[i].do)) cands.push(i);
-    const use = cands.slice(-free);
-    use.forEach((si, j) => { steps[si]._cue = b.item - use.length + j + 1; });
-  }
-}
-export interface Cues { items: NarrationItem[]; times: number[] }
-
-/** When each narration item appears (scene-local ms). A step may pin an item with `cue: n`;
- *  the rest are spread between pins by the time each needs (dwellMs). layoutScene has already
- *  delayed pinned steps so every item gets that time. */
-export function cueTimes(sc: Scene, timed: Timed[], lead: number): Cues {
-  const items = narrationItems(sc.narration);
-  const n = items.length;
-  if (!n) return { items, times: [] };
-  const starts = timed.map((x) => x.start), ends = timed.map((x) => x.start + x.dur);
-  const spanEnd = ends.length ? Math.max(...ends) : 2670;
-  const anchors = new Map<number, number>([[0, lead || 0]]);
-  for (const x of timed) { const c = x.st._cue ?? x.st.cue; if (c !== undefined && Number.isInteger(c) && c >= 1 && c <= n && !anchors.has(c - 1)) anchors.set(c - 1, x.start); }
-  const w = items.map((it) => dwellMs(it.text));
-  if (!anchors.has(n)) {
-    // the items after the last pin still get their reading time, even when the steps end sooner
-    const last = Math.max(...anchors.keys());
-    let need = anchors.get(last)!; for (let i = last; i < n; i++) need += w[i];
-    anchors.set(n, Math.max(spanEnd, starts.length ? Math.max(...starts) : 0, need));
-  }
-  const keys = [...anchors.keys()].sort((a, b) => a - b);
-  const times = new Array<number>(n).fill(0);
-  for (let a = 0; a < keys.length - 1; a++) {
-    const i0 = keys[a], i1 = keys[a + 1], t0 = anchors.get(i0)!, t1 = Math.max(anchors.get(i1)!, t0);
-    let tot = 0; for (let i = i0; i < i1; i++) tot += w[i];
-    let acc = 0;
-    for (let i = i0; i < i1 && i < n; i++) { times[i] = i === i0 ? t0 : t0 + (acc / tot) * (t1 - t0); acc += w[i]; }
-  }
-  return { items, times };
-}
-
-export interface SceneLayout { timed: Timed[]; cues: Cues; lead: number; duration: number }
-
-/** Lay out one scene's steps on its local clock. */
-export function layoutScene(sc: Scene, lead = 0): SceneLayout {
-  let cursor = (sc.auto ? 160 : 470) + lead, prevStart = 0, maxEnd = 0;
-  // Reading paces the scene. Narration items and notes are one voice (one thing to read at a
-  // time): a step that brings in the next item or a note waits until what is being read has had
-  // its time (dwellMs). Animation never cuts a sentence short.
-  const items = narrationItems(sc.narration);
-  if (!sc.auto) inferCues(sc.steps || [], items.length);
-  let pinIdx = 0;
-  let ready = items.length ? lead + dwellMs(items[0].text) : 0; // when the current voice has been read
-  const timed = (sc.steps || []).map((st): Timed => {
-    let dur = st.ms != null && st.do !== 'wait' ? st.ms : BASE[st.do] ?? 800;
-    if (st.do === 'wait') dur = st.ms || 0;
-    if (st.do === 'refs' || st.do === 'impact') dur = (st.ms || REFS_HEAD) + itemMs(st) * (st._items || st.items || []).length;
-    if (st.do === 'type') { dur = st.ms != null ? st.ms : typeMs(st); st._dp = delShare(st, dur); }
-    if (st.do === 'open' && st.ms == null) dur = openMs(st);
-    if (st.do === 'replay') { dur = st.ms != null ? st.ms : replayMs(st); st._dp = delShare(st, dur); }
-    let hold = st.hold || 0;
-    if (st.do === 'say') hold += readMs(st.text);
-    let start = st.with ? prevStart : cursor;
-    const c = st._cue;
-    if (c !== undefined && Number.isInteger(c) && c - 1 > pinIdx && c <= items.length) {
-      // unpinned items in between are read first
-      for (let i = pinIdx + 1; i < c - 1; i++) ready += dwellMs(items[i].text);
-      start = Math.max(start, ready);
-      pinIdx = c - 1; ready = start + dwellMs(items[c - 1].text);
-    } else if (st.do === 'note' && !sc.auto) {
-      start = Math.max(start, ready);
-      ready = start + dwellMs(st.text);
-    }
-    prevStart = start;
-    cursor = Math.max(st.with ? cursor : 0, start + dur + hold);
-    maxEnd = Math.max(maxEnd, cursor);
-    return { st, start, dur };
-  });
-  const cues = cueTimes(sc, timed, lead);
-  const lastCue = cues.times.length ? cues.times[cues.times.length - 1] + dwellMs(cues.items[cues.items.length - 1].text) : 0;
-  // tour segments carry no narration: no reading time, no dwell
-  if (sc.auto) return { timed, cues, lead: 0, duration: maxEnd + 330 };
-  return { timed, cues, lead, duration: Math.max(maxEnd + 930, lastCue + 530, ready + 530, lead + 3330) };
-}
-
-/** The bridge card stays until its sentence can be read (the question stays on screen all scene). */
-export const leadFor = (sc: Scene, index: number): number =>
-  index && !sc.auto ? Math.min(BRIDGE_MAX, Math.max(BRIDGE, sc.bridge ? readMs(sc.bridge) + 530 : 0)) : 0;
-
-/** Total duration of an IR in ms at 1x. */
-export function totalMs(ir: Pick<Walkthrough, 'chapters'>): number {
-  let t = 0, i = 0;
-  for (const ch of ir.chapters || []) for (const sc of ch.scenes || []) { t += layoutScene(sc, leadFor(sc, i)).duration; i++; }
-  return t;
 }

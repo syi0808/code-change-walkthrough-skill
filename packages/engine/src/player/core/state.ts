@@ -1,8 +1,9 @@
 // The walkthrough state is a pure function of timeline time:
 //   state(T) = reduce(snapshot at scene start, steps started by T, their progress)
 // so play, pause, scrub, speed and scene jumps all just pick a T.
-import { FOLD_CLICK, FOLD_TRAVEL, itemMs, openPhases, phaseAt, reached, REFS_HEAD, walkAt } from '../../shared/timing.ts';
-import { foldMoves } from '../../shared/tree-path.ts';
+import { glide, walkAt } from '../../shared/timing.ts';
+import { localMs, NAME_CHAR_MS, nameMs, phaseAt, phaseP, phasesMs, phaseStart, reached, stepPhases, type PhaseName } from '../../shared/procedure.ts';
+import { chain, foldMoves, inFolder, walkPlan } from '../../shared/tree-path.ts';
 import type { DiffSettings, Effect, GraphEdge, GraphNode, LineRange, RefItem, ReplayMode, Side, Step, View } from '../../ir/types.ts';
 import { clamp, clone, ease, IR, t } from './env.ts';
 import { fileSpan, replays, sceneAt, scenes } from './timeline.ts';
@@ -10,11 +11,11 @@ import { dirs } from './tree.ts';
 import { settleTop, walkTop } from './explorer.ts';
 
 export interface ScrollTarget { side: Side; from?: number; to?: number; line?: number }
-export interface Scroll { to: ScrollTarget; mode: 'center' | 'top' | 'ensure' | 'follow'; p: number; prev: Scroll | null }
+export interface Scroll { to: ScrollTarget; mode: 'center' | 'top' | 'ensure' | 'follow'; p: number; prev: Scroll | null; /** timeline ms the move takes (0: unknown); the move is held to a followable speed (see scrollFrame) */ ms?: number }
 export interface Hl extends LineRange { tone: string; label: string | null; p: number; key: string | number; t?: number; ref?: boolean }
 export interface NoteState { side: Side; line: number; text: string; tone: string; key: number; t: number }
 export interface CodeAnchor { kind: 'code'; pane: number; side: Side; line: number; token?: string }
-export type Anchor = { kind: 'ex'; path: string } | { kind: 'tab'; pane: number; file: string } | { kind: 'ref'; index: number } | CodeAnchor;
+export type Anchor = { kind: 'ex'; path: string } | { kind: 'tab'; pane: number; file: string } | { kind: 'ref'; index: number } | { kind: 'exNew' } | { kind: 'exNewDir' } | { kind: 'exMenu' } | CodeAnchor;
 export interface Pointer { from: Anchor | null; to: Anchor | null; p: number; click?: boolean; fade?: boolean }
 export interface Typing extends LineRange { key: number; file: string; p: number; t: number; mode: ReplayMode; dp?: number }
 
@@ -55,7 +56,14 @@ export interface State {
    *  It walks from `from` (the file shown until now) to `file`: folders close and open one at a time
    *  (shared/tree-path foldMoves), each clicked by the pointer when `cursor` is set. `pick` is the
    *  selection's move onto the file itself (the click on its row). */
-  exScroll: { file: string; from: string | null; p: number; pick: number; cursor: boolean; key: number } | null;
+  exScroll: { file: string; from: string | null; p: number; pick: number; cursor: boolean; key: number; keep?: boolean } | null;
+  /** File operations in the explorer (see FsOp and the delete step): the inline name box (`sel`: the old
+   *  name selected, about to be typed over), the row being dragged onto a folder, the context menu (`hot`:
+   *  Delete under the pointer), and the row folding away. */
+  exEdit: { mode: 'create' | 'mkdir' | 'rename'; at: string; text: string; sel: boolean } | null;
+  exDrag: { path: string; to: string; p: number } | null;
+  exMenu: { path: string; hot: boolean } | null;
+  exRemove: { path: string; p: number } | null;
   /** The explorer's scroll (px): kept in the state like everything else on screen (see core/explorer.ts). */
   exTop: number;
   reveal: { file: string; p: number } | null;
@@ -74,19 +82,27 @@ const EFFECT_TONE: Record<Effect, string> = { safe: 'info', check: 'warn', break
 
 export const DIFF_DEFAULT: DiffSettings = { mode: 'unified', algorithm: 'patience', granularity: 'word', context: 3, whitespace: 'collapse' };
 const newPane = (): PaneState => ({ tabs: [], file: null, view: 'after', diff: { ...DIFF_DEFAULT }, scroll: null, mem: {}, hl: [], focus: null, notes: [], flash: null, tokline: null, enter: null });
-const initState = (): State => ({ layout: 'single', active: 0, panes: [newPane(), newPane()], pointer: null, pointerAt: null, keys: null, toast: null, refs: null, graph: null, map: null, say: '', typing: [], exFocus: null, exScroll: null, exTop: 0, reveal: null, scene: 0, sceneP: 0, sceneT: 0, shown: 0, guideScene: 0, bridge: null });
+const initState = (): State => ({ layout: 'single', active: 0, panes: [newPane(), newPane()], pointer: null, pointerAt: null, keys: null, toast: null, refs: null, graph: null, map: null, say: '', typing: [], exFocus: null, exScroll: null, exEdit: null, exDrag: null, exMenu: null, exRemove: null, exTop: 0, reveal: null, scene: 0, sceneP: 0, sceneT: 0, shown: 0, guideScene: 0, bridge: null });
 
 function resetTransient(s: State): void {
   for (const p of s.panes) { p.hl = []; p.focus = null; p.notes = []; p.flash = null; p.tokline = null; p.enter = null; }
   if (s.pointer?.to) s.pointerAt = s.pointer.to;
-  s.pointer = null; s.keys = null; s.toast = null; s.refs = null; s.graph = null; s.say = ''; s.typing = []; s.exFocus = null; s.exScroll = null; s.reveal = null;
+  s.pointer = null; s.keys = null; s.toast = null; s.refs = null; s.graph = null; s.say = ''; s.typing = []; s.exFocus = null; s.exScroll = null; s.exEdit = null; s.exDrag = null; s.exMenu = null; s.exRemove = null; s.reveal = null;
 }
 
-export function setScroll(pane: PaneState, to: ScrollTarget, mode: Scroll['mode'], p: number): void {
-  const prev = pane.scroll;
-  // an "ensure" keeps the target before it; a "follow" keeps its chain (see scrollPx)
-  if (prev) prev.prev = prev.mode === 'follow' ? prev.prev : prev.mode === 'ensure' && prev.prev ? { ...prev.prev, prev: null } : null;
-  pane.scroll = { to, mode, p, prev: prev && prev.to ? prev : null };
+/** Where a finished scroll is placed depends on the scrolls before it while it is relative
+ *  ("ensure" keeps the place it found, "follow" carries on from its base), and not at all once
+ *  it is absolute ("center", "top"). The chain is kept back to the first absolute one, exactly:
+ *  cutting it anywhere else would place the same target elsewhere one step later (a jump). */
+function settled(sc: Scroll | null): Scroll | null {
+  if (!sc || !sc.to) return null;
+  const relative = sc.mode === 'ensure' || sc.mode === 'follow';
+  // sc.prev was settled when sc was set, so only this link changes
+  return { ...sc, p: 1, prev: relative ? sc.prev : null };
+}
+
+export function setScroll(pane: PaneState, to: ScrollTarget, mode: Scroll['mode'], p: number, ms = 0): void {
+  pane.scroll = { to, mode, p, prev: settled(pane.scroll), ms };
   if (pane.file) pane.mem[pane.file] = to;
 }
 
@@ -114,19 +130,158 @@ export function showFile(s: State, pi: number, file: string, view?: View): PaneS
   return pane;
 }
 
-/** Opening a file: separate, sequential events (see openPhases): locate, travel, press, beat, swap, land, reveal. */
+/** The explorer follows a change of the file in view along the path, without the pointer (q: 0..1 of its walk). */
+function follow(s: State, from: string | null, to: string, q: number, key: number): void {
+  if (!from || from === to) return;
+  s.exScroll = { file: to, from, p: q, pick: q, cursor: false, key };
+  s.exTop = walkTop(s.exTop, from, to, q, nowT);
+}
+
+/** How a step is being played at progress p of its laid-out duration: its phases, where it is on
+ *  them, and the scene-local time a phase starts at (an author's `ms` stretches the phases). */
+function procedure(st: Step, p: number, dur: number) {
+  const ph = stepPhases(st);
+  const own = phasesMs(ph) || 1;
+  const ms = localMs(st, p, dur);
+  const scale = (dur || own) / own;
+  return {
+    ph, ms,
+    at: phaseAt(ph, ms),
+    /** progress of a phase: 0 before it, 1 after it or when the step has none */
+    pp: (name: PhaseName, i?: number) => (ms === Infinity ? 1 : phaseP(ph, ms, name, i)),
+    reached: (name: PhaseName) => ms === Infinity || reached(ph, ms, name),
+    /** a phase's length on the timeline (ms) */
+    len: (name: PhaseName, i?: number) => (ph.find((x) => x.name === name && (i === undefined || x.i === i))?.ms || 0) * scale,
+    /** the scene-local time a phase starts */
+    t: (name: PhaseName) => (st._start || 0) + (phaseStart(ph, name) ?? 0) * scale,
+  };
+}
+
+type Proc = ReturnType<typeof procedure>;
+const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1);
+/** The folder row a drop lands on: the compact row of the folder (or the root). */
+const dropRow = (dir: string): string => chain(dirs, inFolder(dir)).pop() || '';
+/** Where a file operation walks the explorer first: the folder a file is created in, or the old row. */
+const fsTarget = (st: Step): string => (st._fs!.kind === 'create' ? inFolder(st._fs!.parent) : st._fs!.from!);
+
+/**
+ * The explorer through a file operation, phase by phase from where it was before the step: the walk to
+ * the folder or the old row (locate), the drag (move: folders hovered on the way open, nothing closes),
+ * then, once the file exists, the walk to its sorted row (walk). `pp` gives each phase's progress.
+ */
+function fsExplorer(s: State, st: Step, shown: string | null, pp: (n: PhaseName) => number): void {
+  const op = st._fs!, file = st.file!, key = st._id || 0;
+  const target = fsTarget(st);
+  let top = walkTop(s.exTop, shown, target, pp('locate'), nowT);
+  s.exScroll = { file: target, from: shown, p: pp('locate'), pick: 0, cursor: true, key };
+  if (op.kind === 'move' && pp('drag') > 0) {
+    top = walkTop(top, op.from!, inFolder(op.parent), pp('drag'), nowT, true);
+    s.exScroll = { file: inFolder(op.parent), from: op.from!, p: pp('drag'), pick: 0, cursor: false, key, keep: true };
+  }
+  // a new folder opens once made (its New File box goes inside it)
+  const made = op.dir ? (op.parent ? `${op.parent}/` : '') + op.dir : null;
+  if (made && pp('dopen') > 0) {
+    top = walkTop(top, inFolder(op.parent), inFolder(made), pp('dopen'), nowT);
+    s.exScroll = { file: inFolder(made), from: inFolder(op.parent), p: pp('dopen'), pick: 0, cursor: false, key };
+  }
+  if (pp('walk') > 0) {
+    const src = op.kind === 'rename' ? op.from! : inFolder(made ?? op.parent);
+    const keepOpen = op.kind === 'move';
+    top = walkTop(top, src, file, pp('walk'), nowT, keepOpen);
+    s.exScroll = { file, from: src, p: pp('walk'), pick: pp('walk'), cursor: false, key, keep: keepOpen };
+  }
+  s.exTop = top;
+}
+
+/** Before the file opens: the explorer walk, then New File and the name typed / F2 and the new name / the drag, then the click on it. */
+function applyFsOp(s: State, st: Step, pr: Proc): void {
+  const op = st._fs!, file = st.file!;
+  const { at } = pr;
+  const shown = s.panes[s.active].file;
+  const target = fsTarget(st);
+  const moves = foldMoves(dirs, shown, target);
+  const folds = moves.length - 1;
+  const from = s.pointer?.to || s.pointerAt;
+  const last: Anchor | null = folds > 0 ? { kind: 'ex', path: moves[folds - 1].path } : from;
+  fsExplorer(s, st, shown, pr.pp);
+  // the file being made, or the row being renamed / moved, is what the explorer lights (with its folders)
+  s.exFocus = pr.reached('walk') || op.kind === 'create' ? file : op.from!;
+  if (at.name === 'locate') {
+    const { k, local, seg } = walkAt(walkPlan(dirs, shown, target), at.p);
+    if (k < folds) {
+      const row: Anchor = { kind: 'ex', path: moves[k].path };
+      const prev: Anchor | null = k === 0 ? from : { kind: 'ex', path: moves[k - 1].path };
+      s.pointer = local < seg.travel ? { from: prev, to: row, p: ease(local / seg.travel) } : { from: row, to: row, p: 1, click: local < seg.click };
+    } else s.pointer = folds > 0 ? { from: last, to: last, p: 1 } : null;
+    return;
+  }
+  // a name is typed one character per beat, after a short lead (the box opens, the caret blinks)
+  const typingIn = (phase: PhaseName, text: string) => (pr.ms === Infinity ? Infinity : Math.max(0, pr.pp(phase) * nameMs(text) - 250));
+  const typing = typingIn('name', op.name);
+  const typed = (text: string, ms = typing) => text.slice(0, Math.min(text.length, Math.floor(ms / NAME_CHAR_MS)));
+  if (op.kind === 'create') {
+    const btn: Anchor = { kind: 'exNew' }, dirBtn: Anchor = { kind: 'exNewDir' };
+    const made = op.dir ? (op.parent ? `${op.parent}/` : '') + op.dir : null;
+    if (op.dir && !pr.reached('travel')) {
+      // New Folder first: its name (the new folders' path) typed, Enter, and it opens
+      if (at.name === 'dtravel') { s.pointer = { from: last, to: dirBtn, p: ease(at.p) }; return; }
+      s.pointer = { from: dirBtn, to: dirBtn, p: 1, click: at.name === 'dpress' };
+      s.pointerAt = dirBtn;
+      if (pr.reached('dname') && !pr.reached('dopen')) s.exEdit = { mode: 'mkdir', at: op.parent, text: typed(op.dir, typingIn('dname', op.dir)), sel: false };
+      if (at.name === 'denter') s.keys = ['⏎'];
+      return;
+    }
+    if (at.name === 'travel') { s.pointer = { from: op.dir ? dirBtn : last, to: btn, p: ease(at.p) }; return; }
+    s.pointer = { from: btn, to: btn, p: 1, click: at.name === 'press' };
+    s.pointerAt = btn;
+    if (pr.reached('name') && !pr.reached('walk')) s.exEdit = { mode: 'create', at: made ?? op.parent, text: typed(op.name), sel: false };
+    if (at.name === 'enter') s.keys = ['⏎'];
+    if (pr.reached('walk')) s.pointer = null;
+    return;
+  }
+  const old: Anchor = { kind: 'ex', path: op.from! };
+  const now: Anchor = { kind: 'ex', path: file };
+  if (!pr.reached('walk')) {
+    if (at.name === 'travel') { s.pointer = { from: last, to: old, p: ease(at.p) }; return; }
+    if (op.kind === 'rename') {
+      s.pointer = { from: old, to: old, p: 1, click: at.name === 'select' };
+      if (pr.reached('key')) {
+        // F2 selects the old name; the first character typed replaces it
+        const over = pr.reached('name') && typing >= NAME_CHAR_MS;
+        s.exEdit = { mode: 'rename', at: op.from!, text: over ? typed(op.name) : baseName(op.from!), sel: !over };
+        if (at.name === 'key') s.keys = ['F2'];
+        if (at.name === 'enter') { s.keys = ['⏎']; s.exEdit.text = op.name; }
+      }
+      return;
+    }
+    const drop: Anchor = { kind: 'ex', path: dropRow(op.parent) };
+    s.exDrag = { path: op.from!, to: dropRow(op.parent), p: pr.pp('drag') };
+    s.pointer = at.name === 'grab' ? { from: old, to: old, p: 1, click: true } : { from: old, to: drop, p: glide(pr.pp('drag')), click: at.name === 'drop' };
+    s.pointerAt = drop;
+    return;
+  }
+  // the file now sits in its place: the explorer follows it, then the pointer clicks it open
+  s.pointer = at.name === 'walk' ? null : at.name === 'beat' ? { from: s.pointerAt, to: now, p: ease(at.p) } : { from: now, to: now, p: 1, click: at.name === 'press' };
+}
+/** After a file operation, the explorer rests where it ended (and a drag leaves the folders it opened open). */
+function fsRest(s: State, st: Step, before: string | null): void {
+  fsExplorer(s, st, before, () => 1);
+}
+
+/** Opening a file: separate, sequential events (see openPhases): locate, travel, press, beat, swap, walk, land, reveal. */
 function applyOpen(s: State, st: Step, pi: number, p: number, dur: number): void {
   const pane = s.panes[pi];
-  const ph = openPhases(st);
-  const ms = p >= 1 ? Infinity : p * dur;
-  const at = phaseAt(ph, ms);
+  const pr = procedure(st, p, dur);
+  const { ph, ms, at } = pr;
   const kind = st._openKind || 'tree';
   const file = st.file!;
-  if (kind !== 'same' && !reached(ph, ms, 'swap')) {
+  const key = st._id || 0;
+  if (kind === 'tree' && st._fs && !pr.reached('swap')) return applyFsOp(s, st, pr);
+  if (kind !== 'same' && !pr.reached('swap')) {
     const target: Anchor = kind === 'tree' ? { kind: 'ex', path: file } : { kind: 'tab', pane: pi, file };
     const from = s.pointer?.to || s.pointerAt;
     // from the file the explorer shows now (the active pane's), through its folders, to this one:
-    // the pointer clicks each folder on the way (shared/tree-path foldMoves, timed by walkAt)
+    // the pointer clicks each folder on the way (shared/tree-path foldMoves, timed by walkPlan)
     let last: Anchor | null = from;
     if (kind === 'tree') {
       const shown = s.panes[s.active].file;
@@ -134,14 +289,14 @@ function applyOpen(s: State, st: Step, pi: number, p: number, dur: number): void
       const folds = moves.length - 1;
       if (folds > 0) last = { kind: 'ex', path: moves[folds - 1].path };
       s.exFocus = file;
-      s.exScroll = { file, from: shown, p: at.name === 'locate' ? at.p : 1, pick: at.name === 'press' ? ease(at.p) : reached(ph, ms, 'beat') ? 1 : 0, cursor: true, key: st._id || 0 };
+      s.exScroll = { file, from: shown, p: pr.pp('locate'), pick: at.name === 'press' ? ease(at.p) : pr.reached('beat') ? 1 : 0, cursor: true, key };
       s.exTop = walkTop(s.exTop, shown, file, s.exScroll.p, nowT);
       if (at.name === 'locate') {
-        const { k, local } = walkAt(folds, at.p);
+        const { k, local, seg } = walkAt(walkPlan(dirs, shown, file), at.p);
         if (k < folds) {
           const row: Anchor = { kind: 'ex', path: moves[k].path };
           const prev: Anchor | null = k === 0 ? from : { kind: 'ex', path: moves[k - 1].path };
-          s.pointer = local < FOLD_TRAVEL ? { from: prev, to: row, p: ease(local / FOLD_TRAVEL) } : { from: row, to: row, p: 1, click: local < FOLD_CLICK };
+          s.pointer = local < seg.travel ? { from: prev, to: row, p: ease(local / seg.travel) } : { from: row, to: row, p: 1, click: local < seg.click };
         } else s.pointer = folds > 0 ? { from: last, to: last, p: 1 } : null; // the file's row scrolls into view
         return;
       }
@@ -158,21 +313,25 @@ function applyOpen(s: State, st: Step, pi: number, p: number, dur: number): void
   s.exFocus = null;
   const before = s.panes[s.active].file;
   showFile(s, pi, file, st.view);
-  // after a tab click the explorer follows the screen change: its selection glides along
-  if (kind === 'tab' && at.name === 'swap') {
-    s.exScroll = { file, from: before, p: at.p, pick: at.p, cursor: false, key: st._id || 0 };
-    s.exTop = walkTop(s.exTop, before, file, at.p, nowT);
+  // the explorer: after a tree pick it rests where its walk ended (computed again in this frame, since a
+  // frame is rebuilt from the scene's start); after a tab click it walks there over the swap and the walk
+  if (kind === 'tree' && st._fs) fsRest(s, st, before);
+  else if (kind === 'tree') s.exTop = walkTop(s.exTop, before, file, 1, nowT);
+  if (kind === 'tab') {
+    // over the swap and the walk after it, in the procedure's own time
+    const span = ph.filter((x) => x.name === 'swap' || x.name === 'walk').reduce((a, x) => a + x.ms, 0) || 1;
+    follow(s, before, file, ms === Infinity ? 1 : clamp((ms - (phaseStart(ph, 'swap') || 0)) / span, 0, 1), key);
   }
   if (st.diff) Object.assign(pane.diff, st.diff);
-  if (kind !== 'same') pane.enter = { key: st._id || 0, p: at.name === 'swap' ? at.p : 1 };
+  if (kind !== 'same') pane.enter = { key, p: pr.pp('swap') };
   if (st._r) {
     // a new file opens already at its target; within the same file, the editor scrolls there
-    if (kind === 'same') setScroll(pane, st._r, 'center', at.name === 'land' ? ease(at.p) : reached(ph, ms, 'land') ? 1 : 0);
+    if (kind === 'same') setScroll(pane, st._r, 'center', glide(pr.pp('land')), pr.len('land'));
     else setScroll(pane, st._r, 'center', 1);
   } else if (st._first && kind !== 'same') setScroll(pane, st._first, 'center', 1);
   if (st._reveal) {
     // the changes are held back from the moment the file appears, never shown and then taken away
-    const rp = ms === Infinity || at.i >= ph.length ? 1 : at.name === 'reveal' ? at.p : 0;
+    const rp = pr.pp('reveal');
     if (rp < 1) s.reveal = { file, p: rp };
   }
 }
@@ -180,6 +339,7 @@ function applyOpen(s: State, st: Step, pi: number, p: number, dur: number): void
 export function apply(s: State, st: Step, p: number, dur: number): void {
   const pi = st._pane != null ? st._pane : st.pane != null ? (st.pane ? 1 : 0) : s.active;
   const pane = s.panes[pi];
+  const key = st._id || 0;
   switch (st.do) {
     case 'open': return applyOpen(s, st, pi, p, dur);
     case 'close': {
@@ -189,7 +349,12 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
       if (pi === 1 && !pane.tabs.length) { s.layout = 'single'; s.active = 0; }
       return;
     }
-    case 'layout': s.layout = st.mode === 'columns' ? 'columns' : 'single'; if (st.mode === 'single') s.active = 0; return;
+    case 'layout': {
+      const before = s.panes[s.active].file;
+      s.layout = st.mode === 'columns' ? 'columns' : 'single';
+      if (st.mode === 'single') { s.active = 0; if (s.panes[0].file) follow(s, before, s.panes[0].file, procedure(st, p, dur).pp('walk'), key); }
+      return;
+    }
     case 'diffView': {
       if (st.mode === 'unified' || st.mode === 'split') pane.diff.mode = st.mode;
       if (st.algorithm) pane.diff.algorithm = st.algorithm;
@@ -201,98 +366,140 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
       return;
     }
     case 'reveal': case 'highlight': case 'focus': case 'note': {
+      // walk (if the file changes), scroll to the range, then mark it: the code is in place before it is marked
+      const pr = procedure(st, p, dur);
+      const before = s.panes[s.active].file;
       showFile(s, pi, st._file!, st._view);
+      follow(s, before, st._file!, pr.pp('walk'), key);
       const r = st._r; if (!r) return;
-      const t = st._start || 0;
-      // a highlight sweeps in line by line over the first 60% of the step
-      if (st.do === 'highlight') pane.hl.push({ ...r, tone: st.tone || 'focus', label: st.label || null, p: clamp(p / 0.6, 0, 1), key: st._id || 0, t });
-      if (st.do === 'focus') pane.focus = { ...r, p: clamp(p / 0.5, 0, 1), t };
-      if (st.do === 'note') pane.notes.push({ side: r.side, line: r.to, text: st.text || '', tone: st.tone || 'info', key: st._id || 0, t });
       const mode = st.do === 'reveal' ? (st.align === 'top' ? 'top' : 'center') : st.do === 'focus' ? 'center' : 'ensure';
-      if (st.reveal !== false) setScroll(pane, r, mode, ease(clamp(p / 0.7, 0, 1)));
+      if (st.reveal !== false) setScroll(pane, r, mode, glide(pr.pp('scroll')), pr.len('scroll'));
+      if (!pr.reached('mark')) return;
+      const t = pr.t('mark'), mp = pr.pp('mark');
+      if (st.do === 'highlight') pane.hl.push({ ...r, tone: st.tone || 'focus', label: st.label || null, p: mp, key, t });
+      if (st.do === 'focus') pane.focus = { ...r, p: mp, t };
+      if (st.do === 'note') pane.notes.push({ side: r.side, line: r.to, text: st.text || '', tone: st.tone || 'info', key, t });
       return;
     }
     case 'type': case 'replay': {
+      const pr = procedure(st, p, dur);
+      const before = s.panes[s.active].file;
       showFile(s, pi, st._file!, st._view);
+      follow(s, before, st._file!, pr.pp('walk'), key);
       const r = st._r; if (!r) return;
+      const tp = pr.pp('type');
       let e = s.typing.find((x) => x.key === st._id);
-      if (!e) { e = { key: st._id || 0, file: st._file!, side: r.side, from: r.from, to: r.to, p: 0, t: 0, mode: 'type' }; s.typing.push(e); }
-      e.t = st._start || 0; e.p = p; e.mode = st._mode || 'type'; e.dp = st._dp;
+      if (!e) { e = { key, file: st._file!, side: r.side, from: r.from, to: r.to, p: 0, t: 0, mode: 'type' }; s.typing.push(e); }
+      e.t = pr.t('type'); e.p = tp; e.mode = st._mode || 'type'; e.dp = st._dp;
       // a block or a short hunk: the editor brings its place into view first (BLOCK_LEAD of the
       // typing part, see decorate), then it opens; a scroll squeezed into a few frames reads as a jump
-      if (e.mode === 'block' || r.to - r.from < 6) setScroll(pane, r, 'ensure', ease(clamp(p / (e.mode === 'block' ? 0.4 : 0.15), 0, 1)));
+      const share = e.mode === 'block' ? 0.4 : 0.15;
+      if (e.mode === 'block' || r.to - r.from < 6) setScroll(pane, r, 'ensure', glide(clamp(tp / share, 0, 1)), pr.len('type') * share);
       else {
         // follow the line being written, like an editor keeping the caret in view
         const dp = st._dp || 0;
-        const wp = clamp((p - dp) / Math.max(0.01, 1 - dp), 0, 1);
+        const wp = clamp((tp - dp) / Math.max(0.01, 1 - dp), 0, 1);
         const cur = Math.round(r.from + (r.to - r.from) * wp);
-        setScroll(pane, { side: r.side, from: Math.max(r.from, cur - 1), to: cur }, p < dp ? 'ensure' : 'follow', 1);
+        setScroll(pane, { side: r.side, from: Math.max(r.from, cur - 1), to: cur }, tp < dp ? 'ensure' : 'follow', 1);
       }
       return;
     }
     case 'unfocus': for (const pn of st.pane != null ? [pane] : s.panes) pn.focus = null; return;
     case 'clear': for (const pn of st.pane != null ? [pane] : s.panes) { pn.hl = []; pn.notes = []; pn.focus = null; } return;
     case 'goto': {
+      // walk to the call site's file, scroll to it, point at the token, hold Cmd, click, jump (walk), land, flash
       const fr = st._from, to = st._to;
       if (!fr || !to || !fr.line || !fr.side) return;
-      // scroll to the call site, then move the pointer, then hold Cmd, then click, then jump
-      const SCROLL = 0.12, MOVE = 0.34, CLICK = 0.48, JUMP = 0.56;
-      if (p < JUMP) {
-        showFile(s, pi, fr.file);
+      const pr = procedure(st, p, dur);
+      const before = s.panes[s.active].file;
+      const call: LineRange = { side: fr.side, from: fr.line, to: fr.line };
+      showFile(s, pi, fr.file);
+      follow(s, before, fr.file, pr.pp('walk'), key);
+      setScroll(pane, call, 'ensure', glide(pr.pp('scroll')), pr.len('scroll'));
+      const anchor: CodeAnchor = { kind: 'code', pane: pi, side: fr.side, line: fr.line, token: st.from?.token };
+      if (!pr.reached('jump')) {
         pane.focus = null; // never Cmd+Click into dimmed code
-        if (p > 0.06) pane.hl.push({ side: fr.side, from: fr.line, to: fr.line, tone: 'focus', label: null, p: 1, key: `g${st._id}` });
-        setScroll(pane, { side: fr.side, from: fr.line, to: fr.line }, 'ensure', ease(clamp(p / SCROLL, 0, 1)));
-        const anchor: CodeAnchor = { kind: 'code', pane: pi, side: fr.side, line: fr.line, token: st.from?.token };
+        if (pr.reached('scroll')) pane.hl.push({ ...call, tone: 'focus', label: null, p: 1, key: `g${st._id}` });
         const from = s.pointer?.to || s.pointerAt;
-        if (p < SCROLL) s.pointer = null;
-        else s.pointer = { from, to: anchor, p: ease(clamp((p - SCROLL) / (MOVE - SCROLL), 0, 1)), click: p > CLICK };
-        if (p >= MOVE) { s.keys = ['⌘']; pane.tokline = anchor; }
-      } else {
-        pane.tokline = null;
-        const tp = s.panes[to.pane];
-        const same = tp.file === to.file;
-        showFile(s, to.pane, to.file, to.view);
-        const r: LineRange = { side: to.side || 'after', from: to.from || 1, to: to.to || to.from || 1 };
-        setScroll(tp, r, 'center', same ? ease(clamp((p - JUMP) / 0.25, 0, 1)) : 1);
-        tp.hl.push({ ...r, tone: 'focus', label: null, p: clamp((p - JUMP) / 0.3, 0, 1), key: st._id || 0 });
-        tp.flash = { side: r.side, from: r.from, to: r.from, key: `${st._id}`, p: clamp((p - JUMP) / (1 - JUMP), 0, 1) };
-        s.toast = t('goto.toast', { token: st.from?.token || '', to: `${to.file}:${to.line}` });
-        if (s.pointer?.to) s.pointerAt = s.pointer.to;
-        s.pointer = p < 0.7 && s.pointer ? { ...s.pointer, p: 1, click: false, fade: true } : null;
-        s.keys = null;
+        s.pointer = !pr.reached('point') ? null : { from, to: anchor, p: ease(pr.pp('point')), click: pr.reached('click') };
+        if (pr.reached('cmd')) { s.keys = ['⌘']; pane.tokline = anchor; }
+        return;
       }
+      pane.focus = null;
+      const tp = s.panes[to.pane];
+      const same = tp.file === to.file;
+      showFile(s, to.pane, to.file, to.view);
+      follow(s, fr.file, to.file, pr.pp('jump'), key);
+      const r: LineRange = { side: to.side || 'after', from: to.from || 1, to: to.to || to.from || 1 };
+      setScroll(tp, r, 'center', same ? glide(pr.pp('land')) : 1, pr.len('land'));
+      tp.hl.push({ ...r, tone: 'focus', label: null, p: pr.pp('land'), key });
+      // the flash fades over everything after the click
+      const j0 = phaseStart(pr.ph, 'jump') || 0, rest = phasesMs(pr.ph) - j0 || 1;
+      tp.flash = { side: r.side, from: r.from, to: r.from, key: `${st._id}`, p: pr.ms === Infinity ? 1 : clamp((pr.ms - j0) / rest, 0, 1) };
+      s.toast = t('goto.toast', { token: st.from?.token || '', to: `${to.file}:${to.line}` });
+      s.pointerAt = anchor;
+      s.pointer = !pr.reached('flash') ? { from: anchor, to: anchor, p: 1, fade: true } : null;
+      s.keys = null;
       return;
     }
     case 'refs': case 'impact': {
+      // the list comes in; then per item: the pointer goes to its entry, clicks, the editor and the
+      // explorer move to it (as long as the move needs), it lights up, and stays until the next click
       const items = st._items || [];
-      const n = items.length;
-      const head = REFS_HEAD / ((st.ms || REFS_HEAD) + itemMs(st) * n);
-      const k = p < head ? -1 : Math.min(n - 1, Math.floor(((p - head) / (1 - head)) * n));
+      const pr = procedure(st, p, dur);
+      const k = pr.at.name === 'head' || pr.at.i === undefined ? -1 : pr.at.i;
       s.refs = { kind: st.do, symbol: st.symbol, title: st.title || null, change: st.change, items, active: k };
       if (k < 0) return;
-      // per item: pointer to the list entry, click, then the editor scrolls to it, then it lights up
-      const local = ((p - head) / (1 - head)) * n - k;
-      const target: Anchor = { kind: 'ref', index: k };
-      s.pointer = k === n - 1 && local > 0.7 ? null : { from: k > 0 ? { kind: 'ref', index: k - 1 } : s.pointerAt, to: target, p: ease(clamp(local / 0.2, 0, 1)), click: local > 0.2 && local < 0.3 };
-      const show = (j: number, sp: number, hp: number) => {
+      const show = (j: number, sp: number, hp: number, wp: number) => {
         const x = items[j];
+        const before = s.panes[pi].file;
         const pn = showFile(s, pi, x.file, x.view);
+        follow(s, before, x.file, wp, key);
         const r: LineRange = { side: x.side, from: x.line, to: x.line };
-        setScroll(pn, r, 'center', sp);
+        setScroll(pn, r, 'center', sp, pr.len('move', j));
         pn.hl = pn.hl.filter((h) => !h.ref);
         pn.hl.push({ ...r, tone: x.effect ? EFFECT_TONE[x.effect] : 'info', ref: true, label: x.label, p: hp, key: `${st._id}:${j}` });
       };
-      // until the next item is clicked, the previous one stays on screen
-      if (local < 0.3) { if (k > 0) show(k - 1, 1, 1); return; }
-      show(k, ease(clamp((local - 0.3) / 0.3, 0, 1)), clamp((local - 0.45) / 0.25, 0, 1));
+      // every earlier item as it ended, in order: the next one moves on from exactly there
+      for (let j = 0; j < k; j++) show(j, 1, 1, 1);
+      const last = k === items.length - 1;
+      s.pointer = last && pr.reached('hold') && pr.at.i === k && pr.at.name === 'hold' ? null
+        : { from: k > 0 ? { kind: 'ref', index: k - 1 } : s.pointerAt, to: { kind: 'ref', index: k }, p: ease(pr.pp('point', k)), click: pr.pp('click', k) > 0 && pr.pp('click', k) < 1 };
+      if (pr.pp('click', k) < 1) return;
+      // the explorer's walk has its own curve per segment: it takes the time linearly
+      const mp = pr.pp('move', k);
+      show(k, glide(mp), pr.pp('mark', k), mp);
+      return;
+    }
+    case 'delete': {
+      // the pointer goes to the row, right click, Delete in the menu, the row folds away, its tab closes
+      const file = st.file!;
+      const pr = procedure(st, p, dur);
+      const at = pr.at;
+      const row: Anchor = { kind: 'ex', path: file }, item: Anchor = { kind: 'exMenu' };
+      if (!pr.reached('remove')) {
+        s.exFocus = file;
+        if (at.name === 'travel') { s.pointer = { from: s.pointer?.to || s.pointerAt, to: row, p: ease(at.p) }; return; }
+        s.exMenu = { path: file, hot: pr.reached('press') || (at.name === 'aim' && at.p > 0.8) };
+        s.pointer = !pr.reached('aim') ? { from: row, to: row, p: 1, click: at.name === 'menu' } : { from: row, to: item, p: ease(pr.pp('aim')), click: at.name === 'press' };
+        return;
+      }
+      s.pointerAt = item;
+      s.pointer = null;
+      s.exRemove = { path: file, p: pr.pp('remove') };
+      if (pr.reached('close')) {
+        const i = pane.tabs.indexOf(file);
+        if (i >= 0) pane.tabs.splice(i, 1);
+        if (pane.file === file) { pane.file = null; const last = pane.tabs[pane.tabs.length - 1]; if (last) showFile(s, pi, last); }
+      }
       return;
     }
     case 'graph': {
       const title = st.title || t('graph.title');
       if (st.hide) { s.graph = null; if (st.unpin) s.map = null; return; }
       if (st.nodes) {
-        s.graph = { nodes: st.nodes, edges: st.edges || [], title, size: st.size || 'full', highlight: st.highlight || [], key: st._id || 0 };
-        if (st.pin !== false) s.map = { nodes: st.nodes, edges: st.edges || [], title, key: st._id || 0 };
+        s.graph = { nodes: st.nodes, edges: st.edges || [], title, size: st.size || 'full', highlight: st.highlight || [], key };
+        if (st.pin !== false) s.map = { nodes: st.nodes, edges: st.edges || [], title, key };
       } else if (s.graph) s.graph = { ...s.graph, highlight: st.highlight || [] };
       return;
     }
@@ -308,7 +515,12 @@ export function resetSnapshots(): void { snapshots.length = 0; }
 let nowT = 0;
 /** Apply a step, then let the explorer settle on the file in view unless it is walking to one. */
 function step(s: State, st: Step, p: number, dur: number): void {
+  const before = s.panes[s.active].file;
   apply(s, st, p, dur);
+  // a step that changed the file in view without walking the explorer (none the compiler knows of):
+  // the explorer goes along anyway, at once
+  const now = s.panes[s.active].file;
+  if (now && before !== now && s.exScroll?.key !== (st._id || 0)) follow(s, before, now, 1, st._id || 0);
   if (!s.exScroll) s.exTop = settleTop(s.exTop, s.exFocus || s.panes[s.active].file, nowT, s.exFocus);
 }
 function sceneStartState(k: number): State {

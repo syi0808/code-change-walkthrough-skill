@@ -1,7 +1,7 @@
 // The explorer's file tree (VS Code-like): the repository at head plus every embedded file.
-import { dirIndex } from '../../shared/tree-path.ts';
+import { dirIndex, treePaths } from '../../shared/tree-path.ts';
 import { IR } from './env.ts';
-import { fileBorn } from './timeline.ts';
+import { fileBorn, rowFrom, rowUntil } from './timeline.ts';
 
 export interface DirNode { name: string; path: string; dirs: Map<string, DirNode>; dirList: DirNode[]; files: { name: string; path: string }[]; changed: number; partial: boolean }
 export const changedStatus = (p: string): string | null => { const f = IR.files[p]; return f && f.status !== 'context' ? f.status || null : null; };
@@ -36,6 +36,8 @@ export const treeRoot: DirNode = (() => {
     for (const d of IR.tree.partial || []) ensureDir(d).partial = true;
   }
   for (const p of Object.keys(IR.files)) addFile(p);
+  // a renamed file sits at its old path until the walkthrough moves it (see fsOp)
+  for (const f of Object.values(IR.files)) if (f.oldPath) addFile(f.oldPath);
   const cmp = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
   const sortTree = (n: DirNode): number => {
     n.dirList = [...n.dirs.values()].sort(cmp);
@@ -49,10 +51,7 @@ export const treeRoot: DirNode = (() => {
 })();
 
 /** The same folders as an index for walking paths (shared with the compiler, which times the walk). */
-export const dirs = dirIndex(
-  [...(IR.tree ? IR.tree.files.map(([d, name]) => (IR.tree!.dirs[d] ? `${IR.tree!.dirs[d]}/${name}` : name)) : []), ...Object.keys(IR.files)],
-  IR.tree?.partial || [],
-);
+export const dirs = dirIndex(treePaths(IR.tree, IR.files), IR.tree?.partial || []);
 
 /** Follow single-child directory chains (VS Code "compact folders"). */
 export function compact(dir: DirNode): { node: DirNode; label: string } {
@@ -64,11 +63,19 @@ export function compact(dir: DirNode): { node: DirNode; label: string } {
 export interface TreeRow { kind: 'dir' | 'file' | 'more'; path: string; label: string; depth: number; open?: boolean; changed?: number; status?: string | null; embedded?: boolean }
 
 /** Visible rows for the current expansion. `hide(path)` drops files that do not exist yet. */
-export function treeRows(expanded: Set<string>, filter: boolean, hide: (path: string) => boolean): TreeRow[] {
+export function treeRows(expanded: Set<string>, filter: boolean, hide: (path: string) => boolean, made: (dir: string) => boolean = () => false): TreeRow[] {
   const rows: TreeRow[] = [];
+  // a folder with nothing to show is not a row (a folder a new file creates appears with it)
+  const shows = new Map<DirNode, boolean>();
+  const any = (n: DirNode): boolean => {
+    let v = shows.get(n);
+    if (v === undefined) { v = n.partial || made(n.path) || n.files.some((f) => !hide(f.path)) || n.dirList.some(any); shows.set(n, v); }
+    return v;
+  };
   const walk = (node: DirNode, depth: number) => {
     for (const d of node.dirList) {
       if (filter && !d.changed) continue;
+      if (!any(d)) continue;
       const { node: leaf, label } = compact(d);
       const open = expanded.has(leaf.path);
       rows.push({ kind: 'dir', path: leaf.path, label, depth, open, changed: leaf.changed });
@@ -87,5 +94,10 @@ export function treeRows(expanded: Set<string>, filter: boolean, hide: (path: st
 
 /** Rows the explorer shows for a set of open folders at time T: files added later stay hidden until they exist. */
 export function rowsAt(open: Set<string>, filter: boolean, T: number, focus: string | null, started = true): TreeRow[] {
-  return treeRows(open, filter, (p) => started && changedStatus(p) === 'added' && fileBorn[p] != null && fileBorn[p] > T && p !== focus);
+  return treeRows(open, filter, (p) => {
+    if (!started) return false;
+    if (rowUntil[p] != null && rowUntil[p] <= T) return true;
+    if (rowFrom[p] != null) return rowFrom[p] > T;
+    return changedStatus(p) === 'added' && fileBorn[p] != null && fileBorn[p] > T && p !== focus;
+  }, (d) => started && rowFrom[d] != null && rowFrom[d] <= T);
 }

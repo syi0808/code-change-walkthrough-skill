@@ -4,9 +4,8 @@
 // The scroll moves as little as it can (a row already comfortably in view leaves it put), so
 // it depends on where it was; that history is the state's own (scene snapshots carry it), not
 // the screen's, so a frame looks the same however it was reached.
-import { FOLD_TRAVEL, walkAt } from '../../shared/timing.ts';
-import { chain, foldMoves } from '../../shared/tree-path.ts';
-import { ease } from './env.ts';
+import { glide, walkAt } from '../../shared/timing.ts';
+import { chain, foldMoves, walkPlan } from '../../shared/tree-path.ts';
 import { dirs, rowsAt } from './tree.ts';
 
 export const ROW_H = 22;
@@ -35,7 +34,9 @@ function keep(top: number, y: number, count: number): number {
 
 function rowTop(open: Set<string>, path: string, T: number, focus: string | null): { y: number | null; count: number } {
   const rows = rowsAt(open, view.filter, T, focus);
-  const i = rows.findIndex((r) => r.path === path);
+  let i = rows.findIndex((r) => r.path === path);
+  // a placeholder in a folder (inFolder) stands for the folder's row
+  if (i < 0 && path.endsWith('\u0001')) { const leaf = chain(dirs, path).pop(); if (leaf) i = rows.findIndex((r) => r.path === leaf); }
   return { y: i < 0 ? null : i * ROW_H, count: rows.length };
 }
 
@@ -50,17 +51,17 @@ export function settleTop(top: number, target: string | null, T: number, focus: 
  * During a walk from `from` to `file` at progress p: each folder's row comes into view while the
  * pointer heads for it, then the file's row (see walkAt). `top` is where the explorer rested before.
  */
-export function walkTop(top: number, from: string | null, file: string, p: number, T: number): number {
+export function walkTop(top: number, from: string | null, file: string, p: number, T: number, keepOpen = false): number {
   if (!view.h) return top;
-  const moves = foldMoves(dirs, from, file);
+  const moves = foldMoves(dirs, from, file, keepOpen);
   const folds = moves.length - 1;
-  const { k, local } = walkAt(folds, p);
+  const { k, local, seg } = walkAt(walkPlan(dirs, from, file, keepOpen), p);
   const open = new Set(chain(dirs, from));
   for (let j = 0; j <= k; j++) {
     const mv = moves[j];
     const r = rowTop(open, mv.path, T, file);
     const to = r.y == null ? top : keep(top, r.y, r.count);
-    if (j === k) return top + (to - top) * ease(j < folds ? Math.min(1, local / FOLD_TRAVEL) : local);
+    if (j === k) return top + (to - top) * glide(j < folds ? Math.min(1, local / seg.travel) : local);
     top = to;
     if (mv.kind === 'close') open.delete(mv.path); else if (mv.kind === 'open') open.add(mv.path);
   }

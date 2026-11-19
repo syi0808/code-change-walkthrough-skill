@@ -1,6 +1,7 @@
 <script lang="ts">
   // Layout: [explorer] [editor stage] [walkthrough outline] over the playback controls.
   import { splitLines } from '../../shared/diff.ts';
+  import { narrator } from '../app/narrator.svelte.ts';
   import { player } from '../app/player.svelte.ts';
   import { ICON, IR, shortRef, t } from '../core/env.ts';
   import { scenes } from '../core/timeline.ts';
@@ -77,6 +78,7 @@
     else if (k === ']') player.stepSpeed(1);
     else if (k === '[') player.stepSpeed(-1);
     else if (k === 'p' || k === 'P') player.segPause = !player.segPause;
+    else if (k === 'v' || k === 'V') { narrator.set(!narrator.on); player.commit(); }
     else if (k === 'b' || k === 'B') toggleExplorer();
     else if (k === 'g' || k === 'G') toggleGuide();
     else if (k === 'm' || k === 'M') { player.ui.map = !player.ui.map; player.ui.mapExpanded = false; player.commit(); }

@@ -1,5 +1,6 @@
 <script lang="ts">
   // Playback controls: transport buttons, the chapter-segmented timeline, time, speed, pause per scene.
+  import { narrator } from '../app/narrator.svelte.ts';
   import { player, SPEEDS } from '../app/player.svelte.ts';
   import { clamp, fmt, ICON, IR, t } from '../core/env.ts';
   import { sceneAt, scenes, total } from '../core/timeline.ts';
@@ -41,6 +42,7 @@
   </div>
   <div class="ctrl-right">
     <span class="time">{fmt(T)} / {fmt(total)}</span>
+    {#if narrator.supported}<button class="icon-btn" class:on={narrator.on} title={t('controls.tts')} aria-label={t('controls.tts')} aria-pressed={narrator.on} onclick={() => { narrator.set(!narrator.on); player.commit(); }}>{@html narrator.on ? ICON.speaker : ICON.muted}</button>{/if}
     <select aria-label={t('controls.speed')} value={String(player.speed)} onchange={(e) => player.setSpeed(Number(e.currentTarget.value))}>
       {#each SPEEDS as v (v)}<option value={String(v)}>{v}×</option>{/each}
     </select>

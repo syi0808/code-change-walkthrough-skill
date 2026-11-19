@@ -35,13 +35,28 @@ The engine replays every changed hunk; you decide the order and where to stop.
 { "id": "transient", "title": "What counts as transient",
   "at": { "file": "src/api/retry.ts" },
   "question": "Which failures are worth retrying?",
-  "bridge": "Loop retries only transient errors → what counts as transient?",
+  "bridge": "② the retry condition: which failures qualify",
   "goal": "Only 5xx and 429 retried",
   "narration": "Retries: server-side and rate-limit failures only\n\n- `isTransient`: `HttpError` with status 5xx or 429\n- 404 fails at once: a retry would get the same answer",
   "steps": [ … ] }
 ```
 
-`question` stays above the code for the whole scene. `bridge` is shown in the heading band above the code when the scene starts, so skip it for the first scene. `check` warns when either one is missing.
+`question` stays above the code for the whole scene. `bridge` is shown in the heading band above the code when the scene starts, next to the chapter and the map node of the scene's file, so skip it for the first scene. Write it as the scene's place on the scene-1 map (its part number) and what it settles there, never as a recap of the previous scene (R30). `check` warns when either one is missing.
+
+## Scene 1: walk the map
+
+```json
+{ "id": "map", "question": "What does this change add, and where?",
+  "narration": "Change in three parts, read in this order\n\n- ① **client.ts** `request()`: entry, failures now go to retry (chapter 2)\n- ② **retry.ts** `withRetry`: when and how long, policy from **config.ts** (chapter 3)\n- ③ **service.ts**: existing caller outside the diff, inherits the retry (chapter 4)",
+  "steps": [
+    { "do": "graph", "title": "Dependencies", "nodes": [ … every node with its \"file\" … ],
+      "edges": [ { "from": "client", "to": "retry", "label": "② new import" }, … ], "cue": 1 },
+    { "do": "graph", "highlight": ["client"], "cue": 2 },
+    { "do": "graph", "highlight": ["retry", "config"], "cue": 3 },
+    { "do": "graph", "highlight": ["svc"], "cue": 4 } ] }
+```
+
+One bullet per part of the map, in chapter order, each lighting its nodes (R23). The numbers on the edges are the ones the bridges use later.
 
 ## Shape to aim for
 

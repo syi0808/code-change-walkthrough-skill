@@ -6,8 +6,8 @@ import path from 'node:path';
 import * as G from '../repo/git.ts';
 import { detectLanguage, isGeneratedFile } from '../repo/lang.ts';
 import type { Table } from '../i18n/index.ts';
-import { totalMs } from '../shared/timing.ts';
-import { dirIndex } from '../shared/tree-path.ts';
+import { totalMs } from '../shared/procedure.ts';
+import { dirIndex, treePaths } from '../shared/tree-path.ts';
 import type { Diagnostic, Side, Tree, Walkthrough } from '../ir/types.ts';
 import { CompileContext } from './context.ts';
 import { resolveScenes } from './steps.ts';
@@ -94,7 +94,7 @@ export function compile(input: unknown, opts: CompileOptions = {}): CompileResul
   if (repo && range && opts.tree !== false) {
     try { tree = buildTree(repo, range, ir.files); } catch (e) { cx.warn('tree', `file tree unavailable: ${(e as Error).message}`); }
   }
-  cx.dirs = dirIndex([...(tree ? tree.files.map(([d, n]) => (tree!.dirs[d] ? `${tree!.dirs[d]}/${n}` : n)) : []), ...Object.keys(ir.files)], tree?.partial || []);
+  cx.dirs = dirIndex(treePaths(tree, ir.files), tree?.partial || []);
   expandTour(cx);
   resolveScenes(cx);
 

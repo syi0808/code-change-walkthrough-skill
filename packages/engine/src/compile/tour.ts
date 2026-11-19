@@ -45,6 +45,8 @@ export function expandTour(cx: CompileContext): void {
   const items: Item[] = [];
   for (const p of order) {
     const blocks = cx.changeBlocks(p);
+    // a file moved or renamed without a change to its text: its tour scene is the move itself
+    if (!blocks.length && ir.files[p].oldPath) { items.push({ file: p, hunk: 0, of: 0, tempo: 'skim' }); continue; }
     blocks.forEach((b, i) => {
       const key = `${p}#${i + 1}`;
       const lines: string[] = [];
@@ -76,7 +78,9 @@ export function expandTour(cx: CompileContext): void {
         tour: { file: p, hunks: hunks.map((h) => h.hunk), of: hunks[0].of },
         steps: [
           { do: 'open', file: p, view: viewFor(p), noReveal: true, fast: hunks.every((h) => h.tempo === 'skim') },
-          ...hunks.map((h): Step => ({ do: 'replay', file: p, hunk: h.hunk, tempo: h.tempo })),
+          ...hunks.filter((h) => h.hunk > 0).map((h): Step => ({ do: 'replay', file: p, hunk: h.hunk, tempo: h.tempo })),
+          // a deleted file, once its removal has been replayed, is deleted from the explorer
+          ...(ir.files[p].status === 'deleted' && hunks[hunks.length - 1].hunk === hunks[hunks.length - 1].of ? [{ do: 'delete', file: p } as Step] : []),
         ],
       });
     }
@@ -101,5 +105,5 @@ export function expandTour(cx: CompileContext): void {
   }
   if (next < items.length) chapters.push({ id: 'tour-rest', title: cx.t('tour.rest.title'), goal: cx.t('tour.rest.goal'), scenes: take(items.length - 1) });
   ir.chapters = chapters;
-  ir.tourStats = { hunks: items.length, files: new Set(items.map((x) => x.file)).size };
+  ir.tourStats = { hunks: items.filter((x) => x.hunk > 0).length, files: new Set(items.map((x) => x.file)).size };
 }

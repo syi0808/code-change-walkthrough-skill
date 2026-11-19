@@ -201,11 +201,68 @@ describe('explorer walk', () => {
     assert.deepEqual(chain(ix, 'src/app/api/a.ts'), ['src', 'src/app/api']);
     assert.deepEqual(foldMoves(ix, 'src/app/api/a.ts', 'src/lib/x/y.ts').map((m) => `${m.kind}:${m.path}`), ['close:src/app/api', 'open:src/lib', 'open:src/lib/x', 'file:src/lib/x/y.ts']);
     assert.deepEqual(foldMoves(ix, null, 'README.md').map((m) => m.kind), ['file']);
+    // one click on the outermost folder of the old branch folds everything under it
+    assert.deepEqual(foldMoves(ix, 'src/lib/x/y.ts', 'README.md').map((m) => `${m.kind}:${m.path}`), ['close:src', 'file:README.md']);
   });
-  test('tree picks are timed by the number of folder moves', () => {
+  test('a walk takes as long as its travel: a row farther away takes longer; a folder opens in a fixed time', async () => {
+    const { dirIndex, walkPlan } = await import('../src/shared/tree-path.ts');
+    const few = dirIndex(['a/x.ts', 'b/y.ts']);
+    const many = dirIndex(['a/x.ts', 'b/y.ts', ...Array.from({ length: 30 }, (_, i) => `b/f${String(i).padStart(2, '0')}.ts`)]);
+    const ms = (ix: ReturnType<typeof dirIndex>) => walkPlan(ix, 'a/x.ts', 'b/y.ts').reduce((s, x) => s + x.ms, 0);
+    assert.ok(ms(many) > ms(few) + 500, `${ms(many)} vs ${ms(few)}`);
+    const toggle = (ix: ReturnType<typeof dirIndex>) => { const g = walkPlan(ix, 'a/x.ts', 'b/y.ts')[1]; return g.ms * (1 - g.click); };
+    assert.equal(Math.round(toggle(many)), Math.round(toggle(few)));
+    // a deep path is not squeezed: every folder click keeps at least its own time
+    const dirs = Array.from({ length: 12 }, (_, i) => Array.from({ length: i + 1 }, (_, j) => `d${j}`).join('/'));
+    const deep = dirIndex([...dirs.map((d) => `${d}/f.ts`), 'z/g.ts']);
+    const plan = walkPlan(deep, 'z/g.ts', `${dirs[11]}/f.ts`);
+    assert.equal(plan.length, 1 + 1 + 12);
+    assert.ok(plan.slice(0, -1).every((x) => x.ms >= 800));
+  });
+  test('file operations: a drag only opens folders; a walk from a folder starts at its row', async () => {
+    const { dirIndex, foldMoves, walkPlan, inFolder } = await import('../src/shared/tree-path.ts');
+    const ix = dirIndex(['src/lib/a.ts', 'src/lib/b.ts', 'src/api/c.ts', 'src/api/d.ts', ...Array.from({ length: 20 }, (_, i) => `src/api/z${i}.ts`)]);
+    assert.deepEqual(foldMoves(ix, 'src/lib/a.ts', inFolder('src/api'), true).map((m) => m.kind), ['open', 'file']);
+    // from the folder's row to a file far down in it takes longer than to one near the top
+    const ms = (to: string) => walkPlan(ix, inFolder('src/api'), to).reduce((a, x) => a + x.ms, 0);
+    assert.ok(ms('src/api/z9.ts') > ms('src/api/c.ts') + 300);
+  });
+  test('tree picks are timed by their walk', () => {
     const res = compileFile(example, { repo });
     const picks = stepsOf(res.ir).filter((st) => st.do === 'open' && st._openKind === 'tree');
-    assert.ok(picks.length > 0 && picks.every((st) => typeof st._fold === 'number' && st._fold >= 0));
+    assert.ok(picks.length > 0 && picks.every((st) => typeof st._walk === 'number' && st._walk >= 0));
+  });
+});
+
+describe('procedures', () => {
+  test('the screen moves only after the sentence on it has been read, and that sentence leaves first', async () => {
+    const { layoutScene, CLEAR_MS, stepPhases } = await import('../src/shared/procedure.ts');
+    const { dwellMs } = await import('../src/shared/timing.ts');
+    const lead = 'One endpoint, two stages';
+    const sc = { narration: `${lead}\n\n- the check\n- the query`, steps: [
+      { do: 'goto', from: { token: 'x' }, _from: { file: 'a.ts', side: 'after', line: 3 }, _to: { file: 'b.ts', pane: 0, line: 9, side: 'after' }, _walk: 900 },
+      { do: 'highlight', _move: 600, cue: 2 },
+      { do: 'highlight', _move: 0, cue: 3 },
+    ] } as unknown as Parameters<typeof layoutScene>[0];
+    const lay = layoutScene(sc, 0);
+    const read = dwellMs(lead);
+    // the goto (a motion, no cue) waits for the lead to be read, behind a gate, plus the time the lead takes to close
+    assert.equal(lay.gates[0], read);
+    assert.equal(lay.timed[0].start, read + CLEAR_MS);
+    // a sentence arrives with its mark, after the scroll that brings its code in
+    const ph = stepPhases(sc.steps![1]);
+    const scroll = ph.find((x) => x.name === 'scroll')!.ms;
+    assert.ok(scroll > 600, `scroll ${scroll} ms for 600 px`);
+    assert.equal(Math.round(lay.cues.times[1]), Math.round(lay.timed[1].start + scroll));
+  });
+  test('a motion takes the time its amount needs; an act takes a fixed time', async () => {
+    const { stepPhases } = await import('../src/shared/procedure.ts');
+    const near = stepPhases({ do: 'highlight', _move: 40 } as never), far = stepPhases({ do: 'highlight', _move: 700 } as never);
+    const ms = (ph: { name: string; ms: number }[], n: string) => ph.find((x) => x.name === n)!.ms;
+    assert.ok(ms(far, 'scroll') > ms(near, 'scroll') * 2);
+    assert.equal(ms(far, 'mark'), ms(near, 'mark'));
+    const walk = stepPhases({ do: 'highlight', _walk: 1500 } as never);
+    assert.equal(walk[0].name, 'walk'); assert.equal(walk[0].ms, 1500);
   });
 });
 

@@ -25,6 +25,10 @@ export const EN = {
   'explorer.repository': 'repository',
   'explorer.omitted': '(some files omitted)',
   'explorer.notEmbedded': 'content not embedded',
+  'explorer.newFile': 'New File...',
+  'explorer.newFolder': 'New Folder...',
+  'explorer.rename': 'Rename...',
+  'explorer.delete': 'Delete',
 
   // ---- editor panes
   'pane.empty': 'No file open',
@@ -39,7 +43,7 @@ export const EN = {
 
   // ---- heading band (between scenes)
   'bridge.chapter': 'Chapter {n} · {title}',
-  'bridge.justSaw': 'Just saw: {title}',
+  'bridge.onMap': 'On the map',
   'bridge.next': 'Next',
 
   // ---- notes
@@ -89,6 +93,7 @@ export const EN = {
   'controls.speed': 'Speed',
   'controls.segPause': 'Pause per scene',
   'controls.segPauseHint': 'Pause at the end of each scene (P)',
+  'controls.tts': 'Read captions aloud (V)',
   'controls.sceneEnd': 'End of scene: Space to continue',
   'controls.hintPlay': 'play/pause',
   'controls.hintScene': 'scene',
@@ -103,6 +108,7 @@ export const EN = {
   'help.scene': 'Previous / next scene',
   'help.speed': 'Slower / faster',
   'help.segPause': 'Toggle pause per scene',
+  'help.tts': 'Read captions aloud (on/off)',
   'help.chapter': 'Jump to chapter N',
   'help.panels': 'Explorer / walkthrough panel / structure map',
   'help.definition': 'Go to definition (while paused)',

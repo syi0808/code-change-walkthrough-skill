@@ -7,6 +7,7 @@
     ['<kbd>⇧</kbd>+<kbd>←</kbd> <kbd>→</kbd>', t('help.scene')],
     ['<kbd>[</kbd> <kbd>]</kbd>', t('help.speed')],
     ['<kbd>P</kbd>', t('help.segPause')],
+    ['<kbd>V</kbd>', t('help.tts')],
     ['<kbd>1</kbd>–<kbd>9</kbd>', t('help.chapter')],
     ['<kbd>B</kbd> / <kbd>G</kbd> / <kbd>M</kbd>', t('help.panels')],
     [`⌘/Ctrl + ${esc(t('pointer.click'))}`, t('help.definition')],

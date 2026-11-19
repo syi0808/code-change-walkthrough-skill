@@ -51,7 +51,18 @@ export interface RefItem { file: string; view: View; side: Side; line: number; l
 
 export type Action =
   | 'open' | 'layout' | 'diffView' | 'reveal' | 'highlight' | 'focus' | 'unfocus' | 'note'
-  | 'type' | 'replay' | 'goto' | 'refs' | 'impact' | 'graph' | 'say' | 'wait' | 'clear' | 'close';
+  | 'type' | 'replay' | 'goto' | 'refs' | 'impact' | 'graph' | 'say' | 'wait' | 'clear' | 'close'
+  // the tour removes a deleted file from the explorer after replaying it (right click, Delete)
+  | 'delete';
+
+/** A file the walkthrough brings into the explorer the way a person would (compiler-made, on its first open):
+ *  `create` (New File in `parent`, type `name`), `rename` (F2 on `from`, type `name`), `move` (drag `from`
+ *  onto the folder `parent`; `drag`: the time the drag takes, hovering closed folders open on the way). */
+export interface FsOp { kind: 'create' | 'rename' | 'move'; parent: string; name: string; from?: string; drag?: number;
+  /** create: new folders first (New Folder in `parent`, this path typed), then the file `name` in them */
+  dir?: string;
+  /** create with `dir`: the explorer's walk (ms) to the new folder's sorted row once it is made */
+  reveal?: number; /** the explorer's walk (ms) from where the operation ends to the file's sorted row */ settle?: number }
 
 /** What a change does to a place that depends on it: still fine, needs a look, broken, or changed along with it. */
 export type Effect = 'safe' | 'check' | 'breaks' | 'updated';
@@ -99,8 +110,19 @@ export interface Step {
 
   // ---- added by the compiler
   _openKind?: OpenKind;
-  /** Explorer folders closed and opened on the way to a file picked from the tree (see shared/tree-path). */
-  _fold?: number;
+  /** Time (ms) of the explorer walk to a file picked from the tree: from how far the pointer travels and how many rows fold (see shared/tree-path walkPlan). */
+  _walk?: number;
+  /** open: the file appears in the explorer by a file operation (see FsOp). */
+  _fs?: FsOp;
+  /** How far (px, estimated from lines) the editor scrolls for this step; its time grows with it (see shared/timing moveMs). */
+  _move?: number;
+  /** goto: how far (px) the editor scrolls to the call site before the click. */
+  _moveFrom?: number;
+  /** refs / impact, per item: the explorer's walk (ms) to its file, and the editor's scroll (px) within the same file. */
+  _itemWalk?: number[];
+  _itemMove?: number[];
+  /** goto: the explorer's walk (ms) to the call site's file, before the jump. */
+  _walkFrom?: number;
   _reveal?: boolean;
   _r?: LineRange | null;
   _first?: LineRange;

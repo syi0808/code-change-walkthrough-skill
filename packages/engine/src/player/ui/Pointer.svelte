@@ -11,6 +11,7 @@
 
   let ptr: HTMLDivElement | undefined = $state();
   let keys: HTMLDivElement | undefined = $state();
+  let ghost: HTMLDivElement | undefined = $state();
   const s = $derived(player.frame);
 
   type Pt = { x: number; y: number };
@@ -22,13 +23,19 @@
       const st = document.querySelector('.wt-stage')!.getBoundingClientRect();
       return { x: st.left + st.width * 0.62, y: st.top + st.height * 0.88 };
     }
+    if (a.kind === 'exNew' || a.kind === 'exNewDir' || a.kind === 'exMenu') {
+      const el = document.querySelector(a.kind === 'exNew' ? '.ex-new' : a.kind === 'exNewDir' ? '.ex-newdir' : '.ex-menu [data-item="delete"]');
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left + Math.min(r.width * 0.5, 40), y: r.top + r.height * 0.6 };
+    }
     if (a.kind === 'ex') {
-      const row = document.querySelector<HTMLElement>(`.ex-row[data-path="${CSS.escape(a.path)}"]`);
+      const row = a.path ? document.querySelector<HTMLElement>(`.ex-row[data-path="${CSS.escape(a.path)}"]`) : document.querySelector<HTMLElement>('.ex-root');
       const box = document.querySelector('.ex-body')?.getBoundingClientRect();
       if (!row || !box || !box.width) return null;
       const r = row.getBoundingClientRect();
       if (!visible(r, box)) return within({ x: r.left + 60, y: r.top + r.height * 0.6 }, box);
-      const nm = row.querySelector('.nm')!.getBoundingClientRect();
+      const nm = (row.querySelector('.nm') || row).getBoundingClientRect();
       return { x: nm.left + Math.min(nm.width, 80) * 0.5, y: r.top + r.height * 0.62 };
     }
     if (a.kind === 'tab') {
@@ -61,9 +68,12 @@
     ptr.classList.toggle('click', !!p.click);
     keys.hidden = !s.keys;
     if (s.keys) Object.assign(keys.style, { left: `${x}px`, top: `${y}px` });
+    // a dragged row: its name rides next to the pointer
+    if (ghost) { ghost.hidden = !s.exDrag; if (s.exDrag) ghost.style.transform = `translate(${x + 14}px, ${y + 10}px)`; }
   });
   onDestroy(off);
 </script>
 
 <div class="wt-pointer" bind:this={ptr} hidden>{@html ICON.pointer}<span class="ripple"></span></div>
-<div class="wt-keys" bind:this={keys} hidden>{#each s.keys || [] as k (k)}<kbd>{k}</kbd>{/each}<kbd>{t('pointer.click')}</kbd></div>
+<div class="wt-keys" bind:this={keys} hidden>{#each s.keys || [] as k (k)}<kbd>{k}</kbd>{/each}{#if s.keys?.includes('⌘')}<kbd>{t('pointer.click')}</kbd>{/if}</div>
+<div class="wt-drag" bind:this={ghost} hidden>{s.exDrag ? s.exDrag.path.slice(s.exDrag.path.lastIndexOf('/') + 1) : ''}</div>

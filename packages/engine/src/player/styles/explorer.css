@@ -14,6 +14,7 @@
 .ex-root .tw { width: 16px; display: grid; place-items: center; }
 .ex-row .nm { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
 .ex-row .fi { flex: none; width: 18px; text-align: center; font: 700 9px/1 var(--mono); letter-spacing: -.02em; }
+.ex-row .fi svg { width: 13px; height: 13px; display: block; margin: 0 auto; }
 .ex-row .sb { flex: none; font: 600 11px var(--mono); margin-left: 6px; }
 .ex-row .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--git-mod); opacity: .8; margin-left: 6px; }
 .ex-row.dir.has-changes .nm { color: var(--git-mod); }
@@ -35,8 +36,23 @@
 .ex-body.spot .ex-row.cur { opacity: 1; }
 /* the file open until now stays readable while the selection leaves it: the start of the move is visible */
 .ex-body.spot .ex-row.active { opacity: .72; }
+/* what is being typed, the row with the menu open, and the folder a drag lands on are never dimmed */
+.ex-body.spot .ex-row.editing, .ex-body.spot .ex-row.menu-on, .ex-body.spot .ex-row.drop { opacity: 1; }
 .wt-explorer:hover .ex-body.spot .ex-row { opacity: 1; transition-delay: .12s; }
 .ex-row.gone .nm { text-decoration: line-through; } .ex-row.gone { opacity: .45; }
 .ex-row.more { color: var(--fg-3); font-style: italic; cursor: default; }
 .i-blue { color: #519aba; } .i-yellow { color: #cbcb41; } .i-green { color: #8dc149; } .i-red { color: #cc3e44; } .i-orange { color: #e37933; } .i-purple { color: #a074c4; } .i-pink { color: #f55385; } .i-cyan { color: #519aba; } .i-gray { color: #8b949e; }
 .ex-row-wrap { overflow: hidden; }
+/* file operations: the name box (New File, F2), the dragged row and its drop folder, the context menu */
+.ex-input { flex: 1; min-width: 0; display: flex; overflow-x: hidden; scrollbar-width: none; align-items: center; height: 18px; padding: 0 4px; margin-right: 4px; background: var(--bg); outline: 1px solid var(--accent); border-radius: 2px; overflow: hidden; }
+.ex-input .tx { white-space: pre; flex: none; }
+.ex-input .caret { flex: none; }
+.ex-input .tx.sel { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.ex-input .caret { width: 1px; height: 14px; margin-left: 1px; background: var(--fg); animation: caret .9s steps(1) infinite; }
+.ex-row.editing { cursor: default; }
+.ex-row.dragging { opacity: .45; }
+.ex-row.dir.drop { background: color-mix(in srgb, var(--accent) 22%, transparent); outline: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: -1px; }
+.ex-row.menu-on { outline: 1px solid var(--accent); outline-offset: -1px; }
+.ex-menu { position: absolute; left: 44px; z-index: 5; min-width: 150px; padding: 4px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 6px; box-shadow: var(--shadow); font-size: 12.5px; }
+.ex-menu .mi { padding: 3px 10px; border-radius: 4px; color: var(--fg); }
+.ex-menu .mi.hot { background: var(--accent-strong); color: #fff; }

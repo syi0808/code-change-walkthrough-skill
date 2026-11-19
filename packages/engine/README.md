@@ -41,10 +41,12 @@ Compiling an IR never builds the player: `render` only fills the prebuilt templa
 - **compile** fetches `before` and `after` contents from git (`source.base` / `source.head`, where `WORKTREE` means uncommitted changes) unless they are given inline. It expands the tour (every changed hunk), resolves anchors (`find`, `regex`, `symbol`, `hunk`, lines) to concrete lines, checks them, adds un-narrated changed files for exploration, and strips local paths.
 - **player** is a Svelte 5 app on one clock. The visible state is a pure function of timeline time, `state(T) = reduce(scene snapshot, steps started by T)`, so playing, pausing, scrubbing, speed changes, and scene jumps all produce identical frames, and every motion follows the speed control. It includes:
   - IDE chrome: file tree, tabs, breadcrumbs, split panes
+  - files created, renamed, moved and deleted in the explorer the way a person does it (New File and a typed name, F2, drag and drop, right click Delete)
   - unified and split diffs: Myers or Patience, word-level highlighting, whitespace-only changes collapsed, context folding
   - the whole diff replayed (typed, line by line, or as a block), with explanation scenes as stops
   - simulated ⌘+Click go-to-definition, a references panel, and a layered relationship graph
   - learner-paced playback, light and dark themes, and a mobile layout
+  - captions read aloud with the browser's speech synthesis (opt-in, `V`); the timeline waits for a sentence to end
   - free exploration while paused: browse files, ⌘/Ctrl+Click to go to a definition
 
 ## Source layout

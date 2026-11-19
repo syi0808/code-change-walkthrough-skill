@@ -60,6 +60,11 @@ export const ICON = {
   map: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="5" width="4" height="3" rx=".6"/><rect x="10.5" y="2" width="4" height="3" rx=".6"/><rect x="10.5" y="9" width="4" height="3" rx=".6"/><path d="M5.5 6.5h2.5V3.5h2.5M8 6.5v4h2.5"/></svg>',
   expand: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5L9 7M2.5 13.5L7 9"/></svg>',
   shrink: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M9.5 6.5L14 2M6.5 9.5L2 14"/></svg>',
+  speaker: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z" fill="currentColor"/><path d="M10.8 5.6a3.4 3.4 0 0 1 0 4.8M12.6 3.8a6 6 0 0 1 0 8.4" stroke-linecap="round"/></svg>',
+  muted: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z" fill="currentColor"/><path d="M11 6l3.5 4M14.5 6L11 10" stroke-linecap="round"/></svg>',
+  newFile: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M9 2H4v12h8V5z"/><path d="M9 2v3h3"/><path d="M8 8v4M6 10h4"/></svg>',
+  newFolder: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 3.5h4.5l1.2 1.5h7.3v8h-13z"/><path d="M9 7.5v4M7 9.5h4"/></svg>',
+  fileDoc: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg>',
   pointer: '<svg viewBox="0 0 22 22"><path d="M4 2l13 9.5-5.6 1 3.2 6.3-2.4 1.2-3.2-6.3L4.6 17.5z" fill="#fff" stroke="#111" stroke-width="1.2" stroke-linejoin="round"/></svg>',
 };
 

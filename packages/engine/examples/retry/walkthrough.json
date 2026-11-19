@@ -92,7 +92,7 @@
           "id": "map",
           "title": "Map of the change",
           "goal": "Know the three files' roles and how they relate",
-          "narration": "Change in three parts\n\n- **client.ts** starts using the new **retry.ts** module\n- Policy values from **config.ts**; existing caller `service.ts` inherits the new behaviour, no code change",
+          "narration": "Change in three parts, read in this order\n\n- ① **client.ts** `request()`: entry, failures now go to retry (chapter 2)\n- ② **retry.ts** `withRetry`: when and how long, policy from **config.ts** (chapter 3)\n- ③ **service.ts**: existing caller outside the diff, inherits the retry; then the tests (chapter 4)",
           "steps": [
             {
               "do": "graph",
@@ -128,36 +128,45 @@
                 {
                   "from": "svc",
                   "to": "client",
-                  "label": "calls"
+                  "label": "③ calls"
                 },
                 {
                   "from": "client",
                   "to": "retry",
-                  "label": "new import"
+                  "label": "② new import"
                 },
                 {
                   "from": "client",
                   "to": "config",
-                  "label": "reads policy"
+                  "label": "② reads policy"
                 }
-              ]
+              ],
+              "cue": 1
             },
             {
               "do": "graph",
               "highlight": [
-                "client",
+                "client"
+              ],
+              "hold": 1200,
+              "cue": 2
+            },
+            {
+              "do": "graph",
+              "highlight": [
                 "retry",
                 "config"
               ],
-              "hold": 1500
+              "hold": 1200,
+              "cue": 3
             },
             {
               "do": "graph",
               "highlight": [
-                "svc",
-                "client"
+                "svc"
               ],
-              "hold": 1200
+              "hold": 1200,
+              "cue": 4
             }
           ],
           "question": "What does this change add, and where?"
@@ -216,7 +225,7 @@
             }
           ],
           "question": "What happens now when a request fails?",
-          "bridge": "Map has one entry point, request() → start there",
+          "bridge": "① request(): the one entry point → its new failure path",
           "at": {
             "file": "src/api/client.ts"
           }
@@ -256,7 +265,7 @@
             }
           ],
           "question": "Which lines actually changed, and which only moved?",
-          "bridge": "Unified diff mixes moved and new code → side by side separates them"
+          "bridge": "① same function, side by side: moved code apart from new code"
         }
       ]
     },
@@ -312,7 +321,7 @@
             }
           ],
           "question": "How does the retry loop decide to try again?",
-          "bridge": "request() hands failures to withRetry → follow that call",
+          "bridge": "② withRetry: where request() now sends failures",
           "at": {
             "file": "src/api/retry.ts"
           }
@@ -350,7 +359,7 @@
             }
           ],
           "question": "Which failures count as worth retrying?",
-          "bridge": "Loop retries only transient errors → what is transient?"
+          "bridge": "② the retry condition: which failures qualify"
         },
         {
           "id": "config",
@@ -386,7 +395,7 @@
             }
           ],
           "question": "Where are the retry numbers set?",
-          "bridge": "Backoff uses policy values → where they come from",
+          "bridge": "② policy values: attempts and delays, tuned in one place",
           "at": {
             "file": "src/config.ts"
           }
@@ -444,7 +453,7 @@
             }
           ],
           "question": "Which existing calls are affected?",
-          "bridge": "Behaviour clear → who calls request()?"
+          "bridge": "③ outside the diff: callers that inherit the retry"
         },
         {
           "id": "tests",
@@ -477,7 +486,7 @@
             }
           ],
           "question": "What do the tests guarantee?",
-          "bridge": "Last: which rules the tests pin down",
+          "bridge": "③ what the tests pin down",
           "at": {
             "file": "test/retry.test.ts"
           }

@@ -98,7 +98,7 @@ This is background material and is not loaded at runtime. The operational rules 
 - Self-explanation (Chi et al., 1994) and retrieval practice (Roediger & Karpicke, 2006): a closing summary and questions improve retention.
 
 **Rules**
-- **R23. Start with a map.** The overview card shows the summary, the strategy, and the agenda. Scene 1 shows the change as a `graph`.
+- **R23. Start with a map, and walk it.** The overview card shows the summary, the strategy, and the agenda. Scene 1 explains the change on a `graph`, one part at a time in the order the chapters take them. An organizer works only when the detail that comes later is attached to it (Ausubel, 1960); naming each part once, in order, gives every later chapter its slot on the map, and the docked map keeps that slot visible.
 - **R24. End with a recap and open questions.** Use `meta.takeaways` (2–4 points) and `meta.reviewFocus` (questions the reviewer must decide).
 - **R25. Scale scaffolding to the audience.** → playbook, "Audience".
 
@@ -131,7 +131,7 @@ This is background material and is not loaded at runtime. The operational rules 
 
 **Rules.**
 - R29: each scene answers a stated question.
-- R30: each boundary carries a bridge from the last answer to the next question.
+- R30: each boundary carries a bridge that places the next scene on the map (its part and what it settles). A boundary is where the viewer updates their model of where they are (Zacks et al., 2007); a recap of the scene just seen gives that update nothing, a position on the map does.
 - R31: one explanation at a time, written to sit under the code it explains.
 
 ## 11. Context outside the diff (R34–R36)

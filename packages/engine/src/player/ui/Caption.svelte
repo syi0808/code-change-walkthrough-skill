@@ -12,7 +12,15 @@
 
   const s = $derived(player.frame);
   const sc = $derived(scenes[s.scene]);
-  const prev = $derived(scenes[s.scene - 1]);
+  /** Where the next scene sits in the overview: the pinned map's node for its file, and the edge into it. */
+  const onMap = $derived.by(() => {
+    const m = s.map;
+    if (!m || !sc.where) return null;
+    const n = m.nodes.find((x) => x.file === sc.where);
+    if (!n) return null;
+    const via = m.edges.find((e) => e.to === n.id && e.label)?.label || '';
+    return { label: n.label || n.id, sub: n.sub || '', via };
+  });
   const bridging = $derived(player.live && !!s.bridge && !sc.auto);
   const v = $derived(!bridging && player.voice && !player.voicePlaced ? player.voice : null);
   let cap: HTMLDivElement | undefined = $state();
@@ -27,14 +35,14 @@
   onDestroy(off);
 </script>
 
-<div class="wt-caption" class:show={bridging || !!v} class:bridge={bridging} aria-live="polite" bind:this={cap}>
+<div class="wt-caption" class:show={bridging || !!v} class:bridge={bridging} aria-live="polite" bind:this={cap} style:opacity={v?.out ? (1 - v.out).toFixed(3) : null}>
   <div class="cap-band">
     {#if bridging}
       {#key s.scene}
         <div class="cap-in br swap">
           <div class="br-eyebrow">
-            {#if sc.si === 0}<span class="br-ch">{t('bridge.chapter', { n: sc.ci + 1, title: sc.chapter.title || '' })}</span>{/if}
-            {#if prev}<span class="br-from">{t('bridge.justSaw', { title: prev.title || '' })}</span>{/if}
+            <span class="br-ch">{t('bridge.chapter', { n: sc.ci + 1, title: sc.chapter.title || '' })}</span>
+            {#if onMap}<span class="br-map" title={t('bridge.onMap')}><span class="br-map-k">{t('bridge.onMap')}</span>{#if onMap.via}<span class="br-via">{onMap.via}</span>{/if}<b>{onMap.label}</b>{#if onMap.sub}<span class="br-sub">{onMap.sub}</span>{/if}</span>{/if}
           </div>
           {#if sc.bridge}<div class="br-why">{@html mdInline(sc.bridge)}</div>{/if}
           {#if sc.where}

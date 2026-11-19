@@ -3,7 +3,7 @@
   import { onDestroy } from 'svelte';
   import { ORDER, player } from '../app/player.svelte.ts';
   import { decorate, pointedRanges } from '../core/decorate.ts';
-  import { baseName, clamp, easeOut, fileIcon, IR, STATUS_LETTER, t } from '../core/env.ts';
+  import { baseName, clamp, ease, easeOut, fileIcon, IR, STATUS_LETTER, t } from '../core/env.ts';
   import { foldsOf, model, modelRowsOf, rangeRows, viewOf } from '../core/model.ts';
   import { noteViews, type NoteIn, type NoteView } from '../core/notes.ts';
   import { voiceAt, type Voice } from '../core/voice.ts';
@@ -52,7 +52,9 @@
   };
   const notes = $derived.by(() => {
     const vo = isActive ? player.voice : null;
-    const list = vo ? noteViews(player.T, vo.t0, placed(vo), placed(voiceAt(vo.t0 - 1))) : [];
+    // a read explanation folds away before the screen moves (vo.out), on the curve of a swap's fold
+    const cur = vo ? placed(vo) : null;
+    const list = !vo ? [] : vo.out ? (cur ? [{ ...cur, h: 1 - ease(vo.out), o: clamp(1 - vo.out * 1.6, 0, 1) }] : []) : noteViews(player.T, vo.t0, cur, placed(voiceAt(vo.t0 - 1)));
     const at = new Map<number, NoteView[]>();
     for (const n of list) at.set(n.vi, [...(at.get(n.vi) || []), n]);
     return at;

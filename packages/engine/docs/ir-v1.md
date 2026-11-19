@@ -14,7 +14,7 @@ So an IR never contains copied source code (unless the code is not in git), rare
 
 Pipeline: `authoring IR ──compile──► compiled IR (self-contained) ──render──► standalone HTML` (`code-walkthrough build`), or the same HTML served on localhost (`code-walkthrough serve`).
 
-The compiled IR also carries the repository's **file tree** at `head` (`tree`), so the player's explorer shows the real directory structure, not only the changed files. Folders start closed; picking a file has the pointer click the old file's folders closed and the new one's open, one at a time, and the compiler times the pick by that number of moves (`_fold`). Only the files listed in `files` (plus the other changed files) have content. Opening any other file shows a "content not embedded" placeholder. Very large repositories (over 25,000 files) are pruned to the directories that lead to embedded files.
+The compiled IR also carries the repository's **file tree** at `head` (`tree`), so the player's explorer shows the real directory structure, not only the changed files. Folders start closed; picking a file has the pointer click the old file's folders closed and the new one's open, one at a time, and the compiler times the pick by the walk: how far the pointer travels and how many rows each folder shows or hides (`_walk`). Only the files listed in `files` (plus the other changed files) have content. Opening any other file shows a "content not embedded" placeholder. Very large repositories (over 25,000 files) are pruned to the directories that lead to embedded files.
 
 ---
 
@@ -141,8 +141,9 @@ The scene duration is the longer of two values: the time its steps take, and the
 
 | `do` | Fields | Effect |
 |---|---|---|
-| `open` | `file`, `view?`, `at?` (anchor), `diff?` `{mode, algorithm, granularity, context, whitespace}` | Opens or switches to a file, **as a procedure**. A file not yet open is revealed in the explorer, the cursor clicks it, the tab opens, and its changes sweep in from top to bottom. A file already in a tab is clicked in the tab bar. The duration is derived. Default view: `after` for added and context files, `before` for deleted files, `diff` otherwise |
+| `open` | `file`, `view?`, `at?` (anchor), `diff?` `{mode, algorithm, granularity, context, whitespace}` | Opens or switches to a file, **as a procedure**. A file not yet open is revealed in the explorer, the cursor clicks it, the tab opens, and its changes sweep in from top to bottom. A file already in a tab is clicked in the tab bar. The first time an added file is opened from the explorer, it is created first (New Folder for any folder it needs, then New File, each name typed, Enter); a renamed file is renamed (F2, the new name typed) or, when it changes folder, dragged onto the new folder (the compiler records it as `_fs`). The duration is derived. Default view: `after` for added and context files, `before` for deleted files, `diff` otherwise |
 | `close` | `file` | Closes the tab |
+| `delete` | `file` | Deletes the file from the explorer: right click on its row, Delete, the row folds away and its tab closes. The tour adds it after the last hunk of a deleted file; authors rarely need it |
 | `layout` | `mode`: `single` · `columns` | One pane, or two panes side by side |
 | `diffView` | `mode?` `unified`·`split`, `algorithm?` `patience`·`myers`, `granularity?` `word`·`line`, `context?` number or `null`, `whitespace?` `collapse`·`show` | Changes how the diff is rendered and switches the pane to `diff` view. Like GitHub, unchanged runs are folded behind `@@` hunk headers, keeping `context` lines (default **3**) around each change; `null` shows the whole file. Folds the walkthrough points at (highlights, notes, focus, scroll targets, typing) open automatically, and viewers can click a fold to open it |
 | `reveal` | `at`, `align?` `center`·`top` | Smooth-scrolls to the anchor |
