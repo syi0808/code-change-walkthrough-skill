@@ -65,6 +65,11 @@ export const ICON = {
   newFile: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M9 2H4v12h8V5z"/><path d="M9 2v3h3"/><path d="M8 8v4M6 10h4"/></svg>',
   newFolder: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.5 3.5h4.5l1.2 1.5h7.3v8h-13z"/><path d="M9 7.5v4M7 9.5h4"/></svg>',
   fileDoc: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg>',
+  // the debug toolbar (VS Code's): continue, step over, stop; and the arrow at the line paused on
+  dbgContinue: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 2.5h1.6v11H3zM6.5 2.5v11L14 8z"/></svg>',
+  dbgStepOver: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 9a5.5 5.5 0 0 1 10.6-2"/><path d="M13.5 3v4h-4"/><circle cx="8" cy="12.5" r="1.6" fill="currentColor" stroke="none"/></svg>',
+  dbgStop: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3.5" y="3.5" width="9" height="9" rx="1"/></svg>',
+  dbgArrow: '<svg viewBox="0 0 16 16"><path d="M2 5.5h6V2l6 6-6 6v-3.5H2z" fill="#ffcc00" stroke="#7a5d00" stroke-width=".8" stroke-linejoin="round"/></svg>',
   pointer: '<svg viewBox="0 0 22 22"><path d="M4 2l13 9.5-5.6 1 3.2 6.3-2.4 1.2-3.2-6.3L4.6 17.5z" fill="#fff" stroke="#111" stroke-width="1.2" stroke-linejoin="round"/></svg>',
 };
 

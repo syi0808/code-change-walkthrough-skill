@@ -7,9 +7,15 @@ import type { Action, RefItem, Scene, Step, View } from '../ir/types.ts';
 import { resolvePoint, resolveRange } from './anchors.ts';
 import type { CompileContext } from './context.ts';
 
-const KNOWN = new Set<Action>(['open', 'layout', 'diffView', 'reveal', 'highlight', 'focus', 'unfocus', 'note', 'type', 'replay', 'goto', 'refs', 'impact', 'graph', 'say', 'wait', 'clear', 'close', 'delete', 'back']);
+const KNOWN = new Set<Action>(['open', 'layout', 'diffView', 'reveal', 'highlight', 'focus', 'unfocus', 'note', 'type', 'replay', 'goto', 'refs', 'impact', 'graph', 'say', 'wait', 'clear', 'close', 'delete', 'back', 'peek', 'trace']);
 /** A drill-down longer than this many steps loses the line it left (the goal decays while away). */
 const DETOUR_MAX_STEPS = 6;
+/** A definition this short is read in a hover (peek) without leaving the line; a longer one is gone to. */
+const PEEK_LINES = 8;
+/** A hover taller than this covers the code it explains: go to the definition instead. */
+const PEEK_MAX = 14;
+/** A trace with more stops than this is a recording, not an explanation: pick the stops that change something. */
+const TRACE_MAX_FRAMES = 10;
 const EFFECTS = new Set(['safe', 'check', 'breaks', 'updated']);
 const VIEWS = new Set<View>(['after', 'before', 'diff']);
 /** Above this many characters a key hunk is replayed line by line: typing keeps one constant cadence. */
@@ -24,7 +30,11 @@ export function resolveScenes(cx: CompileContext): void {
   const onScreen: (string | null)[] = [null, null];
   // files the explorer has shown: the first open of an added or renamed one is a file operation (FsOp)
   const born = new Set<string>();
-  const setPane = (p: number, file: string, view: View) => { panes[p].tabs.add(file); panes[p].file = file; panes[p].view = view; onScreen[p] = file; born.add(file); };
+  // a second editor group is open (columns): it opens with a step into pane 1 and closes with the scene
+  let split = false;
+  const setPane = (p: number, file: string, view: View) => { panes[p].tabs.add(file); panes[p].file = file; panes[p].view = view; onScreen[p] = file; born.add(file); if (p === 1) split = true; };
+  /** Back to one editor group: the right one closes with its tabs. */
+  const closeSplit = () => { split = false; panes[1].tabs.clear(); panes[1].file = null; onScreen[1] = null; at[1] = null; active = 0; };
   // folders that exist before the change: those of every file that is not new (and of renamed files' old paths)
   const before = new Set<string>(['']);
   {
@@ -54,6 +64,11 @@ export function resolveScenes(cx: CompileContext): void {
   // where each goto was clicked, for a later `back` (Go Back): the drill-down's way home
   const trail: { st: Step; pane: number; file: string; view: View; side: 'before' | 'after'; line: number; scene: string; n: number }[] = [];
   let stepNo = 0;
+  // the debug session each pane is paused in (a trace without a call continues it)
+  const sessions: (number | null)[] = [null, null];
+  let sessionNo = 0;
+  // gotos to a definition short enough to read in a hover, per scene: warned when left again soon
+  const shortGotos: { st: Step; W: string; lines: number; n: number; scene: string }[] = [];
   const detours: { a: number; b: number; W: string }[] = [];
   const sceneOf = (W: string) => W.replace(/\.steps\[\d+\].*$/, '');
   const walkMs = (from: string, to: string) => Math.round(walkPlan(cx.dirs, from, to).reduce((a, x) => a + x.ms, 0));
@@ -92,6 +107,11 @@ export function resolveScenes(cx: CompileContext): void {
         const f = ir.files[st.file];
         const view = st.view || viewOf(st.file);
         st.view = view;
+        // the first file in pane 1 opens a second group beside the first (Open to the Side): say what the two are read together for
+        if (p === 1 && !split) {
+          st._side = true;
+          if (!st.label) cx.warn(W, 'a split needs a reason: give this open a "label" naming what the two panes are read together for ("old: one query per call"); open in pane 0 if they are read one after the other');
+        }
         // how the player gets there: through the explorer, by clicking an open tab, or not at all.
         // Judged by what is on screen, not by what the author's scenes assume is open.
         st._openKind = onScreen[p] === st.file ? 'same' : panes[p].tabs.has(st.file) ? 'tab' : 'tree';
@@ -183,6 +203,8 @@ export function resolveScenes(cx: CompileContext): void {
         const tview: View = to.view || (tf.after == null ? 'before' : tf.status === 'context' ? 'after' : panes[tp].file === to.file ? panes[tp].view : 'after');
         const r = resolveRange(cx, to.at ?? (from.token ? { symbol: from.token } : 1), to.file, tview, W + '.to');
         st._to = { file: to.file, pane: tp, view: tview, ...(r ? { side: r.side, line: r.from, from: r.from, to: r.to } : {}) };
+        if (tp === 1 && !split) st._side = true;
+        if (r && r.to - r.from + 1 <= PEEK_LINES) shortGotos.push({ st, W, lines: r.to - r.from + 1, n: stepNo, scene: sceneOf(W) });
         if (r) { const px = moveTo(tp, to.file, r.from, false); if (px) st._move = px; }
         if (st._from.line && st._from.side) {
           trail.push({ st, pane: u.p, file: u.file, view: u.view, side: st._from.side, line: st._from.line, scene: sceneOf(W), n: stepNo });
@@ -197,6 +219,8 @@ export function resolveScenes(cx: CompileContext): void {
         if (!home) { cx.err(W, '"back" needs a "goto" before it to return from'); return; }
         home.st._detour = true;
         detours.push({ a: home.n, b: stepNo, W });
+        const short = shortGotos.find((g) => g.st === home.st);
+        if (short && stepNo - home.n <= 4) { cx.warn(short.W, `the definition is ${short.lines} lines: show it in a hover with "peek" (⌘-hover) and stay on the line, instead of going there and back`); shortGotos.splice(shortGotos.indexOf(short), 1); }
         if (home.scene !== sceneOf(W)) cx.warn(W, '"back" returns to a goto in another scene: keep a drill-down inside one scene');
         else if (stepNo - home.n > DETOUR_MAX_STEPS) cx.warn(W, `the drill-down lasts ${stepNo - home.n - 1} steps: keep it to what the line needs (1 or 2 points), so the line it left is still in mind when it returns`);
         st._pane = home.pane;
@@ -204,6 +228,54 @@ export function resolveScenes(cx: CompileContext): void {
         { const px = moveTo(home.pane, home.file, home.line, false); if (px) st._move = px; }
         setPane(home.pane, home.file, home.view);
         active = home.pane;
+        return;
+      }
+      case 'peek': {
+        // ⌘-hover on a token: its definition in a hover over the line, which stays where it is
+        const from = st.from || {};
+        const u = useFile({ do: 'peek', file: from.file, view: from.view, pane: st.pane }, W); if (!u) return;
+        st._pane = u.p;
+        st._from = { file: u.file, ...(resolvePoint(cx, from.at, u.file, u.view, W + '.from') || {}) };
+        if (st._from.line) { const px = moveTo(u.p, u.file, st._from.line, true); if (px) st._moveFrom = px; }
+        if (!from.token) cx.err(W, 'peek.from needs "token" (the identifier hovered with ⌘)');
+        else if (st._from.line && st._from.side && !cx.lineText(u.file, st._from.side, st._from.line).includes(from.token)) cx.err(W, `token "${from.token}" not on ${u.file}:${st._from.line} (${st._from.side}): ${cx.lineText(u.file, st._from.side, st._from.line).trim().slice(0, 80)}`);
+        const to = st.to || {};
+        const tfile = to.file || u.file;
+        if (!ir.files[tfile]) { cx.err(W, `peek.to: unknown file "${tfile}"`); return; }
+        const tf = ir.files[tfile];
+        const tview: View = to.view || (tf.after == null ? 'before' : 'after');
+        const r = resolveRange(cx, to.at ?? (from.token ? { symbol: from.token } : 1), tfile, tview, W + '.to');
+        if (!r) return;
+        const n = r.to - r.from + 1;
+        if (n > PEEK_MAX) cx.warn(W, `the definition is ${n} lines: a hover that tall covers the code it explains; "goto" it (and "back") instead`);
+        const mark = st.range !== undefined ? resolveRange(cx, st.range, tfile, tview, W + '.range') : null;
+        if (mark && (mark.from < r.from || mark.to > r.to)) cx.warn(W, 'peek.range is outside the definition shown in the hover');
+        st._peek = { file: tfile, side: r.side, from: r.from, to: Math.min(r.to, r.from + PEEK_MAX - 1), mark: mark ? { from: mark.from, to: mark.to } : null };
+        born.add(tfile);
+        return;
+      }
+      case 'trace': {
+        // step through a function as a debugger does: each stop is a line and the values it shows there
+        const u = useFile(st, W); if (!u) return;
+        st._file = u.file; st._pane = u.p; st._view = u.view;
+        if (st.call) sessions[u.p] = ++sessionNo;
+        else if (sessions[u.p] == null) { cx.err(W, 'trace needs "call" (the call being debugged, with its arguments) to start a session; a trace without it continues the last one'); return; }
+        st._session = sessions[u.p]!;
+        if (st.range !== undefined) st._r = resolveRange(cx, st.range, u.file, u.view, W + '.range');
+        const frames = Array.isArray(st.frames) ? st.frames : [];
+        if (!frames.length) { cx.err(W, 'trace needs "frames": [{ "at": <anchor>, "vars": { "name": "value" } }]'); return; }
+        if (frames.length > TRACE_MAX_FRAMES) cx.warn(W, `${frames.length} stops: keep the ones where a value changes or a branch is decided (≤ ${TRACE_MAX_FRAMES}); split the run into two traces with their own bullets`);
+        st._frames = []; st._frameMove = [];
+        frames.forEach((fr, i) => {
+          const at = resolvePoint(cx, fr.at, u.file, u.view, `${W}.frames[${i}]`);
+          if (!at) return;
+          const vars = Object.entries(fr.vars || {}).map(([k, v]): [string, string] => [k, String(v)]);
+          if (vars.length > 4) cx.warn(`${W}.frames[${i}]`, `${vars.length} values on one line: show the 1 to 3 that matter at this stop`);
+          for (const [k, v] of vars) if (k.length + v.length > 48) cx.warn(`${W}.frames[${i}]`, `value "${k} = ${v.slice(0, 30)}…" is long: inline values are read at a glance; shorten it ({…3 items}, "abc…")`);
+          st._frames!.push({ side: at.side, line: at.line, vars });
+          st._frameMove!.push(moveTo(u.p, u.file, at.line, true));
+        });
+        if (st.returns != null) { st.returns = String(st.returns); sessions[u.p] = null; }
         return;
       }
       case 'refs': case 'impact': {
@@ -263,17 +335,28 @@ export function resolveScenes(cx: CompileContext): void {
       case 'layout':
         if (!['single', 'columns'].includes(st.mode || '')) cx.err(W, 'layout.mode must be single|columns');
         if (st.mode === 'single') {
+          // already one group: nothing to close
+          if (!split) { st._noop = true; active = 0; return; }
+          st._close = true;
           // back to one pane: the explorer walks from the file that was active to the left pane's
           if (active !== 0 && onScreen[active] && onScreen[0] && onScreen[active] !== onScreen[0]) st._walk = walkMs(onScreen[active]!, onScreen[0]!);
-          active = 0;
-        }
+          closeSplit();
+        } else split = true;
         return;
+      case 'close': {
+        const p = paneOf(st);
+        if (st.file) { panes[p].tabs.delete(st.file); if (onScreen[p] === st.file) { const last = [...panes[p].tabs].pop() || null; onScreen[p] = last; panes[p].file = last; } }
+        if (p === 1 && !panes[1].tabs.size) closeSplit();
+        return;
+      }
       case 'say': if (!st.text) cx.err(W, 'say needs "text"'); return;
       case 'wait': if (typeof st.ms !== 'number') cx.err(W, 'wait needs "ms"'); return;
       default: paneOf(st);
     }
   }
 
+  const flat = ir.chapters.flatMap((ch) => ch.scenes || []);
+  let sceneIdx = 0;
   ir.chapters.forEach((ch, ci) => {
     if (!ch.title) cx.warn(`chapters[${ci}]`, 'missing title');
     const authoredHere = (ch.scenes || []).filter((x) => !x.auto).length;
@@ -304,7 +387,22 @@ export function resolveScenes(cx: CompileContext): void {
         const want = panes[p0].file;
         if (!explicit && want && onScreen[p0] && want !== onScreen[p0]) steps.unshift({ do: 'open', file: want, view: panes[p0].view, pane: p0, noReveal: true });
       }
-      steps.forEach((st, ti) => resolveStep(st, `${W}.steps[${ti}]`));
+      // "columns" then a file into pane 1: the open itself splits (Open to the Side), so the layout step goes
+      steps.forEach((st, ti) => { if (st.do === 'layout' && st.mode === 'columns' && steps[ti + 1]?.do === 'open' && steps[ti + 1].pane === 1) st._noop = true; });
+      steps.forEach((st, ti) => { if (!st._noop) resolveStep(st, `${W}.steps[${ti}]`); });
+      // a short definition gone to, and the scene ending a step or two later: a hover would have done
+      for (const g of shortGotos) if (stepNo - g.n <= 2 && !g.st._detour) cx.warn(g.W, `the definition is ${g.lines} lines: show it in a hover with "peek" (⌘-hover) and stay on the line, instead of going there`);
+      shortGotos.length = 0;
+      // A split is a comparison, and a comparison belongs to the scene that makes it: when the scene
+      // ends, the right group closes (visibly), unless the next scene goes on comparing in it at once.
+      const next = flat[sceneIdx + 1];
+      if (split && !sc.auto && !(next && !next.auto && (next.steps || [])[0]?.pane === 1)) {
+        const close: Step = { do: 'layout', mode: 'single' };
+        steps.push(close);
+        resolveStep(close, `${W}.steps[${steps.length - 1}]`);
+      }
+      for (let i = steps.length - 1; i >= 0; i--) if (steps[i]._noop) steps.splice(i, 1);
+      sceneIdx++;
       if (snap) { panes.forEach((x, i) => { x.file = snap.panes[i].file; x.view = snap.panes[i].view; }); active = snap.active; }
       const items = narrationItems(sc.narration);
       steps.forEach((st, ti) => {

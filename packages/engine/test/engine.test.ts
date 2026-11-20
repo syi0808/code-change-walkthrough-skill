@@ -18,6 +18,17 @@ const scenesOf = (ir: Walkthrough): Scene[] => ir.chapters.flatMap((c) => c.scen
 const stepsOf = (ir: Walkthrough): Step[] => scenesOf(ir).flatMap((s) => s.steps || []);
 const byId = (ir: Walkthrough, id: string): Scene => scenesOf(ir).find((x) => x.id === id)!;
 const load = (): Walkthrough => JSON.parse(fs.readFileSync(example, 'utf8'));
+/** The example with a drill-down in it: `transient` goes to HttpError and comes back, instead of peeking at it. */
+const withDrillDown = (): Walkthrough => {
+  const ir = load();
+  const sc = scenesOf(ir).find((x) => x.id === 'transient')!;
+  const i = sc.steps!.findIndex((st) => st.do === 'peek');
+  sc.steps!.splice(i, 1,
+    { do: 'goto', from: { at: { find: 'err instanceof HttpError' }, token: 'HttpError' }, to: { file: 'src/api/retry.ts', at: { symbol: 'HttpError' } }, cue: 2 },
+    { do: 'highlight', range: { find: 'constructor(public status' }, tone: 'info', label: 'status' },
+    { do: 'back' });
+  return ir;
+};
 
 before(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cw-test-'));
@@ -48,12 +59,12 @@ describe('compile', () => {
     assert.ok(res.ir.files['src/api/retry.ts'].after?.includes('withRetry'));
     assert.equal(res.ir.files['src/users/profile.ts'], undefined, 'unchanged, unreferenced files are not added');
     assert.ok(!('repo' in (res.ir.source || {})), 'local paths are stripped');
-    const goto = byId(res.ir, 'goto-withretry').steps![0];
-    assert.equal(goto._to?.file, 'src/api/retry.ts');
-    assert.equal(goto._to?.line, 9);
+    const peek = byId(res.ir, 'transient').steps!.find((st) => st.do === 'peek')!;
+    assert.deepEqual([peek._peek?.file, peek._peek?.from, peek._peek?.to, peek._peek?.mark?.from], ['src/api/retry.ts', 26, 30, 27]);
     assert.ok(res.stats.estimatedSeconds > 30 && res.stats.estimatedSeconds < 240, `estimate ${res.stats.estimatedSeconds}s`);
     assert.deepEqual(res.stats.unnarratedFiles, []);
-    assert.ok(res.resolved.some((r) => r.path.endsWith('.to') && r.file === 'src/api/retry.ts' && r.from === 9), 'resolved report includes goto targets');
+    const dd = compile(withDrillDown(), { repo });
+    assert.ok(dd.resolved.some((r) => r.path.endsWith('.to') && r.file === 'src/api/retry.ts' && r.from === 26), 'resolved report includes goto targets');
     assert.equal(res.ir.tree?.root, 'repo');
     assert.ok(res.ir.tree?.files.some(([d, n]) => res.ir.tree!.dirs[d] === 'src/users' && n === 'profile.ts'), 'explorer tree includes unchanged files');
   });
@@ -61,7 +72,7 @@ describe('compile', () => {
   test('diagnostics say what is wrong and how to fix it', () => {
     const broken = load();
     byId(broken, 'request-diff').steps![1].range = { find: 'this text does not exist' };
-    byId(broken, 'goto-withretry').steps![0].from!.token = 'nope';
+    byId(broken, 'transient').steps!.find((st) => st.do === 'peek')!.from!.token = 'nope';
     broken.chapters[0].scenes![0].steps!.push({ do: 'teleport' as Step['do'] });
     const bad = compile(broken, { repo });
     assert.equal(bad.ok, false);
@@ -284,7 +295,7 @@ describe('preview', () => {
 
 describe('drill-down', () => {
   test('back returns to the line its goto was clicked on, and marks that goto as a detour', () => {
-    const res = compileFile(example, { repo });
+    const res = compile(withDrillDown(), { repo });
     const steps = stepsOf(res.ir);
     const b = steps.findIndex((st) => st.do === 'back');
     assert.ok(b > 0, 'the example drills down');
@@ -299,13 +310,108 @@ describe('drill-down', () => {
     const first = ir.chapters[0].scenes![0];
     first.steps = [...(first.steps || []), { do: 'back' }];
     assert.ok(compile(ir, { repo }).errors.some((e) => /"back" needs a "goto"/.test(e.message)));
-    const ir2 = load();
+    const ir2 = withDrillDown();
     const sc = ir2.chapters.flatMap((ch) => ch.scenes || []).find((x) => x.id === 'transient')!;
     const g = sc.steps!.find((st) => st.do === 'goto')!;
     const i = sc.steps!.indexOf(g);
     // a second goto (back to the same definition) before the first returns, then two backs
     sc.steps!.splice(i + 1, 0, { ...g, cue: undefined, from: { at: { find: 'constructor(public status' }, token: 'status' }, to: { file: 'src/api/retry.ts', at: { find: 'constructor(public status' } } }, { do: 'back' });
     assert.ok(compile(ir2, { repo }).warnings.some((w) => /drill-down inside a drill-down/.test(w.message)));
+  });
+});
+
+describe('split', () => {
+  test('a split opens to the side with its reason, and closes with its scene', () => {
+    const res = compileFile(example, { repo });
+    const sc = byId(res.ir, 'config');
+    const open = sc.steps!.find((st) => st.do === 'open' && st.pane === 1)!;
+    assert.equal(open._side, true, 'the first file in pane 1 opens to the side');
+    const last = sc.steps![sc.steps!.length - 1];
+    assert.deepEqual([last.do, last.mode, last._close], ['layout', 'single', true], 'the scene that split closes the split');
+    assert.ok(!sc.steps!.some((st) => st.do === 'layout' && st.mode === 'columns'), 'no layout step is needed to split');
+    assert.ok(!byId(res.ir, 'callers').steps!.some((st) => st.do === 'layout'));
+    // tour scenes run in one group
+    const scs = scenesOf(res.ir);
+    const after = scs.slice(scs.indexOf(sc) + 1).filter((x) => x.auto);
+    assert.ok(after.length && after.every((x) => (x.steps || []).every((st) => st._pane !== 1 && st.pane !== 1)));
+  });
+  test('a split without a reason is warned; a return to one pane with nothing to close is dropped', () => {
+    const ir = load();
+    const sc = scenesOf(ir).find((x) => x.id === 'config')!;
+    delete sc.steps!.find((st) => st.do === 'open')!.label;
+    scenesOf(ir).find((x) => x.id === 'tests')!.steps!.unshift({ do: 'layout', mode: 'single' });
+    const res = compile(ir, { repo });
+    assert.ok(res.warnings.some((w) => /a split needs a reason/.test(w.message)));
+    assert.ok(!byId(res.ir, 'tests').steps!.some((st) => st.do === 'layout'));
+  });
+  test('the player closes the right group over time: the pointer clicks its tab, the group slides out', async () => {
+    const { stepPhases } = await import('../src/shared/procedure.ts');
+    assert.deepEqual(stepPhases({ do: 'layout', mode: 'single', _close: true } as never).map((x) => x.name), ['travel', 'click', 'collapse']);
+    const side = stepPhases({ do: 'open', file: 'a.ts', _openKind: 'tree', _side: true } as never).map((x) => x.name);
+    assert.ok(side.indexOf('split') > side.indexOf('press') && side.indexOf('split') < side.indexOf('swap'), side.join(','));
+  });
+});
+
+describe('peek and trace', () => {
+  test('a short definition gone to and back is suggested as a peek', () => {
+    const res = compile(withDrillDown(), { repo });
+    assert.ok(res.warnings.some((w) => /definition is 5 lines: show it in a hover with "peek"/.test(w.message)));
+    assert.ok(!compileFile(example, { repo }).warnings.some((w) => /peek/.test(w.message)));
+  });
+  test('a trace resolves its stops, continues its session, and ends it with the result', () => {
+    const res = compileFile(example, { repo });
+    const [a, b] = byId(res.ir, 'withretry').steps!.filter((st) => st.do === 'trace');
+    assert.deepEqual(a._frames?.map((f) => f.line), [10, 13, 15, 16, 17]);
+    assert.deepEqual(a._frames?.[0].vars, [['attempt', '0']]);
+    assert.equal(b._session, a._session, 'a trace without a call continues the session');
+    assert.equal(b.returns, "'ok'");
+    const ir = load();
+    const t = scenesOf(ir).find((x) => x.id === 'withretry')!.steps!.find((st) => st.do === 'trace')!;
+    delete t.call;
+    assert.ok(compile(ir, { repo }).errors.some((e) => /trace needs "call"/.test(e.message)));
+  });
+  test('a trace is timed per stop: the step to it as far as it is, the values read', async () => {
+    const { stepPhases, valuesMs } = await import('../src/shared/procedure.ts');
+    const st = { do: 'trace', call: 'f(1)', _frames: [{ side: 'after', line: 3, vars: [['x', '1']] }, { side: 'after', line: 40, vars: [['total', '120'], ['items', '[a, b, c]']] }], _frameMove: [0, 900], returns: '120' };
+    const ph = stepPhases(st as never);
+    assert.deepEqual(ph.map((x) => x.name), ['head', 'step', 'mark', 'hold', 'step', 'mark', 'hold', 'ret']);
+    const step = ph.filter((x) => x.name === 'step');
+    assert.ok(step[1].ms > step[0].ms * 2, 'a far stop takes longer to reach');
+    assert.ok(valuesMs([['total', '120'], ['items', '[a, b, c]']]) > valuesMs([['x', '1']]));
+  });
+});
+
+describe('writing order', () => {
+  test('a file is written before a scene shows it, and after what it uses that has no scene of its own', () => {
+    const res = compileFile(example, { repo });
+    const files = scenesOf(res.ir).filter((x) => x.auto).map((x) => x.tour!.file);
+    assert.deepEqual(files, ['src/api/retry.ts', 'src/config.ts', 'src/api/client.ts', 'test/retry.test.ts']);
+    assert.ok(!res.warnings.some((w) => w.path === 'tour'), 'definitions first: no file is written before what it uses');
+    // the example in the old order (the entry first): client.ts uses retry.ts, explained later → warned
+    const ir = load();
+    ir.tour = { order: ['src/api/client.ts', 'src/api/retry.ts', 'src/config.ts', 'test/retry.test.ts'] };
+    const [ov, retry, entry, impact] = ir.chapters;
+    ir.chapters = [ov, entry, retry, impact];
+    const top = compile(ir, { repo });
+    assert.match(top.warnings.find((w) => w.path === 'tour')?.message || '', /client\.ts → retry\.ts/);
+    // a scene that shows a file before its own stop: the file is written before that scene
+    const ir2 = load();
+    scenesOf(ir2).find((x) => x.id === 'transient')!.steps!.push({ do: 'peek', from: { at: { find: 'return idempotent' }, file: 'src/api/client.ts', token: 'withRetry' }, to: { file: 'src/api/retry.ts', at: { symbol: 'isTransient' } } });
+    const res2 = compile(ir2, { repo });
+    const scs = scenesOf(res2.ir);
+    const writes = (f: string) => scs.findIndex((x) => x.auto && x.tour?.file === f);
+    assert.ok(writes('src/api/client.ts') < scs.findIndex((x) => x.id === 'transient'), 'client.ts is written before the scene that shows it');
+  });
+  test('dependencies: imports and names declared on added lines', () => {
+    // a DTO uses an enum through a path alias (found by the name), a barrel re-exports the DTO
+    const ir = { version: 1, tour: { order: ['src/dto.ts', 'src/index.ts', 'src/enum.ts'] }, files: {
+      'src/enum.ts': { status: 'added', before: null, after: 'export enum Kind {\n  a = "a",\n}\n' },
+      'src/dto.ts': { status: 'added', before: null, after: "import { Kind } from '@alias/enums';\nexport class Dto {\n  kind: Kind;\n}\n" },
+      'src/index.ts': { status: 'added', before: null, after: "export * from './dto';\n" },
+    }, chapters: [{ title: 'DTO', scenes: [{ id: 'dto', at: { file: 'src/dto.ts' }, question: 'q', narration: 'n', steps: [{ do: 'open', file: 'src/dto.ts' }] }] }] } as unknown as Walkthrough;
+    const res = compile(ir, {});
+    assert.equal(res.ok, true, JSON.stringify(res.errors));
+    assert.deepEqual(scenesOf(res.ir).filter((x) => x.auto).map((x) => x.tour!.file), ['src/enum.ts', 'src/dto.ts', 'src/index.ts']);
   });
 });
 

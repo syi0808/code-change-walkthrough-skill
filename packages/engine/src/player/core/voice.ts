@@ -54,7 +54,10 @@ export function computeVoice(s: State): Voice | null {
   if (pane.focus && !cands.length && now(pane.focus.t || 0)) cands.push({ side: pane.focus.side, line: Math.min(pane.focus.to, pane.focus.from + 12), t: pane.focus.t || 0 });
   cands.sort((a, b) => a.t - b.t);
   const a = cands[cands.length - 1] || null;
-  const anchor = a && pane.file && k > 0 ? { file: pane.file, side: a.side, line: a.line } : null;
+  // while a debugger steps through the code, the lines below the stop are what comes next: the sentence
+  // is read at the top, next to the question, and the values beside the lines speak for themselves
+  const debugging = !!pane.trace && pane.trace.end < 1;
+  const anchor = a && pane.file && k > 0 && !debugging ? { file: pane.file, side: a.side, line: a.line } : null;
   return leaving({ kind: 'item', key: `i${s.scene}:${k}`, text: sc.cues.items[k].text, k, n, anchor, t0: sc.t0 + itemT }, itemT);
 }
 

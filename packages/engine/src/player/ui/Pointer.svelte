@@ -3,7 +3,7 @@
   // tabs, reference entries, code tokens), measured after everything else has moved.
   import { onDestroy } from 'svelte';
   import { ORDER, player } from '../app/player.svelte.ts';
-  import { clamp, ICON, t } from '../core/env.ts';
+  import { clamp, ICON } from '../core/env.ts';
   import type { Anchor } from '../core/state.ts';
   import type Pane from './Pane.svelte';
 
@@ -41,6 +41,11 @@
     if (a.kind === 'tab') {
       const b = panes[a.pane]?.tabBox(a.file);
       return b ? within({ x: b.tab.left + b.tab.width * 0.5, y: b.tab.top + b.tab.height * 0.6 }, b.strip) : null;
+    }
+    if (a.kind === 'tabClose') {
+      // the tab's close button (×), at its right end
+      const b = panes[a.pane]?.tabBox(a.file);
+      return b ? within({ x: b.tab.right - 15, y: b.tab.top + b.tab.height * 0.55 }, b.strip) : null;
     }
     if (a.kind === 'ref') {
       const li = document.querySelectorAll('.wt-refs li')[a.index];
@@ -81,5 +86,5 @@
 </script>
 
 <div class="wt-pointer" bind:this={ptr} hidden>{@html ICON.pointer}<span class="ripple"></span></div>
-<div class="wt-keys" bind:this={keys} hidden>{#each s.keys || [] as k (k)}<kbd>{k}</kbd>{/each}{#if s.keys?.includes('⌘')}<kbd>{t('pointer.click')}</kbd>{/if}</div>
+<div class="wt-keys" bind:this={keys} hidden>{#each s.keys || [] as k (k)}<kbd>{k}</kbd>{/each}{#if s.keys && s.keysHint}<kbd>{s.keysHint}</kbd>{/if}</div>
 <div class="wt-drag" bind:this={ghost} hidden>{s.exDrag ? s.exDrag.path.slice(s.exDrag.path.lastIndexOf('/') + 1) : ''}</div>

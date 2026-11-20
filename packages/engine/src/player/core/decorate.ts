@@ -51,6 +51,7 @@ export function decorate(ps: PaneState, s: State, m: Model, v: CodeView): Decora
   if (ps.focus) {
     const keep = new Set(rangeRows(v, ps.focus));
     for (const h of ps.hl) for (const i of rangeRows(v, h)) keep.add(i);
+    if (ps.trace?.cur) for (const i of rangeRows(v, { side: ps.trace.cur.side, from: ps.trace.cur.line, to: ps.trace.cur.line })) keep.add(i);
     if (keep.size) for (let i = 0; i < n; i++) if (!keep.has(i)) add(i, 'dim');
   }
   if (ps.flash && ps.flash.p < 1) for (const i of rangeRows(v, ps.flash)) { add(i, 'flash'); style[i] = `--fo:${(1 - ps.flash.p).toFixed(3)}`; }
@@ -126,6 +127,8 @@ export function pointedRanges(ps: PaneState, s: State): { side: 'before' | 'afte
   for (const n of ps.notes) refs.push({ side: n.side, from: n.line, to: n.line, p: 1 });
   if (ps.flash) refs.push({ side: ps.flash.side, from: ps.flash.from, to: ps.flash.to, p: 1 });
   if (ps.tokline) refs.push({ side: ps.tokline.side, from: ps.tokline.line, to: ps.tokline.line, p: 1 });
+  if (ps.trace) for (const r of ps.trace.vals) refs.push({ side: r.side, from: r.line, to: r.line, p: 1 });
+  if (ps.trace?.cur) refs.push({ side: ps.trace.cur.side, from: ps.trace.cur.line, to: ps.trace.cur.line, p: 1 });
   const to = ps.scroll?.to;
   if (to && ps.scroll!.mode !== 'top') refs.push({ side: to.side, from: to.from ?? to.line ?? 1, to: to.to ?? to.line ?? 1, p: ps.scroll!.p });
   for (const t of s.typing) if (t.file === ps.file) refs.push({ side: t.side, from: t.from, to: t.to, p: 1 });

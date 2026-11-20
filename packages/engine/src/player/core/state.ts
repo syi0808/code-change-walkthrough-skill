@@ -15,7 +15,7 @@ export interface Scroll { to: ScrollTarget; mode: 'center' | 'top' | 'ensure' | 
 export interface Hl extends LineRange { tone: string; label: string | null; p: number; key: string | number; t?: number; ref?: boolean }
 export interface NoteState { side: Side; line: number; text: string; tone: string; key: number; t: number }
 export interface CodeAnchor { kind: 'code'; pane: number; side: Side; line: number; token?: string }
-export type Anchor = { kind: 'ex'; path: string } | { kind: 'tab'; pane: number; file: string } | { kind: 'ref'; index: number } | { kind: 'exNew' } | { kind: 'exNewDir' } | { kind: 'exMenu' } | CodeAnchor;
+export type Anchor = { kind: 'ex'; path: string } | { kind: 'tab'; pane: number; file: string } | { kind: 'tabClose'; pane: number; file: string } | { kind: 'ref'; index: number } | { kind: 'exNew' } | { kind: 'exNewDir' } | { kind: 'exMenu' } | CodeAnchor;
 export interface Pointer { from: Anchor | null; to: Anchor | null; p: number; click?: boolean; fade?: boolean }
 export interface Typing extends LineRange { key: number; file: string; p: number; t: number; mode: ReplayMode; dp?: number }
 
@@ -34,6 +34,29 @@ export interface PaneState {
   tokline: CodeAnchor | null;
   /** The file entering after a click: its code fades in over this progress. */
   enter: { key: number; p: number } | null;
+  /** Pane 1: what the two groups are read side by side for (the label of the step that split). */
+  why: string | null;
+  /** A ⌘-hover over a token: the definition in a hover (p: its opening, mp: the lines in it lighting up). */
+  peek: PeekState | null;
+  /** A debug session (trace): where it is paused, the values shown beside the lines, the result. */
+  trace: TraceState | null;
+}
+export interface PeekState { file: string; side: Side; from: number; to: number; mark: { from: number; to: number } | null; at: CodeAnchor; p: number; mp: number; key: number }
+export interface TraceValue { k: string; v: string; /** scene-local time it appeared */ t: number; /** the value differs from the one shown for this name before */ changed: boolean }
+export interface TraceState {
+  session: number;
+  call: string | null;
+  /** the toolbar coming in (0..1) and going out once the call returned (`end`: 0..1) */
+  headP: number;
+  end: number;
+  /** the line paused on, the one before it, and how far the stop has moved from that one to this (0..1) */
+  cur: { side: Side; line: number } | null;
+  prev: { side: Side; line: number } | null;
+  q: number;
+  /** Step Over is being pressed */
+  stepping: boolean;
+  vals: { side: Side; line: number; items: TraceValue[] }[];
+  ret: { side: Side; line: number; text: string; t: number } | null;
 }
 export interface GraphState { nodes: GraphNode[]; edges: GraphEdge[]; title: string; size?: 'full' | 'panel'; highlight?: string[]; key: number }
 export interface State {
@@ -44,7 +67,13 @@ export interface State {
   /** Where the pointer last came to rest: the next move starts there. */
   pointerAt: Anchor | null;
   keys: string[] | null;
+  /** What the keys do with the pointer (click, hover), shown after them. */
+  keysHint: string | null;
+  /** How far the second editor group is open (0..1): it slides in and out on the timeline. */
+  split: number;
   toast: string | null;
+  /** Scene-local time the toast appeared: it names the command for a moment, then goes (it would cover the code's header). */
+  toastAt: number;
   refs: { kind: 'refs' | 'impact'; symbol?: string; title: string | null; change?: string; items: RefItem[]; active: number } | null;
   graph: GraphState | null;
   map: GraphState | null;
@@ -83,13 +112,13 @@ export interface State {
 const EFFECT_TONE: Record<Effect, string> = { safe: 'info', check: 'warn', breaks: 'remove', updated: 'add' };
 
 export const DIFF_DEFAULT: DiffSettings = { mode: 'unified', algorithm: 'patience', granularity: 'word', context: 3, whitespace: 'collapse' };
-const newPane = (): PaneState => ({ tabs: [], file: null, view: 'after', diff: { ...DIFF_DEFAULT }, scroll: null, mem: {}, hl: [], focus: null, notes: [], flash: null, tokline: null, enter: null });
-const initState = (): State => ({ layout: 'single', active: 0, panes: [newPane(), newPane()], pointer: null, pointerAt: null, keys: null, toast: null, refs: null, graph: null, map: null, say: '', typing: [], exFocus: null, exScroll: null, exEdit: null, exDrag: null, exMenu: null, exRemove: null, exTop: 0, reveal: null, scene: 0, sceneP: 0, sceneT: 0, shown: 0, guideScene: 0, bridge: null, detour: null });
+const newPane = (): PaneState => ({ tabs: [], file: null, view: 'after', diff: { ...DIFF_DEFAULT }, scroll: null, mem: {}, hl: [], focus: null, notes: [], flash: null, tokline: null, enter: null, why: null, peek: null, trace: null });
+const initState = (): State => ({ layout: 'single', active: 0, panes: [newPane(), newPane()], pointer: null, pointerAt: null, keys: null, keysHint: null, split: 0, toast: null, toastAt: 0, refs: null, graph: null, map: null, say: '', typing: [], exFocus: null, exScroll: null, exEdit: null, exDrag: null, exMenu: null, exRemove: null, exTop: 0, reveal: null, scene: 0, sceneP: 0, sceneT: 0, shown: 0, guideScene: 0, bridge: null, detour: null });
 
 function resetTransient(s: State): void {
-  for (const p of s.panes) { p.hl = []; p.focus = null; p.notes = []; p.flash = null; p.tokline = null; p.enter = null; }
+  for (const p of s.panes) { p.hl = []; p.focus = null; p.notes = []; p.flash = null; p.tokline = null; p.enter = null; p.peek = null; p.trace = null; }
   if (s.pointer?.to) s.pointerAt = s.pointer.to;
-  s.pointer = null; s.keys = null; s.toast = null; s.refs = null; s.graph = null; s.say = ''; s.typing = []; s.exFocus = null; s.exScroll = null; s.exEdit = null; s.exDrag = null; s.exMenu = null; s.exRemove = null; s.reveal = null;
+  s.pointer = null; s.keys = null; s.keysHint = null; s.toast = null; s.refs = null; s.graph = null; s.say = ''; s.typing = []; s.exFocus = null; s.exScroll = null; s.exEdit = null; s.exDrag = null; s.exMenu = null; s.exRemove = null; s.reveal = null;
 }
 
 /** Where a finished scroll is placed depends on the scrolls before it while it is relative
@@ -114,7 +143,7 @@ const defaultView = (file: string): View => {
 };
 export function showFile(s: State, pi: number, file: string, view?: View): PaneState {
   const pane = s.panes[pi];
-  if (pi === 1) s.layout = 'columns';
+  if (pi === 1) { s.layout = 'columns'; s.split = 1; }
   s.active = pi;
   const f = IR.files[file];
   if (f) {
@@ -155,7 +184,9 @@ function procedure(st: Step, p: number, dur: number) {
     /** a phase's length on the timeline (ms) */
     len: (name: PhaseName, i?: number) => (ph.find((x) => x.name === name && (i === undefined || x.i === i))?.ms || 0) * scale,
     /** the scene-local time a phase starts */
-    t: (name: PhaseName) => (st._start || 0) + (phaseStart(ph, name) ?? 0) * scale,
+    t: (name: PhaseName, i?: number) => (st._start || 0) + (phaseStart(ph, name, i) ?? 0) * scale,
+    /** has the procedure reached phase `name` of item `i`? */
+    reachedI: (name: PhaseName, i: number) => ms === Infinity || ms >= (phaseStart(ph, name, i) ?? 0),
   };
 }
 
@@ -309,6 +340,11 @@ function applyOpen(s: State, st: Step, pi: number, p: number, dur: number): void
     }
     if (at.name === 'travel') s.pointer = { from: last, to: target, p: ease(at.p) };
     else s.pointer = { from: target, to: target, p: 1, click: at.name === 'press' };
+    if (st._side) {
+      // Open to the Side: ⌥ held for the click, then a second group slides in beside the first
+      if ((at.name === 'travel' && at.p > 0.45) || at.name === 'press') { s.keys = ['⌥']; s.keysHint = t('pointer.click'); }
+      if (pr.reached('split')) { s.layout = 'columns'; s.split = pr.pp('split'); s.toast = t('split.open', { file: file.slice(file.lastIndexOf('/') + 1) }); s.toastAt = pr.t('split'); }
+    }
     return; // nothing opens before the click
   }
   if (kind !== 'same') {
@@ -319,6 +355,7 @@ function applyOpen(s: State, st: Step, pi: number, p: number, dur: number): void
   s.exFocus = null;
   const before = s.panes[s.active].file;
   showFile(s, pi, file, st.view);
+  if (st._side) { pane.why = st.label || null; s.toast = t('split.open', { file: file.slice(file.lastIndexOf('/') + 1) }); s.toastAt = pr.t('split'); }
   // the explorer: after a tree pick it rests where its walk ended (computed again in this frame, since a
   // frame is rebuilt from the scene's start); after a tab click it walks there over the swap and the walk
   if (kind === 'tree' && st._fs) fsRest(s, st, before);
@@ -352,13 +389,35 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
       const i = pane.tabs.indexOf(st.file!);
       if (i >= 0) pane.tabs.splice(i, 1);
       if (pane.file === st.file) { pane.file = null; const last = pane.tabs[pane.tabs.length - 1]; if (last) showFile(s, pi, last); }
-      if (pi === 1 && !pane.tabs.length) { s.layout = 'single'; s.active = 0; }
+      if (pi === 1 && !pane.tabs.length) { s.layout = 'single'; s.split = 0; s.active = 0; pane.why = null; }
       return;
     }
     case 'layout': {
+      const pr = procedure(st, p, dur);
       const before = s.panes[s.active].file;
-      s.layout = st.mode === 'columns' ? 'columns' : 'single';
-      if (st.mode === 'single') { s.active = 0; if (s.panes[0].file) follow(s, before, s.panes[0].file, procedure(st, p, dur).pp('walk'), key); }
+      if (st.mode === 'columns') { s.layout = 'columns'; s.split = pr.pp('split'); return; }
+      if (st._close) {
+        // the comparison is over: the pointer clicks the right group's tab closed, and the group slides out
+        const p1 = s.panes[1];
+        const tab: Anchor | null = p1.file ? { kind: 'tabClose', pane: 1, file: p1.file } : null;
+        if (!pr.reached('collapse')) {
+          if (tab) s.pointer = pr.reached('click') ? { from: tab, to: tab, p: 1, click: pr.pp('click') < 1 } : { from: s.pointer?.to || s.pointerAt, to: tab, p: ease(pr.pp('travel')) };
+          return;
+        }
+        s.pointer = null; s.pointerAt = null;
+        s.active = 0;
+        s.toast = t('split.close'); s.toastAt = pr.t('collapse');
+        const cp = pr.pp('collapse');
+        s.split = 1 - cp;
+        if (cp >= 1) {
+          s.layout = 'single'; s.split = 0;
+          Object.assign(p1, { tabs: [], file: null, why: null, hl: [], notes: [], focus: null, flash: null, tokline: null, peek: null, trace: null });
+        }
+        if (s.panes[0].file) follow(s, before, s.panes[0].file, pr.pp('walk'), key);
+        return;
+      }
+      s.layout = 'single'; s.split = 0; s.active = 0;
+      if (s.panes[0].file) follow(s, before, s.panes[0].file, pr.pp('walk'), key);
       return;
     }
     case 'diffView': {
@@ -428,13 +487,15 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
         if (pr.reached('scroll')) pane.hl.push({ ...call, tone: 'focus', label: null, p: 1, key: `g${st._id}` });
         const from = s.pointer?.to || s.pointerAt;
         s.pointer = !pr.reached('point') ? null : { from, to: anchor, p: ease(pr.pp('point')), click: pr.reached('click') };
-        if (pr.reached('cmd')) { s.keys = ['⌘']; pane.tokline = anchor; }
+        if (pr.reached('cmd')) { s.keys = ['⌘']; s.keysHint = t('pointer.click'); pane.tokline = anchor; }
         return;
       }
       pane.focus = null;
       const tp = s.panes[to.pane];
       const same = tp.file === to.file;
       showFile(s, to.pane, to.file, to.view);
+      // to the side: the second group slides in, then the definition lands in it
+      if (st._side) s.split = pr.pp('split');
       follow(s, fr.file, to.file, pr.pp('jump'), key);
       const r: LineRange = { side: to.side || 'after', from: to.from || 1, to: to.to || to.from || 1 };
       setScroll(tp, r, 'center', same ? glide(pr.pp('land')) : 1, pr.len('land'));
@@ -442,12 +503,81 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
       // the flash fades over everything after the click
       const j0 = phaseStart(pr.ph, 'jump') || 0, rest = phasesMs(pr.ph) - j0 || 1;
       tp.flash = { side: r.side, from: r.from, to: r.from, key: `${st._id}`, p: pr.ms === Infinity ? 1 : clamp((pr.ms - j0) / rest, 0, 1) };
-      s.toast = t('goto.toast', { token: st.from?.token || '', to: `${to.file}:${to.line}` });
+      s.toast = t('goto.toast', { token: st.from?.token || '', to: `${to.file}:${to.line}` }); s.toastAt = pr.t('jump');
       // a drill-down: the line it left stays named on screen until the viewer is brought back to it
       if (st._detour) s.detour = { file: fr.file, line: fr.line, side: fr.side };
       s.pointerAt = anchor;
       s.pointer = !pr.reached('flash') ? { from: anchor, to: anchor, p: 1, fade: true } : null;
-      s.keys = null;
+      s.keys = null; s.keysHint = null;
+      return;
+    }
+    case 'peek': {
+      // ⌘-hover: the pointer rests on the token, ⌘ is held, and the definition opens in a hover over the
+      // line, which stays where it is (the line is never left, so nothing has to be found again)
+      const fr = st._from, pk = st._peek;
+      if (!fr || !fr.line || !fr.side || !pk) return;
+      const pr = procedure(st, p, dur);
+      const before = s.panes[s.active].file;
+      const call: LineRange = { side: fr.side, from: fr.line, to: fr.line };
+      showFile(s, pi, fr.file);
+      follow(s, before, fr.file, 1, key);
+      setScroll(pane, call, 'ensure', glide(pr.pp('scroll')), pr.len('scroll'));
+      const anchor: CodeAnchor = { kind: 'code', pane: pi, side: fr.side, line: fr.line, token: st.from?.token };
+      // the line stays lit (and the sentence about the definition sits with it)
+      if (pr.reached('point')) pane.hl.push({ ...call, tone: 'focus', label: null, p: 1, key: `p${st._id}`, t: pr.t('point') });
+      if (!pr.reached('point')) return;
+      s.pointer = { from: s.pointer?.to || s.pointerAt, to: anchor, p: ease(pr.pp('point')) };
+      s.pointerAt = anchor;
+      if (pr.reached('cmd')) { s.keys = ['⌘']; s.keysHint = t('pointer.hover'); pane.tokline = anchor; }
+      if (pr.reached('hover')) pane.peek = { file: pk.file, side: pk.side, from: pk.from, to: pk.to, mark: pk.mark || null, at: anchor, p: pr.pp('hover'), mp: pr.pp('mark'), key };
+      return;
+    }
+    case 'trace': {
+      // a debugger paused in the function: the line it is on, Step Over to the next stop (the stop moves
+      // there, the editor keeps it in view), the values beside the lines, then what the call returns
+      const frames = st._frames || [];
+      const pr = procedure(st, p, dur);
+      const before = s.panes[s.active].file;
+      showFile(s, pi, st._file!, st._view);
+      follow(s, before, st._file!, pr.pp('walk'), key);
+      if (!pr.reached(st.call ? 'head' : 'step')) return;
+      let tr = pane.trace;
+      if (st.call || !tr || tr.session !== st._session) {
+        tr = pane.trace = { session: st._session || 0, call: st.call || null, headP: 0, end: 0, cur: null, prev: null, q: 1, stepping: false, vals: [], ret: null };
+        if (st._r) pane.focus = { ...st._r, p: pr.pp('head'), t: pr.t('head') };
+      }
+      if (st.call) tr.headP = pr.pp('head');
+      const known = new Map<string, string>();
+      for (const row of tr.vals) for (const it of row.items) known.set(it.k, it.v);
+      tr.stepping = false;
+      frames.forEach((fr, i) => {
+        if (!pr.reachedI('step', i)) return;
+        const sp = pr.pp('step', i);
+        tr!.prev = tr!.cur; tr!.cur = { side: fr.side, line: fr.line }; tr!.q = glide(sp);
+        // the first stop of a session is where it pauses; every later one is reached by Step Over
+        tr!.stepping = sp < 1 && !(i === 0 && st.call);
+        setScroll(pane, { side: fr.side, from: fr.line, to: fr.line }, 'ensure', glide(sp), pr.len('step', i));
+        if (!pr.reachedI('mark', i)) return;
+        let row = tr!.vals.find((v) => v.side === fr.side && v.line === fr.line);
+        if (!row) tr!.vals.push((row = { side: fr.side, line: fr.line, items: [] }));
+        const at = pr.t('mark', i);
+        for (const [k, v] of fr.vars) {
+          const was = known.get(k);
+          const item: TraceValue = { k, v, t: at, changed: was !== undefined && was !== v };
+          const j = row.items.findIndex((x) => x.k === k);
+          if (j >= 0) row.items[j] = item; else row.items.push(item);
+          known.set(k, v);
+        }
+      });
+      if (st.returns != null && pr.reached('ret')) {
+        const last = frames[frames.length - 1];
+        if (last) {
+          tr.ret = { side: last.side, line: last.line, text: st.returns, t: pr.t('ret') };
+          if (!tr.vals.some((r) => r.side === last.side && r.line === last.line)) tr.vals.push({ side: last.side, line: last.line, items: [] });
+        }
+        // the call has returned: the session ends (the stop and the toolbar go; the values stay to be read)
+        tr.end = clamp((pr.pp('ret') - 0.6) / 0.4, 0, 1);
+      }
       return;
     }
     case 'refs': case 'impact': {
@@ -519,7 +649,7 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
       tp.hl.push({ ...r, tone: 'focus', label: null, p: pr.pp('land'), key, t: pr.t('land') });
       const j0 = phaseStart(pr.ph, 'jump') || 0, rest = phasesMs(pr.ph) - j0 || 1;
       tp.flash = { side: r.side, from: r.from, to: r.from, key: `${st._id}`, p: pr.ms === Infinity ? 1 : clamp((pr.ms - j0) / rest, 0, 1) };
-      s.toast = t('back.toast', { to: `${to.file.slice(to.file.lastIndexOf('/') + 1)}:${to.line}` });
+      s.toast = t('back.toast', { to: `${to.file.slice(to.file.lastIndexOf('/') + 1)}:${to.line}` }); s.toastAt = pr.t('jump');
       s.detour = null;
       return;
     }
@@ -543,8 +673,12 @@ export function resetSnapshots(): void { snapshots.length = 0; }
 /** The time the steps are being applied at (the explorer hides files that do not exist yet). */
 let nowT = 0;
 /** Apply a step, then let the explorer settle on the file in view unless it is walking to one. */
+/** Steps that leave the screen as it is: a hover stays open over them. */
+const STILL_STEPS = new Set<Step['do']>(['say', 'wait', 'graph', 'clear', 'unfocus']);
 function step(s: State, st: Step, p: number, dur: number): void {
   const before = s.panes[s.active].file;
+  // a hover closes when the pointer moves on, which the next step that does something makes it do
+  if (st.do !== 'peek' && !STILL_STEPS.has(st.do)) for (const pn of s.panes) if (pn.peek) { pn.peek = null; pn.tokline = null; s.keys = null; s.keysHint = null; s.pointer = null; }
   apply(s, st, p, dur);
   // a step that changed the file in view without walking the explorer (none the compiler knows of):
   // the explorer goes along anyway, at once

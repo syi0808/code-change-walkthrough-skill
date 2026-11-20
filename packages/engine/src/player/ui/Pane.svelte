@@ -3,7 +3,8 @@
   import { onDestroy } from 'svelte';
   import { ORDER, player } from '../app/player.svelte.ts';
   import { decorate, pointedRanges } from '../core/decorate.ts';
-  import { baseName, clamp, ease, easeOut, fileIcon, IR, STATUS_LETTER, t } from '../core/env.ts';
+  import { baseName, clamp, ease, easeOut, fileIcon, ICON, IR, STATUS_LETTER, t } from '../core/env.ts';
+  import { DIFF_DEFAULT } from '../core/state.ts';
   import { foldsOf, model, modelRowsOf, rangeRows, viewOf } from '../core/model.ts';
   import { noteViews, type NoteIn, type NoteView } from '../core/notes.ts';
   import { voiceAt, type Voice } from '../core/voice.ts';
@@ -72,6 +73,39 @@
   });
   const canDiff = $derived(!!f && f.before != null && f.after != null && f.status !== 'context');
 
+  // ---- a ⌘-hover: the definition's lines, highlighted, in a box over the line that uses it
+  const peek = $derived.by(() => {
+    const pk = ps.peek;
+    if (!pk || !IR.files[pk.file]) return null;
+    const pm = model(pk.file, pk.side === 'before' ? 'before' : 'after', DIFF_DEFAULT);
+    const rows: { n: number; html: string; mark: boolean }[] = [];
+    for (let n = pk.from; n <= pk.to; n++) {
+      const i = pm.idx[pk.side].get(n);
+      if (i != null) rows.push({ n, html: pm.rows[i].html || '', mark: !!pk.mark && n >= pk.mark.from && n <= pk.mark.to });
+    }
+    // a generic file name (index.ts) says nothing: its folder with it
+    const parts = pk.file.split('/');
+    const name = /^(index|__init__|mod|main|types|utils?|constants?)\.[a-z]+$/i.test(parts[parts.length - 1]) && parts.length > 1 ? parts.slice(-2).join('/') : parts[parts.length - 1];
+    return { pk, rows, name, outside: IR.files[pk.file].status === 'context' };
+  });
+  let peekEl: HTMLDivElement | undefined = $state();
+
+  // ---- a debug session: the stop, the values beside the lines (VS Code's inline values), the result
+  const tr = $derived(ps.trace);
+  const traceRows = $derived.by(() => (tr && v ? tr.vals.map((r) => ({ ...r, vi: v.idx[r.side].get(r.line) })).filter((r) => r.vi != null) : []));
+  /** A value just shown is brighter for a moment, then settles (timeline time). */
+  const fresh = (at: number) => (1 - clamp((s.sceneT - at) / 1400, 0, 1)).toFixed(3);
+  let dbgLineEl: HTMLDivElement | undefined = $state();
+
+  function closeTab(file: string) {
+    player.explore((st) => {
+      const p = st.panes[idx];
+      p.tabs = p.tabs.filter((x) => x !== file);
+      if (p.file === file) p.file = p.tabs[p.tabs.length - 1] || null;
+      if (idx === 1 && !p.tabs.length) { st.layout = 'single'; st.split = 0; st.active = 0; p.why = null; }
+    });
+  }
+
   let tabsEl: HTMLDivElement | undefined = $state();
   let editorEl: HTMLDivElement | undefined = $state();
   let codeEl: HTMLDivElement | undefined = $state();
@@ -100,15 +134,20 @@
   // over the code and take no room).
   const offScroll = player.layout(ORDER.pane, () => {
     placeNotes();
-    if (!editorEl || !codeEl || !v || !ps.scroll) return;
-    const sig = JSON.stringify([ps.scroll, v.key, deco?.caret, deco?.head?.vi, deco?.head?.g, player.epoch]);
-    // paused and nothing moved: leave the editor where the viewer may have scrolled it
-    if (sig === scrollSig && scrolledEl === editorEl && !player.playing) return;
-    scrollSig = sig; scrolledEl = editorEl;
-    const E = { view: v, row: (i: number) => rowEls[i], height: editorEl.clientHeight, contentHeight: codeEl.scrollHeight, head: deco?.head, rowH: parseFloat(getComputedStyle(editorEl).lineHeight) || 20 };
-    const fr = scrollFrame(E, ps.scroll, null);
-    if (fr.y != null && Math.abs(editorEl.scrollTop - fr.y) > 0.5) editorEl.scrollTop = fr.y;
-    dim = fr.dim;
+    placeTrace();
+    if (editorEl && codeEl && v && ps.scroll) {
+      const sig = JSON.stringify([ps.scroll, v.key, deco?.caret, deco?.head?.vi, deco?.head?.g, player.epoch]);
+      // paused and nothing moved: leave the editor where the viewer may have scrolled it
+      if (!(sig === scrollSig && scrolledEl === editorEl && !player.playing)) {
+        scrollSig = sig; scrolledEl = editorEl;
+        const E = { view: v, row: (i: number) => rowEls[i], height: editorEl.clientHeight, contentHeight: codeEl.scrollHeight, head: deco?.head, rowH: parseFloat(getComputedStyle(editorEl).lineHeight) || 20 };
+        const fr = scrollFrame(E, ps.scroll, null);
+        if (fr.y != null && Math.abs(editorEl.scrollTop - fr.y) > 0.5) editorEl.scrollTop = fr.y;
+        dim = fr.dim;
+      }
+    }
+    // the hover is placed where the code now is (above its line when there is room on screen, else below)
+    placePeek();
   });
   const offDeco = player.layout(ORDER.decorations, () => {
     if (tabsEl && tabSig !== ps.file + '|' + ps.tabs.length) { tabSig = ps.file + '|' + ps.tabs.length; tabsEl.querySelector('.tab.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
@@ -186,6 +225,41 @@
     }
   }
 
+  /** The stop glides from line to line (one object going somewhere); the values sit after each line's code. */
+  function placeTrace() {
+    if (!codeEl || !v || !tr) return;
+    const base = codeEl.getBoundingClientRect();
+    // after the line's code; a line running past the visible width keeps its values at the visible
+    // right edge (over the end of the line, on their own background) instead of off screen
+    const right = (editorEl ? editorEl.clientWidth + editorEl.scrollLeft : Infinity) - 10;
+    for (const el of codeEl.querySelectorAll<HTMLElement>('.dbg-vals')) {
+      const row = rowEls[Number(el.dataset.vi)];
+      if (!row) continue;
+      const after = Math.round(contentRight(row, base) + 18);
+      const over = after + el.offsetWidth > right;
+      Object.assign(el.style, { left: `${Math.max(60, over ? right - el.offsetWidth : after)}px`, top: `${row.offsetTop}px`, height: `${row.offsetHeight}px` });
+      el.classList.toggle('over', over);
+    }
+    if (dbgLineEl && tr.cur) {
+      const at = (x: { side: 'before' | 'after'; line: number } | null) => { const vi = x ? v!.idx[x.side].get(x.line) : undefined; const r = vi != null ? rowEls[vi] : undefined; return r ? { y: r.offsetTop, h: r.offsetHeight } : null; };
+      const b = at(tr.cur), a = at(tr.prev) || b;
+      if (b && a) Object.assign(dbgLineEl.style, { top: `${(a.y + (b.y - a.y) * tr.q).toFixed(1)}px`, height: `${b.h}px` });
+    }
+  }
+  function placePeek() {
+    if (!peekEl || !ps.peek || !editorEl || !codeEl) return;
+    const a = ps.peek.at;
+    const r = tokenRect(a.side, a.line, a.token);
+    const vi = v?.idx[a.side].get(a.line);
+    const row = vi != null ? rowEls[vi] : undefined;
+    if (!r || !row) return;
+    const h = peekEl.offsetHeight, w = peekEl.offsetWidth;
+    const above = row.offsetTop - editorEl.scrollTop > h + 12;
+    const left = clamp(r.left - 12, 8, Math.max(8, editorEl.clientWidth + editorEl.scrollLeft - w - 12));
+    Object.assign(peekEl.style, { left: `${Math.round(left)}px`, top: `${Math.round(above ? row.offsetTop - h - 6 : row.offsetTop + row.offsetHeight + 6)}px` });
+    peekEl.classList.toggle('below', !above);
+  }
+
   function locate(root: Node, offset: number): [Node, number] | null {
     const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let n: Node | null, acc = 0, last: Text | null = null;
@@ -234,11 +308,16 @@
         <span class="fi {icon[1]}">{icon[0]}</span><span class="nm">{baseName(file)}</span>
         {#if on && ps.view !== 'after'}<span class="mode">{ps.view === 'diff' ? 'diff' : t('pane.before')}</span>{/if}
         {#if st && STATUS_LETTER[st]}<span class="sb">{STATUS_LETTER[st]}</span>{/if}
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+        {#if on}<span class="tx" title={t('pane.closeTab')} onclick={(e) => { e.stopPropagation(); closeTab(file); }}>{@html ICON.close}</span>{/if}
       </button>
     {/each}
+    <!-- pane 1: what the two groups are read side by side for, where the tab bar has room -->
+    {#if idx === 1 && ps.why && s.layout === 'columns'}<span class="why" title={`${t('split.why')}: ${ps.why}`}>⇆ {ps.why}</span>{/if}
   </div>
   {#if !ps.file}
-    <div class="editor"><div class="empty-pane">{t('pane.empty')}</div></div>
+    <!-- a second group sliding in is empty until its file opens in it: no text to read while it moves -->
+    <div class="editor"><div class="empty-pane">{idx === 0 ? t('pane.empty') : ''}</div></div>
   {:else if !f}
     <div class="crumbs"><span class="path">{#each ps.file.split('/') as part, i}{#if i}<i>›</i>{/if}{part}{/each}</span></div>
     <div class="editor"><div class="empty-pane stub"><div>{t('pane.stub')}</div><div class="muted">{t('pane.stubHint')}</div></div></div>
@@ -249,6 +328,13 @@
       {#if f.oldPath}<span class="sym">← {f.oldPath}</span>{/if}
       {#if f.role}<span class="sym">{f.role}</span>{/if}
       <span class="vbtns">
+        {#if tr && tr.call && tr.end < 1}
+          <!-- the debug toolbar, on the editor's header (nothing covers it): the session is on, and Step Over is what moves the stop -->
+          <span class="dbg-bar" style:opacity={(Math.min(easeOut(tr.headP), 1 - tr.end)).toFixed(3)}>
+            <span class="dbg-btns"><i title={t('debug.continue')}>{@html ICON.dbgContinue}</i><i class:on={tr.stepping} title={t('debug.stepOver')}>{@html ICON.dbgStepOver}</i><i class="stop" title={t('debug.stop')}>{@html ICON.dbgStop}</i></span>
+            <span class="dbg-call"><b>{t('debug.call')}</b><code>{tr.call}</code></span>
+          </span>
+        {/if}
         {#if stat}<span class="dstat"><span class="pa">+{stat.adds}</span><span class="pd">−{stat.dels}</span><span class="sq">{#each stat.blocks as b, i (i)}<i class={b}></i>{/each}</span></span>{/if}
         {#if canDiff}
           {#each [['after', t('pane.after')], ['before', t('pane.before')], ['unified', 'unified'], ['split', 'split']] as [key, label] (key)}
@@ -273,6 +359,18 @@
           {/each}
         {/each}
         <div class="tokline" bind:this={tokEl} hidden></div>
+        {#if tr}
+          {#if tr.cur && tr.end < 1}<div class="dbg-line" bind:this={dbgLineEl} style:opacity={(1 - tr.end).toFixed(3)}><span class="dbg-arrow">{@html ICON.dbgArrow}</span></div>{/if}
+          {#each traceRows as r (r.side + r.line)}
+            <div class="dbg-vals" data-vi={r.vi}>{#each r.items as it, j (it.k)}{#if j}<span class="sep">,</span>{/if}<span class="dv" class:chg={it.changed} style="--fr:{fresh(it.t)}"><span class="k">{it.k}</span> = <span class="v">{it.v}</span></span>{/each}{#if tr.ret && tr.ret.side === r.side && tr.ret.line === r.line}<span class="dbg-ret" style="--fr:{fresh(tr.ret.t)}">⮐ {t('debug.returns')} <span class="v">{tr.ret.text}</span></span>{/if}</div>
+          {/each}
+        {/if}
+        {#if peek}
+          <div class="peek" bind:this={peekEl} style:opacity={peek.pk.p.toFixed(3)} style:transform={peek.pk.p < 1 ? `translateY(${((1 - easeOut(peek.pk.p)) * 4).toFixed(2)}px)` : null}>
+            <div class="pk-head"><span class="fi {fileIcon(baseName(peek.pk.file))[1]}">{fileIcon(baseName(peek.pk.file))[0]}</span>{peek.name}<i>:{peek.pk.from}</i>{#if peek.outside}<span class="outside">{t('pane.outside')}</span>{/if}</div>
+            <div class="pk-code">{#each peek.rows as r (r.n)}<div class="pk-row" class:mark={r.mark} style={r.mark ? `--mp:${peek.pk.mp.toFixed(3)}` : null}><span class="pk-n">{r.n}</span><span class="pk-t">{@html r.html}</span></div>{/each}</div>
+          </div>
+        {/if}
       </div>
     </div>
   {/if}

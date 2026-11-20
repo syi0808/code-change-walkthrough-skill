@@ -3,11 +3,13 @@
   // references peek, and the start overlay. The bridge between scenes is told in the heading
   // band under the strip (Caption.svelte).
   import { player } from '../app/player.svelte.ts';
-  import { baseName, fileIcon, fmt, ICON, IR, mdInline, t } from '../core/env.ts';
+  import { baseName, clamp, ease, fileIcon, fmt, ICON, IR, mdInline, t } from '../core/env.ts';
   import { scenes, total } from '../core/timeline.ts';
   import Pane from './Pane.svelte';
 
   let { panes = $bindable([]) }: { panes?: Pane[] } = $props();
+  /** How long a command's name stays (ms of timeline time). */
+  const TOAST_MS = 2400;
 
   const meta = IR.meta || {};
   const s = $derived(player.frame);
@@ -41,7 +43,8 @@
       {#if file}{#key file}<span class="swap-soft">{@render chip(file)}</span>{/key}{/if}
     {/if}
   </div>
-  <div class="wt-panes" class:columns={s.layout === 'columns'}>
+  <!-- a second group slides in and out on the timeline (s.split), so its opening and closing are seen as events -->
+  <div class="wt-panes" class:columns={s.layout === 'columns'} style:grid-template-columns={s.layout === 'columns' && s.split < 1 ? `minmax(0, 1fr) minmax(0, ${ease(s.split).toFixed(4)}fr)` : null}>
     <Pane idx={0} bind:this={panes[0]} />
     <Pane idx={1} bind:this={panes[1]} />
   </div>
@@ -70,7 +73,8 @@
       </ol>
     </div>
   {/if}
-  {#if s.toast}{#key s.toast}<div class="wt-toast in">{s.toast}</div>{/key}{/if}
+  <!-- a command's name, for a moment after it runs: it then fades (timeline time), so it never stays over the code's header -->
+  {#if s.toast && s.sceneT - s.toastAt < TOAST_MS}{#key s.toast}<div class="wt-toast in" style:opacity={clamp((TOAST_MS - (s.sceneT - s.toastAt)) / 400, 0, 1).toFixed(3)}>{s.toast}</div>{/key}{/if}
 
   <div class="wt-start" class:gone={player.started}>
     <button aria-label="play" onclick={() => player.play()}>{@html ICON.play}</button>

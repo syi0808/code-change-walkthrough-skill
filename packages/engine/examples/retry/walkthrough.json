@@ -6,8 +6,8 @@
     "intent": "feature",
     "language": "en",
     "strategy": {
-      "order": "top-down",
-      "rationale": "What callers see (what changed) → the new module (how it works) → reach outside the diff (existing callers) and tests"
+      "order": "bottom-up",
+      "rationale": "The new module first (which failures, how often, how long) → the entry point that now uses it → reach outside the diff (existing callers) and tests. Each file is written after what it uses"
     },
     "takeaways": [
       "GET retries by default; other methods only with `idempotent: true`",
@@ -45,9 +45,9 @@
   },
   "tour": {
     "order": [
-      "src/api/client.ts",
       "src/api/retry.ts",
       "src/config.ts",
+      "src/api/client.ts",
       "test/retry.test.ts"
     ]
   },
@@ -92,7 +92,7 @@
           "id": "map",
           "title": "Map of the change",
           "goal": "Know the three files' roles and how they relate",
-          "narration": "Change in three parts, read in this order\n\n- ① **client.ts** `request()`: entry, failures now go to retry (chapter 2)\n- ② **retry.ts** `withRetry`: when and how long, policy from **config.ts** (chapter 3)\n- ③ **service.ts**: existing caller outside the diff, inherits the retry; then the tests (chapter 4)",
+          "narration": "Change in three parts, read in this order\n\n- ① **retry.ts** `withRetry`: new module, which failures and how long, policy from **config.ts** (chapter 2)\n- ② **client.ts** `request()`: entry, failures now go to `withRetry` (chapter 3)\n- ③ **service.ts**: existing caller outside the diff, inherits the retry; then the tests (chapter 4)",
           "steps": [
             {
               "do": "graph",
@@ -146,7 +146,8 @@
             {
               "do": "graph",
               "highlight": [
-                "client"
+                "retry",
+                "config"
               ],
               "hold": 1200,
               "cue": 2
@@ -154,8 +155,7 @@
             {
               "do": "graph",
               "highlight": [
-                "retry",
-                "config"
+                "client"
               ],
               "hold": 1200,
               "cue": 3
@@ -170,6 +170,211 @@
             }
           ],
           "question": "What does this change add, and where?"
+        }
+      ]
+    },
+    {
+      "id": "retry",
+      "title": "Inside the retry module",
+      "goal": "Know when, how often and how long it retries",
+      "scenes": [
+        {
+          "id": "transient",
+          "title": "What counts as transient",
+          "goal": "Know retries are limited to 5xx and 429",
+          "narration": "`isTransient`: true only for 5xx or 429 → 404 fails at once\n\n- `HttpError`: keeps the response `status` (a plain `Error` has none)\n- That `status` → 5xx or 429 retried",
+          "steps": [
+            {
+              "do": "open",
+              "file": "src/api/retry.ts"
+            },
+            {
+              "do": "focus",
+              "range": {
+                "symbol": "isTransient"
+              }
+            },
+            {
+              "do": "peek",
+              "from": {
+                "at": {
+                  "find": "err instanceof HttpError"
+                },
+                "token": "HttpError"
+              },
+              "to": {
+                "at": {
+                  "symbol": "HttpError"
+                }
+              },
+              "range": {
+                "find": "constructor(public status"
+              },
+              "cue": 2
+            },
+            {
+              "do": "highlight",
+              "range": {
+                "find": "err.status >= 500"
+              },
+              "tone": "warn",
+              "label": "5xx · 429",
+              "cue": 3
+            }
+          ],
+          "question": "Which failures are worth retrying?",
+          "bridge": "① retry.ts, the new module: which failures it retries",
+          "at": {
+            "file": "src/api/retry.ts"
+          }
+        },
+        {
+          "id": "withretry",
+          "title": "withRetry, run once",
+          "goal": "Know when it tries again, how long it waits, when it stops",
+          "narration": "`withRetry` run once: `fn` fails twice with 503, then succeeds\n\n- 1st failure: transient, retries left → waits `200 × 2⁰` = 200 ms\n- 2nd failure: the wait doubles to 400 ms → 3rd call returns `'ok'`",
+          "steps": [
+            {
+              "do": "trace",
+              "range": {
+                "symbol": "withRetry"
+              },
+              "call": "withRetry(send, { retries: 3, baseDelayMs: 200 })",
+              "frames": [
+                {
+                  "at": {
+                    "find": "let attempt = 0;"
+                  },
+                  "vars": {
+                    "attempt": "0"
+                  }
+                },
+                {
+                  "at": {
+                    "find": "return await fn();"
+                  },
+                  "vars": {
+                    "fn()": "throws HttpError(503)"
+                  }
+                },
+                {
+                  "at": {
+                    "find": "if (!isTransient(err)"
+                  },
+                  "vars": {
+                    "isTransient(err)": "true",
+                    "attempt < retries": "0 < 3"
+                  }
+                },
+                {
+                  "at": {
+                    "find": "await sleep"
+                  },
+                  "vars": {
+                    "wait": "200 ms"
+                  }
+                },
+                {
+                  "at": {
+                    "find": "attempt++;"
+                  },
+                  "vars": {
+                    "attempt": "1"
+                  }
+                }
+              ],
+              "cue": 2
+            },
+            {
+              "do": "trace",
+              "frames": [
+                {
+                  "at": {
+                    "find": "return await fn();"
+                  },
+                  "vars": {
+                    "fn()": "throws HttpError(503)"
+                  }
+                },
+                {
+                  "at": {
+                    "find": "await sleep"
+                  },
+                  "vars": {
+                    "wait": "400 ms"
+                  }
+                },
+                {
+                  "at": {
+                    "find": "attempt++;"
+                  },
+                  "vars": {
+                    "attempt": "2"
+                  }
+                },
+                {
+                  "at": {
+                    "find": "return await fn();"
+                  },
+                  "vars": {
+                    "fn()": "'ok'"
+                  }
+                }
+              ],
+              "returns": "'ok'",
+              "cue": 3
+            },
+            {
+              "do": "note",
+              "at": {
+                "find": "await sleep"
+              },
+              "text": "200 → 400 → 800 ms: up to ~1.4 s extra waiting with 3 retries",
+              "tone": "risk"
+            }
+          ],
+          "question": "How does the retry loop decide to try again?",
+          "bridge": "① withRetry: try, wait longer each time, stop when told"
+        },
+        {
+          "id": "config",
+          "title": "Policy lives in config",
+          "goal": "Know where to tune retries",
+          "narration": "Policy values in `config.retry` → one place to tune retries in production\n\n- `withRetry` gets them as `policy`: base delay doubles per attempt\n- `config.retry`: 3 retries, 200 ms base",
+          "steps": [
+            {
+              "do": "highlight",
+              "file": "src/api/retry.ts",
+              "range": {
+                "find": "baseDelayMs * 2"
+              },
+              "tone": "info",
+              "label": "policy.baseDelayMs",
+              "cue": 2
+            },
+            {
+              "do": "open",
+              "pane": 1,
+              "file": "src/config.ts",
+              "view": "diff",
+              "label": "the policy withRetry is given"
+            },
+            {
+              "do": "highlight",
+              "pane": 1,
+              "range": {
+                "find": "retry:"
+              },
+              "tone": "add",
+              "label": "retry policy",
+              "cue": 3
+            }
+          ],
+          "question": "Where are the retry numbers set?",
+          "bridge": "① policy values: attempts and delays, tuned in one place",
+          "at": {
+            "file": "src/config.ts"
+          }
         }
       ]
     },
@@ -225,7 +430,7 @@
             }
           ],
           "question": "What happens now when a request fails?",
-          "bridge": "① request(): the one entry point → its new failure path",
+          "bridge": "② request(): the entry point → failures now go to withRetry",
           "at": {
             "file": "src/api/client.ts"
           }
@@ -265,158 +470,7 @@
             }
           ],
           "question": "Which lines actually changed, and which only moved?",
-          "bridge": "① same function, side by side: moved code apart from new code"
-        }
-      ]
-    },
-    {
-      "id": "retry",
-      "title": "Inside the retry module",
-      "goal": "Know when, how often and how long it retries",
-      "scenes": [
-        {
-          "id": "goto-withretry",
-          "title": "Into withRetry",
-          "goal": "Know the loop's exit conditions",
-          "narration": "Jump to the definition of `withRetry`\n\n- Returns as soon as `fn` succeeds\n- On failure: waits `base × 2^attempt`, retries **only if transient and retries remain**",
-          "steps": [
-            {
-              "do": "goto",
-              "from": {
-                "at": {
-                  "find": "return idempotent"
-                },
-                "token": "withRetry"
-              },
-              "to": {
-                "file": "src/api/retry.ts",
-                "at": {
-                  "symbol": "withRetry"
-                }
-              }
-            },
-            {
-              "do": "highlight",
-              "range": {
-                "find": "if (!isTransient(err)"
-              },
-              "tone": "warn",
-              "label": "exit condition"
-            },
-            {
-              "do": "highlight",
-              "range": {
-                "find": "await sleep"
-              },
-              "tone": "info",
-              "label": "backoff"
-            },
-            {
-              "do": "note",
-              "at": {
-                "find": "await sleep"
-              },
-              "text": "200 → 400 → 800 ms: up to ~1.4 s extra waiting with 3 retries",
-              "tone": "risk"
-            }
-          ],
-          "question": "How does the retry loop decide to try again?",
-          "bridge": "② withRetry: where request() now sends failures",
-          "at": {
-            "file": "src/api/retry.ts"
-          }
-        },
-        {
-          "id": "transient",
-          "title": "What counts as transient",
-          "goal": "Know retries are limited to 5xx and 429",
-          "narration": "`isTransient`: true only for 5xx or 429 → 404 fails at once\n\n- Check needs `HttpError` → its definition first\n- `HttpError`: keeps the response `status` (a plain `Error` has none)\n- Back at the check: that `status` → 5xx or 429 retried\n- So `client.ts` now throws `HttpError` instead of `Error`",
-          "steps": [
-            {
-              "do": "focus",
-              "range": {
-                "symbol": "isTransient"
-              }
-            },
-            {
-              "do": "goto",
-              "from": {
-                "at": {
-                  "find": "err instanceof HttpError"
-                },
-                "token": "HttpError"
-              },
-              "to": {
-                "file": "src/api/retry.ts",
-                "at": {
-                  "symbol": "HttpError"
-                }
-              },
-              "cue": 2
-            },
-            {
-              "do": "highlight",
-              "range": {
-                "find": "constructor(public status"
-              },
-              "tone": "info",
-              "label": "status",
-              "cue": 3
-            },
-            {
-              "do": "back"
-            },
-            {
-              "do": "highlight",
-              "range": {
-                "find": "err.status >= 500"
-              },
-              "tone": "warn",
-              "label": "5xx · 429",
-              "cue": 4
-            }
-          ],
-          "question": "Which failures count as worth retrying?",
-          "bridge": "② the retry condition: which failures qualify"
-        },
-        {
-          "id": "config",
-          "title": "Policy lives in config",
-          "goal": "Know where to tune retries",
-          "narration": "Policy values in `config.retry` → one place to tune retries in production",
-          "steps": [
-            {
-              "do": "layout",
-              "mode": "columns"
-            },
-            {
-              "do": "open",
-              "pane": 1,
-              "file": "src/config.ts",
-              "view": "diff"
-            },
-            {
-              "do": "highlight",
-              "pane": 1,
-              "range": {
-                "find": "retry:"
-              },
-              "tone": "add"
-            },
-            {
-              "do": "highlight",
-              "pane": 0,
-              "range": {
-                "find": "baseDelayMs * 2"
-              },
-              "tone": "info"
-            }
-          ],
-          "question": "Where are the retry numbers set?",
-          "bridge": "② policy values: attempts and delays, tuned in one place",
-          "at": {
-            "file": "src/config.ts"
-          }
+          "bridge": "② same function, side by side: moved code apart from new code"
         }
       ]
     },
@@ -431,10 +485,6 @@
           "goal": "Tell which calls become retried",
           "narration": "Callers of `request` outside the diff\n\n- `fetchUser`: GET → **retried automatically** / `renameUser`: PATCH → **exactly as before**",
           "steps": [
-            {
-              "do": "layout",
-              "mode": "single"
-            },
             {
               "do": "impact",
               "pane": 0,

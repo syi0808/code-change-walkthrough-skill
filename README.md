@@ -9,7 +9,7 @@ It has two independent parts. The **Walkthrough IR** is the only contract betwee
 │ An agent reads a PR, diff, or branch and writes IR:                 │
 │   scripts/      collect.mjs (change analysis) and engine.mjs:       │
 │                 built bundles, self-contained (no install needed)   │
-│   references/   design rules R1–R36, strategy playbook,             │
+│   references/   design rules R1–R40, strategy playbook,             │
 │                 IR authoring guide          (loaded on demand)      │
 │   docs/         research rationale          (background only)       │
 └────────────────────────────────┬────────────────────────────────────┘

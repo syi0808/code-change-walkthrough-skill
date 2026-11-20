@@ -40,6 +40,10 @@ export const EN = {
   'pane.hiddenLines': '{n} hidden lines',
   'pane.outside': 'Outside the diff',
   'pane.outsideHint': 'Unchanged in this change: shown for context',
+  'pane.closeTab': 'Close',
+  'split.why': 'Why these two are side by side',
+  'split.open': 'Open to the Side  {file}',
+  'split.close': 'Close Editor Group',
 
   // ---- heading band (between scenes)
   'bridge.chapter': 'Chapter {n} · {title}',
@@ -61,6 +65,16 @@ export const EN = {
   'graph.close': 'Close',
   'refs.count': '{n} references',
   'pointer.click': 'Click',
+  'pointer.hover': 'Hover',
+
+  // ---- debugging (a trace): the call, the stop, the step, the result
+  'debug.call': 'Debugging',
+  'debug.paused': 'Paused on line {line}',
+  'debug.stepOver': 'Step Over (F10)',
+  'debug.continue': 'Continue (F5)',
+  'debug.stop': 'Stop',
+  'debug.returns': 'returns',
+  'debug.done': 'Returned',
 
   // ---- impact (what outside the diff the change reaches)
   'impact.title': 'Impact',

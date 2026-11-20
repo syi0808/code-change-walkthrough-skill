@@ -55,7 +55,14 @@ export type Action =
   // the tour removes a deleted file from the explorer after replaying it (right click, Delete)
   | 'delete'
   // Go Back (⌃−): return from a goto's definition to the line it was clicked on (a drill-down's way home)
-  | 'back';
+  | 'back'
+  // ⌘-hover: a short definition shown in a hover over the line that uses it, without leaving the line
+  | 'peek'
+  // step through a function as a debugger does: the line being executed, the values beside the lines
+  | 'trace';
+
+/** One stop of a trace: the line the debugger is paused on and the values it shows there (VS Code's inline values). */
+export interface TraceFrame { at: Anchor; vars?: Record<string, string> }
 
 /** A file the walkthrough brings into the explorer the way a person would (compiler-made, on its first open):
  *  `create` (New File in `parent`, type `name`), `rename` (F2 on `from`, type `name`), `move` (drag `from`
@@ -107,6 +114,12 @@ export interface Step {
   unpin?: boolean;
   hunk?: number;
   tempo?: Tempo;
+  /** trace: the call being debugged, with its arguments (a new session); a trace without it continues the last one in its pane. */
+  call?: string;
+  /** trace: the stops, in execution order. */
+  frames?: TraceFrame[];
+  /** trace: what the call returns (shown on the last stop's line, and the session ends). */
+  returns?: string;
   noReveal?: boolean;
   fast?: boolean;
 
@@ -116,6 +129,16 @@ export interface Step {
   _walk?: number;
   /** open: the file appears in the explorer by a file operation (see FsOp). */
   _fs?: FsOp;
+  /** open (pane 1) / goto (to pane 1): the split begins with this step (Open to the Side). */
+  _side?: boolean;
+  /** layout single: a split is open and closes with this step (compiler-made at a scene's end when the comparison is over). */
+  _close?: boolean;
+  /** compiler: a step with nothing to do where it stands (a return to one pane that is already one pane); removed. */
+  _noop?: boolean;
+  /** trace: resolved stops; `_frameMove`: the editor's scroll (px) to each stop; `_session`: the debug session it belongs to. */
+  _frames?: { side: Side; line: number; vars: [string, string][] }[];
+  _frameMove?: number[];
+  _session?: number;
   /** How far (px, estimated from lines) the editor scrolls for this step; its time grows with it (see shared/timing moveMs). */
   _move?: number;
   /** goto: how far (px) the editor scrolls to the call site before the click. */
@@ -137,6 +160,8 @@ export interface Step {
   _mode?: ReplayMode;
   _from?: { file: string; side?: Side; line?: number; to?: number };
   _to?: { file: string; pane: number; view: View; side?: Side; line?: number; from?: number; to?: number };
+  /** peek: the definition shown in the hover (file and lines) and the lines in it to point at. */
+  _peek?: { file: string; side: Side; from: number; to: number; mark?: { from: number; to: number } | null };
   _items?: RefItem[];
 
   // ---- added by the timing model (player and compiler share it)

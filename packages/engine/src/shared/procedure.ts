@@ -35,6 +35,12 @@ export type PhaseName =
   | 'select' | 'key' | 'name' | 'enter' | 'grab' | 'drag' | 'drop' | 'menu' | 'aim' | 'remove' | 'close'
   // New Folder before New File: travel to its button, press, type the folder's name, Enter, it opens
   | 'dtravel' | 'dpress' | 'dname' | 'denter' | 'dopen' | 'reach'
+  // a second editor group slides in beside the first (Open to the Side), or out when it closes
+  | 'split' | 'collapse'
+  // peek: the hover with the definition opens over the line
+  | 'hover'
+  // trace: the debugger steps to the next stop (per stop i), and the call returns
+  | 'step' | 'ret'
   // anything else, and the time a step stays before the next
   | 'main' | 'hold';
 export interface Phase { name: PhaseName; ms: number; /** refs / impact: the item */ i?: number }
@@ -49,7 +55,14 @@ const ACT = {
   refsHead: 930,
   layout: 600,
   swap: 350,
+  /** a group sliding in or out: one object changing size, read as one event */
+  split: 520,
+  peek: { scroll: 430, point: 790, cmd: 420, hover: 300, mark: 520, hold: 600 },
+  trace: { head: 620, step: 280, mark: 380, ret: 1100 },
 };
+
+/** Time to take in the values shown at a trace stop: a glance for one short value, longer for several. */
+export const valuesMs = (vars: [string, string][]): number => Math.round(Math.min(2200, Math.max(650, 420 + vars.reduce((a, [k, v]) => a + k.length + v.length + 3, 0) * 38)));
 /** Other steps: one act of this length. */
 const MAIN: Partial<Record<Step['do'], number>> = { diffView: 930, unfocus: 470, graph: 1470, say: 0, wait: 0, clear: 330, close: 470 };
 /** A reference list item: base time B, split into point, click, move (at least), mark, hold. */
@@ -109,9 +122,12 @@ export function openPhases(st: Step): Phase[] {
   const k = st.fast ? 0.55 : 1;
   const nav = (ms: number) => Math.round(ms * k);
   if (st._fs && kind === 'tree') return [...fsPhases(st, nav), ...(st._reveal ? [{ name: 'reveal', ms: 1270 } as Phase] : [])];
+  // Open to the Side: the click on the row, with ⌥ held, puts the file in a second group (see press)
   const out: Phase[] = [];
   if (kind === 'tree') out.push({ name: 'locate', ms: nav(locateMs(st._walk)) }, { name: 'travel', ms: nav(690) }, { name: 'press', ms: nav(210) }, { name: 'beat', ms: nav(150) });
   if (kind === 'tab') out.push({ name: 'travel', ms: nav(560) }, { name: 'press', ms: nav(210) }, { name: 'beat', ms: nav(120) });
+  // into a second group: it slides in first, then the file opens in it
+  if (st._side && kind !== 'same') out.push({ name: 'split', ms: ACT.split });
   if (kind !== 'same') out.push({ name: 'swap', ms: ACT.swap });
   if (kind === 'tab' && (st._walk || 0) > ACT.swap) out.push({ name: 'walk', ms: st._walk! - ACT.swap });
   if (kind === 'same' && st._r) out.push({ name: 'land', ms: moveMs(st._move || 0, 560) });
@@ -146,9 +162,27 @@ function build(st: Step): Phase[] {
         scroll(st._moveFrom, g.scroll),
         { name: 'point', ms: g.point }, { name: 'cmd', ms: g.cmd }, { name: 'click', ms: g.click },
         { name: 'jump', ms: 0 },
+        ...(st._side ? [{ name: 'split', ms: ACT.split } as Phase] : []),
         { name: 'land', ms: Math.round(moveMs(st._move || 0, g.land)) },
         { name: 'flash', ms: g.flash },
       ];
+    }
+    case 'peek': {
+      // the pointer rests on the token, ⌘ is held, the definition opens in a hover, the lines it is about light up
+      const g = ACT.peek;
+      return [scroll(st._moveFrom, g.scroll), { name: 'point', ms: g.point }, { name: 'cmd', ms: g.cmd }, { name: 'hover', ms: g.hover }, { name: 'mark', ms: st._peek?.mark ? g.mark : 200 }, { name: 'hold', ms: g.hold }];
+    }
+    case 'trace': {
+      // the session starts (the debug toolbar, the call); per stop: the debugger steps to its line (as far as
+      // the line is), its values appear beside it and are read; the call returns
+      const g = ACT.trace;
+      const out: Phase[] = [...walk];
+      if (st.call) out.push({ name: 'head', ms: g.head });
+      (st._frames || []).forEach((fr, i) => {
+        out.push({ name: 'step', ms: Math.round(moveMs(st._frameMove?.[i] || 0, g.step)), i }, { name: 'mark', ms: g.mark, i }, { name: 'hold', ms: valuesMs(fr.vars), i });
+      });
+      if (st.returns != null) out.push({ name: 'ret', ms: g.ret });
+      return out;
     }
     case 'refs': case 'impact': {
       const B = itemMs(st);
@@ -159,7 +193,11 @@ function build(st: Step): Phase[] {
       });
       return out;
     }
-    case 'layout': return [{ name: 'main', ms: ACT.layout }, ...walk];
+    // a split closes the way a person closes it: the pointer clicks the right group's tab closed, the group slides out
+    case 'layout':
+      if (st.mode === 'columns') return [{ name: 'split', ms: ACT.split }];
+      if (st._close) return [{ name: 'travel', ms: 560 }, { name: 'click', ms: 210 }, { name: 'collapse', ms: ACT.split }, ...walk];
+      return [{ name: 'main', ms: ACT.layout }, ...walk];
     case 'delete': return deletePhases();
     // Go Back: the keys, the jump to the line left (the explorer switches with it), the landing, the flash
     case 'back': return [{ name: 'cmd', ms: 520 }, { name: 'jump', ms: 0 }, { name: 'land', ms: Math.round(moveMs(st._move || 0, 560)) }, { name: 'flash', ms: 700 }];
@@ -227,7 +265,7 @@ export function cueOffset(st: Step, dur: number): number {
 export interface Timed { st: Step; start: number; dur: number }
 
 /** Steps that point the viewer at something: the sentence about it should arrive with them. */
-const POINTING = new Set<Step['do']>(['highlight', 'focus', 'reveal', 'note', 'goto', 'back', 'refs', 'impact', 'type', 'graph']);
+const POINTING = new Set<Step['do']>(['highlight', 'focus', 'reveal', 'note', 'goto', 'back', 'peek', 'trace', 'refs', 'impact', 'type', 'graph']);
 /** Steps that do not move or change the code on screen: they may run while a sentence is read. */
 const STILL = new Set<Step['do']>(['say', 'wait', 'graph', 'clear', 'unfocus']);
 /** A sentence that has been read leaves before the screen moves: the time it takes to close (see core/notes OUT). */

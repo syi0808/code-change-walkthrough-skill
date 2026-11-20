@@ -1,12 +1,14 @@
 <script lang="ts">
   // The walkthrough outline (right panel): overview, chapters with their scenes, recap.
-  // The current scene moves after the screen has settled, and the panel scrolls to it on
-  // the timeline clock, so it never moves at the same moment as the code.
+  // The current scene moves after the screen has settled, and the panel keeps the sentence being
+  // read in view, moving on the timeline clock. It is a reference the viewer may scroll at any time:
+  // once they do, it stops following until they bring the current entry back into view, pick a
+  // scene, or the next scene starts.
   import { onDestroy } from 'svelte';
   import { ORDER, player } from '../app/player.svelte.ts';
-  import { fileIcon, fmt, ICON, IR, md, mdInline, t } from '../core/env.ts';
+  import { clamp, fileIcon, fmt, ICON, IR, md, mdInline, t } from '../core/env.ts';
   import { replays, scenes, total, type SceneRT } from '../core/timeline.ts';
-  import { Tween } from '../core/tween.ts';
+  import { Follow } from '../core/tween.ts';
 
   const meta = IR.meta || {};
   const s = $derived(player.frame);
@@ -47,8 +49,11 @@
   };
 
   let body: HTMLDivElement | undefined = $state();
-  const tween = new Tween();
+  const tween = new Follow();
   let itemSig = '';
+  /** The viewer scrolled the panel themselves: it does not follow until `cur` changes or the entry is back in view. */
+  let held: number | null = null;
+  const hold = () => { held = cur; };
   const off = player.layout(ORDER.guide, () => {
     if (!body) return;
     // narration item states on the current scene's static text
@@ -63,20 +68,45 @@
         host.classList.add(k > item ? 'sn-next' : k === item ? 'sn-cur' : 'sn-past');
       });
     }
-    // keep the current entry in view, moving on the timeline clock
-    const target = cur < 0 ? body.querySelector<HTMLElement>('.gd-overview') : cur >= scenes.length ? body.querySelector<HTMLElement>('.gd-recap') : body.querySelector<HTMLElement>(`.gd-sc[data-scene="${cur}"]`);
-    if (!target) return;
-    const y = tween.at(player.T, `${cur}:${player.epoch}`, body.scrollTop, () => {
-      const b = body!.getBoundingClientRect(), r = target.getBoundingClientRect();
-      const top = body!.scrollTop + r.top - b.top;
+    // keep the entry being read in view: the scene, and in it the sentence on screen (the active row)
+    const scene = cur < 0 ? body.querySelector<HTMLElement>('.gd-overview') : cur >= scenes.length ? body.querySelector<HTMLElement>('.gd-recap') : body.querySelector<HTMLElement>(`.gd-sc[data-scene="${cur}"]`);
+    if (!scene) return;
+    const row = scene.querySelector<HTMLElement>('li.sn-cur, span.sn-cur');
+    const b = body.getBoundingClientRect();
+    const span = (el: HTMLElement) => { const r = el.getBoundingClientRect(); return { top: body!.scrollTop + r.top - b.top, bottom: body!.scrollTop + r.bottom - b.top }; };
+    const head = span(scene.querySelector<HTMLElement>('.gd-sc-h, .gd-sec-h') || scene);
+    const want = row ? span(row) : span(scene);
+    // the scene's title and the row together when they fit, else the row
+    const top = row && want.bottom - head.top <= body.clientHeight - 32 ? head.top : want.top;
+    const inView = want.top >= body.scrollTop + 8 && want.bottom <= body.scrollTop + body.clientHeight - 8;
+    if (held !== null) {
+      // following again once the viewer has brought the entry back into view, or the scene has changed
+      if (held !== cur || inView) held = null;
+      else return;
+    }
+    // the least movement from where the panel was that shows them (computed every frame, so a scene
+    // that is still unfolding is followed to where it ends up)
+    const y = tween.at(player.T, `${cur}:${item}:${player.epoch}`, body.scrollTop, (from) => {
       if (cur >= scenes.length) return top - 8;
-      if (r.top < b.top + 8) return top - 8;
-      if (r.bottom > b.bottom - 8) return top + r.height - body!.clientHeight + 24;
-      return body!.scrollTop;
-    }, 260);
+      const lo = want.bottom + 16 - body!.clientHeight, hi = top - 8;
+      return lo > hi ? hi : clamp(from, lo, hi);
+    }, 320);
     if (Math.abs(body.scrollTop - y) > 0.5) body.scrollTop = y;
   });
   onDestroy(off);
+  // what the viewer does to scroll it: the wheel, a touch, the scrollbar (a press on the panel itself), keys.
+  // (Not every scroll event: the browser also scrolls it when an entry above folds, which is not the viewer.)
+  $effect(() => {
+    const el = body;
+    if (!el) return;
+    const press = (e: PointerEvent) => { if (e.target === el) hold(); };
+    const key = (e: KeyboardEvent) => { if (['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown'].includes(e.key)) hold(); };
+    el.addEventListener('wheel', hold, { passive: true });
+    el.addEventListener('touchmove', hold, { passive: true });
+    el.addEventListener('pointerdown', press);
+    el.addEventListener('keydown', key);
+    return () => { el.removeEventListener('wheel', hold); el.removeEventListener('touchmove', hold); el.removeEventListener('pointerdown', press); el.removeEventListener('keydown', key); };
+  });
 </script>
 
 <aside class="wt-guide" aria-label={t('guide.title')}>

@@ -7,7 +7,7 @@ node "<skill>/scripts/engine.mjs" spec     # IR v1 reference (fields, actions, a
 node "<skill>/scripts/engine.mjs" schema   # JSON Schema (structural)
 ```
 
-The engine's `examples/retry/walkthrough.json` is a complete worked example: 4 chapters, 8 scenes, every action type.
+The engine's `examples/retry/walkthrough.json` is a complete worked example: 4 chapters, 8 scenes, in dependency order, with a peek, a trace, a split, an impact list and a replayed rewrite.
 
 ## The tour and its stops
 
@@ -24,6 +24,7 @@ The engine replays every changed hunk; you decide the order and where to stop.
 ```
 
 - **Every changed file goes in `order`**, following the question chain. Unlisted files are appended, but you want them where they make sense.
+- **Order by dependency (R14):** after the map, definitions first (enums, types, DTOs, helpers, the new module), then the code that uses them, the entry point that assembles them last. The tour writes each file when its scene comes, so this is the order the code is written in. The engine already writes a file before any scene shows it, and writes a file's unexplained dependencies (an enum, a constant, a type) right before it; `check` warns when a file is written before code it uses that is explained later.
 - **`at` makes a scene a stop**: it plays right after the tour replays that hunk (or the whole file, without `hunk`). The hunk you attach to defaults to `key` tempo (typed).
 - **Don't add `type` steps for code the tour replays**; use `tempo: "key"` instead. Don't explain wiring; let it `skim`.
 - Keep stops for what needs words, typically one per idea from your question chain. Plain hunks between stops need no explanation.
@@ -106,6 +107,18 @@ Use 3–7 nodes. Nodes are files or key symbols, and edges carry verbs. Build th
 ```
 The `token` must appear literally on the `from` line. Say "let's jump into `withRetry`" in the narration first.
 
+**Peek at a short definition** (⌘-hover, the line stays; R39)
+```json
+"narration": "Query parameters: page size + 2 filters\n\n- `source`: `SandboxWorkSource` only, 2 values → `ai_assignment` / `ai_literacy`\n- Any other value: 400 from `@IsEnum`",
+"steps": [
+  { "do": "peek", "from": { "at": { "find": "@IsEnum(SandboxWorkSource)" }, "token": "SandboxWorkSource" },
+    "to": { "file": "libs/shared/src/enums/sandbox-work/index.ts", "at": { "symbol": "SandboxWorkSource" } },
+    "range": { "find": "ai_assignment = 'ai_assignment'", "span": 2 }, "cue": 2 },
+  { "do": "highlight", "range": { "find": "@IsEnum(SandboxWorkSource)", "span": 2 }, "tone": "warn", "label": "else 400", "cue": 3 }
+]
+```
+The definition opens in a hover over the line (enums, types, constants, short signatures: up to ~8 lines), `range` lights the lines the bullet is about, and the line never leaves the screen. `to.file` defaults to the pane's file. Pin the bullet that says what the definition means for the line to the `peek`.
+
 **Drill down and come back** (a definition the line needs, just in time; R37)
 ```json
 "narration": "`isTransient`: true only for 5xx or 429\n\n- Check needs `HttpError` → its definition first\n- `HttpError`: keeps the response `status`\n- Back at the check: that `status` → 5xx or 429 retried",
@@ -118,16 +131,33 @@ The `token` must appear literally on the `from` line. Say "let's jump into `with
   { "do": "highlight", "range": { "find": "err.status >= 500" }, "tone": "warn", "label": "5xx · 429", "cue": 4 }
 ]
 ```
-`back` returns to the line the last `goto` was clicked on (VS Code's Go Back, ⌃−). Keep the detour to what the line needs, one level deep, inside the scene, and make the bullet after `back` say what the definition means *for this line*: that is where the detour pays off. For a definition the walkthrough continues into, use `goto` without `back`.
+`back` returns to the line the last `goto` was clicked on (VS Code's Go Back, ⌃−). Keep the detour to what the line needs, one level deep, inside the scene, and make the bullet after `back` say what the definition means *for this line*: that is where the detour pays off. For a definition the walkthrough continues into, use `goto` without `back`. For a definition of a few lines, `peek` instead (above): `check` suggests it.
 
-**Compare two places** (caller and callee, interface and implementation, code and test)
+**Run a function once** (a debugger's trace: concrete values; R40)
 ```json
-[{ "do": "layout", "mode": "columns" },
- { "do": "open", "pane": 1, "file": "src/config.ts", "view": "diff" },
- { "do": "highlight", "pane": 1, "range": { "find": "retry:" }, "tone": "add" },
- { "do": "highlight", "pane": 0, "range": { "find": "baseDelayMs * 2" }, "tone": "info" }]
+"narration": "`withRetry` run once: `fn` fails twice with 503, then succeeds\n\n- 1st failure: transient, retries left → waits 200 ms\n- 2nd failure: the wait doubles to 400 ms → 3rd call returns `'ok'`",
+"steps": [
+  { "do": "trace", "range": { "symbol": "withRetry" }, "call": "withRetry(send, { retries: 3, baseDelayMs: 200 })", "frames": [
+      { "at": { "find": "let attempt = 0;" }, "vars": { "attempt": "0" } },
+      { "at": { "find": "return await fn();" }, "vars": { "fn()": "throws HttpError(503)" } },
+      { "at": { "find": "if (!isTransient(err)" }, "vars": { "isTransient(err)": "true", "attempt < retries": "0 < 3" } },
+      { "at": { "find": "await sleep" }, "vars": { "wait": "200 ms" } },
+      { "at": { "find": "attempt++;" }, "vars": { "attempt": "1" } }], "cue": 2 },
+  { "do": "trace", "frames": [
+      { "at": { "find": "await sleep" }, "vars": { "wait": "400 ms" } },
+      { "at": { "find": "attempt++;" }, "vars": { "attempt": "2" } },
+      { "at": { "find": "return await fn();" }, "vars": { "fn()": "'ok'" } }], "returns": "'ok'", "cue": 3 }
+]
 ```
-Return to `{ "do": "layout", "mode": "single" }` when the comparison is over.
+The debug toolbar comes up, the yellow stop steps from frame to frame (Step Over), each frame's values appear after its line as VS Code's inline values (a changed value is outlined), and `returns` closes the run. Use it for utilities, branchy helpers, calculations and loops, where reading leaves the viewer to simulate the values in their head. Rules: one concrete input that takes the path worth seeing (the edge case, the new branch); stops only where a value is set or a branch decided (3 to 8); 1 to 3 short values per stop (`{…3 items}`, `"abc…"`); every value derived from the code, never guessed. A second `trace` without `call` continues the same run, so each half gets its own bullet. While it runs the sentence sits at the top of the code, so keep the bullets about *why* the values matter.
+
+**Compare two places** (old and new, caller and callee, code and its test; R38)
+```json
+[{ "do": "highlight", "file": "src/api/retry.ts", "range": { "find": "baseDelayMs * 2" }, "tone": "info", "label": "policy.baseDelayMs" },
+ { "do": "open", "pane": 1, "file": "src/config.ts", "view": "diff", "label": "the policy withRetry is given" },
+ { "do": "highlight", "pane": 1, "range": { "find": "retry:" }, "tone": "add" }]
+```
+Light the left side first, then open the right with a `label` saying what the two are read together for; the player opens it to the side (⌥-click, the group slides in) and shows the label on the right pane. The split closes by itself when the scene ends, so the next scene and the tour start in one pane again: no `layout` steps. Files read one after the other are not a comparison: open them in pane 0.
 
 **Impact outside the diff** (what the change reaches that the diff does not show)
 ```json

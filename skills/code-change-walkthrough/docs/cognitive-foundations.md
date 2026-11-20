@@ -1,4 +1,4 @@
-# Cognitive foundations: rationale for R1–R37
+# Cognitive foundations: rationale for R1–R40
 
 This is background material and is not loaded at runtime. The operational rules live in `../references/design-rules.md`. This document gives the research basis for each rule and notes how the engine and the skill implement it.
 
@@ -162,6 +162,42 @@ This is background material and is not loaded at runtime. The operational rules 
 - While away, the question strip names the line the detour will return to (a resumption cue that stays in view); `back` lands on that line, lights it and flashes it, so the place to resume is found without search.
 - The explorer switches with the jump instead of walking: during a Cmd+Click the eyes are on the code, and a second region moving at that moment competes with the jump (one locus of motion).
 
+## 13. Comparing side by side (R38)
+
+**Basis**
+- Placing two things side by side (juxtaposition) tells the viewer to look for the relation between them (Gleicher et al., 2011). A split that is not a comparison is a false signal, and it halves the width and makes the viewer choose where to look (split attention; Chandler & Sweller, 1991).
+- A change of layout with no visible cause is not perceived as an event (Michotte, 1946), and a boundary that the screen does not mark is not where viewers update their model (event segmentation; Zacks et al., 2007).
+
+**Rules and implementation**
+- **R38.** Split only to read two places together, and say why in the `label`. The player opens the right group to the side (⌥-click, the group slides in), shows the label on it, and closes it when the scene ends (the pointer clicks its tab closed, the group slides out). Tour scenes always run in one group.
+
+## 14. Short definitions in place (R39)
+
+**Basis**
+- Information that must be integrated is learned best when it is shown together, next to what it explains (spatial contiguity; Mayer, 2021). A screen that does not move stays usable as an external memory (O'Regan, 1992); a jump away and back makes the viewer find the line again.
+- A detour suspends the line being explained (§12). For a definition that fits in a hover, the line never leaves the screen, so there is nothing to resume.
+
+**Rules and implementation**
+- **R39.** `peek` a definition of up to ~8 lines: the hover opens over the line, `range` lights the lines that matter, and it closes when the next step moves on. `check` suggests it for a `goto` to a short definition that is left again soon.
+
+## 15. Running a function with values (R40)
+
+**Basis**
+- Understanding code means simulating its execution: holding the inputs, following the branches, updating each variable. This mental model of the machine (the notional machine) is what programmers find hardest to build and keep (du Boulay, 1986; Sorva, 2013).
+- Program visualizers and debuggers show that state instead of leaving it to working memory (Guo, 2013), and tracing with the state shown improves comprehension of code (Nelson, Xie & Ko, 2017). A worked example with concrete values teaches more than the general rule alone (Sweller & Cooper, 1985).
+
+**Rules and implementation**
+- **R40.** `trace` one concrete call through a utility, a branchy helper, a calculation or a loop: 3 to 8 stops where a value is set or a branch is decided, 1 to 3 values per stop, every value derived from the code. The player shows it as VS Code's debugger: the toolbar, the yellow stop moved by Step Over, inline values after each line (a changed one outlined), the result on the return line.
+
+## 16. Writing in dependency order (R14, R22)
+
+**Basis**
+- Text is understood fastest when each new sentence attaches to information already given (the given-new contract; Haviland & Clark, 1974). Code is the same: a file that uses only names already seen is read without open references.
+- Readers build a situation model in which time and causation run one way; a break in that order (a file shown, then created) costs a revision of the model (event indexing; Zwaan, Langston & Graesser, 1995).
+
+**Rules and implementation**
+- **R14, R22.** After the map, order the scenes definitions first. The tour writes each file when its scene comes, a file before any scene shows it, and a file's unexplained dependencies (an enum, a type) right before it; `check` warns when a file is written before code it uses that is explained later.
+
 ---
 
 ### References
@@ -204,3 +240,13 @@ This is background material and is not loaded at runtime. The operational rules 
 - Rayner, K. (1998). Eye movements in reading and information processing: 20 years of research. *Psychological Bulletin*.
 - Sillito, J., Murphy, G. C., & De Volder, K. (2008). Asking and answering questions during a programming change task. *IEEE TSE*.
 - Tao, Y., Dang, Y., Xie, T., Zhang, D., & Kim, S. (2012). How do software engineers understand code changes? An exploratory study in industry. *FSE*.
+- Chandler, P., & Sweller, J. (1991). Cognitive load theory and the format of instruction. *Cognition and Instruction*.
+- du Boulay, B. (1986). Some difficulties of learning to program. *J. Educational Computing Research*.
+- Guo, P. J. (2013). Online Python Tutor: Embeddable web-based program visualization for CS education. *SIGCSE*.
+- Haviland, S. E., & Clark, H. H. (1974). What's new? Acquiring new information as a process in comprehension. *J. Verbal Learning and Verbal Behavior*.
+- Michotte, A. (1946/1963). *The Perception of Causality*. Methuen.
+- Nelson, G. L., Xie, B., & Ko, A. J. (2017). Comprehension first: Evaluating a novel pedagogy and tutoring system for program tracing in CS1. *ICER*.
+- O'Regan, J. K. (1992). Solving the "real" mysteries of visual perception: The world as an outside memory. *Canadian J. Psychology*.
+- Sorva, J. (2013). Notional machines and introductory programming education. *ACM Transactions on Computing Education*.
+- Sweller, J., & Cooper, G. A. (1985). The use of worked examples as a substitute for problem solving in learning algebra. *Cognition and Instruction*.
+- Zwaan, R. A., Langston, M. C., & Graesser, A. C. (1995). The construction of situation models in narrative comprehension: An event-indexing model. *Psychological Science*.

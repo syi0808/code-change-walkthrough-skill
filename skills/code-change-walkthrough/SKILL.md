@@ -19,7 +19,7 @@ Your job is to **author Walkthrough IR**. The engine replays the **whole diff** 
 ## Principles
 
 1. **Comprehension over spectacle.** Every motion must be a real IDE action (open, scroll, go to definition, find references). Nothing decorative.
-2. **Evidence-based design.** Follow the design rules R1–R37 in `references/design-rules.md`.
+2. **Evidence-based design.** Follow the design rules R1–R40 in `references/design-rules.md`.
 3. **Whole-codebase context.** A diff shows what was edited, not what the edit reaches or answers to. Explain through call, dependency, and data relations and the intent of the change, not file by file. Bring in unchanged code a reviewer needs (R34–R36): the dependents of every changed contract, and the constraints an edit answers.
 4. **Only verified claims.** Confirm every statement in the narration by reading the code. If an intent is unverified, turn it into a `reviewFocus` question instead of asserting it.
 5. **Language- and framework-agnostic.** The analysis script uses heuristics. Treat its output as leads, and confirm them in the code.
@@ -89,8 +89,8 @@ Read `references/strategy-playbook.md`, then decide:
 1. the **change type** for each cluster
 2. the **order strategy** (top-down, bottom-up, data-flow, symptom-cause-fix, before-after, clusters) and a one-sentence rationale
 3. a **question chain**: for each scene, the `question` the viewer has at that point and the `bridge` that places it on the scene-1 map (playbook §6). Read the questions as a list: each must follow from the previous one. This list *is* the order.
-4. an **outline**: chapter and scene titles with one-sentence `goal`s only. Check the flow before writing any steps. Scene 1 is the big picture: a `graph` walked part by part, one bullet per part in chapter order (R23). Put each definition right before its usages, and each implementation right before its tests. Stay within the size budget
-5. for each scene, the **view** (after, before, diff; unified or split; single or columns) and the **actions**
+4. an **outline**: chapter and scene titles with one-sentence `goal`s only. Check the flow before writing any steps. Scene 1 is the big picture: a `graph` walked part by part, one bullet per part in chapter order (R23). After it, go in dependency order: definitions (enums, types, DTOs, helpers) before the code that uses them, the entry point that assembles them last, each implementation right before its tests (R14, R22). The tour writes the files in this order, so it is also the order the change is built in. Stay within the size budget
+5. for each scene, the **view** (after, before, diff; unified or split) and the **actions**: a second pane only to read two places together (R38), a `peek` for a short definition a line needs (R39), a `trace` for a function whose behaviour depends on values (R40)
 
 ### 4. Write the IR
 
@@ -102,7 +102,9 @@ Read `references/ir-authoring.md` for patterns and pitfalls. Run `node "<skill>/
 - Write every piece of prose in note form, without em dashes (R32): 개조식 in Korean, telegraphic style in English. Only `question` is a full question
 - Write narration as **one lead line (the why) + 2–4 bullets**, one bullet per visual beat in step order, each pinned to its step with `cue`. Say where you are going before a `goto`, `refs`, or `impact`
 - Show the context outside the diff (R34, R35): an `impact` scene after the change it is about (or at the end) with the unchanged dependents and their effects, and a `goto` to a constraint before an edit that answers it
-- Drill down when a line needs a definition the viewer has not seen (R37): `goto` it, 1 or 2 bullets on what it does, `back`, then a bullet that applies it to the line. One level, a few steps
+- When a line needs a definition the viewer has not seen: `peek` it if it is short (up to ~8 lines, R39); otherwise drill down (R37): `goto` it, 1 or 2 bullets on what it does, `back`, then a bullet that applies it to the line. One level, a few steps
+- For a utility or a branchy function, `trace` one concrete call (R40): 3 to 8 stops where a value is set or a branch decided, 1 to 3 values each, every value worked out from the code
+- Split only to compare (R38): `open` into `pane: 1` with a `label` saying what the two are read together for; the split closes with the scene
 - Write the `bridge` and `question` of a scene attached to a file (`at`) as what the code about to be replayed is for: they are shown before the replay (R30)
 - Give scene 1's graph nodes a `file`: the graph docks as a structure map that tracks the file in view
 - Fill in `meta.summary` (note-form bullets), `strategy.rationale`, `takeaways`, `reviewFocus`, and `meta.impact` (R36; `check` warns when it is empty)
@@ -147,12 +149,14 @@ The page embeds source code. Do not upload or publish it anywhere unless the use
 
 - [ ] Does the first scene alone convey what changed and why, walking the graph part by part in chapter order? (R13, R23)
 - [ ] Does every `bridge` name its part of the map instead of recapping the last scene? (R30)
-- [ ] Is the order an execution or dependency order, not file order? (R14)
+- [ ] Is the order a dependency order (definitions before their users), not file order, with no `tour` warning from `check`? (R14)
 - [ ] One idea per scene, and at most 1–2 simultaneous highlights? (R1, R11)
 - [ ] New files open in `after`, deleted files in `before`, and in-place rewrites in `split`? (R26–R28)
 - [ ] Is unchanged code that the reader needs (callers, definitions) connected through `goto`, `refs`, or `impact`? (principle 3, R34, R35)
 - [ ] Does `meta.impact` say what outside the diff the change reaches, even if nothing? (R36)
-- [ ] Does every drill-down come `back` within its scene, one level deep, and resume with a bullet that applies what it showed? (R37)
+- [ ] Does every drill-down come `back` within its scene, one level deep, and resume with a bullet that applies what it showed? Is every short definition a `peek` instead? (R37, R39)
+- [ ] Does every split compare two places, with a `label` saying why? (R38)
+- [ ] Is every `trace` value derived from the code for the input given, and does each stop change something? (R40)
 - [ ] Is all prose except `question` in note form (개조식, telegraphic)? (R32)
 - [ ] Are repetitive mechanical edits collapsed into one scene? (R3)
 - [ ] Is every claim verified in code, and does the narration explain instead of reading code aloud? (principle 4, R9)
@@ -167,7 +171,7 @@ The page embeds source code. Do not upload or publish it anywhere unless the use
 | `i18n/<lang>.json` | Installed UI string tables (created by `engine.mjs i18n`; not shipped) |
 
 Both scripts are generated bundles (built from `packages/engine` in the source repository). They are self-contained: don't edit them, and don't look for an engine elsewhere.
-| `references/design-rules.md` | Design rules R1–R37 |
+| `references/design-rules.md` | Design rules R1–R40 |
 | `references/strategy-playbook.md` | Change types → order, outline, views, size budget, audience |
 | `references/ir-authoring.md` | How to write good IR: scene recipes, anchors, common errors |
 | `docs/` | Background only (research rationale for the rules). Not needed to run the skill |

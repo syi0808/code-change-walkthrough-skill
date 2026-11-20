@@ -120,7 +120,7 @@
       "type": "object",
       "required": ["do"],
       "properties": {
-        "do": { "enum": ["open", "close", "layout", "diffView", "reveal", "highlight", "focus", "unfocus", "note", "type", "replay", "goto", "refs", "impact", "graph", "say", "wait", "clear", "delete", "back"] },
+        "do": { "enum": ["open", "close", "layout", "diffView", "reveal", "highlight", "focus", "unfocus", "note", "type", "replay", "goto", "refs", "impact", "graph", "say", "wait", "clear", "delete", "back", "peek", "trace"] },
         "pane": { "$ref": "#/$defs/pane" },
         "file": { "type": "string" },
         "view": { "$ref": "#/$defs/view" },
@@ -130,7 +130,7 @@
         "cue": { "type": "integer", "minimum": 1, "description": "narration item (sentence or bullet, 1-based) that appears when this step starts" }
       },
       "allOf": [
-        { "if": { "properties": { "do": { "const": "open" } } }, "then": { "required": ["file"], "properties": { "at": { "$ref": "#/$defs/anchor" }, "diff": { "$ref": "#/$defs/diffOptions" } } } },
+        { "if": { "properties": { "do": { "const": "open" } } }, "then": { "required": ["file"], "properties": { "at": { "$ref": "#/$defs/anchor" }, "diff": { "$ref": "#/$defs/diffOptions" }, "label": { "type": "string", "description": "pane 1: what the two panes are read side by side for (shown on the right pane)" } } } },
         { "if": { "properties": { "do": { "const": "close" } } }, "then": { "required": ["file"] } },
         { "if": { "properties": { "do": { "const": "delete" } } }, "then": { "required": ["file"] } },
         { "if": { "properties": { "do": { "const": "layout" } } }, "then": { "required": ["mode"], "properties": { "mode": { "enum": ["single", "columns"] } } } },
@@ -143,6 +143,15 @@
         { "if": { "properties": { "do": { "const": "goto" } } }, "then": { "required": ["from", "to"], "properties": {
           "from": { "type": "object", "required": ["at", "token"], "properties": { "at": { "$ref": "#/$defs/anchor" }, "token": { "type": "string" }, "file": { "type": "string" }, "view": { "$ref": "#/$defs/view" } } },
           "to": { "type": "object", "required": ["file"], "properties": { "file": { "type": "string" }, "at": { "$ref": "#/$defs/anchor" }, "view": { "$ref": "#/$defs/view" }, "pane": { "$ref": "#/$defs/pane" } } } } } },
+        { "if": { "properties": { "do": { "const": "peek" } } }, "then": { "required": ["from"], "properties": {
+          "from": { "type": "object", "required": ["at", "token"], "properties": { "at": { "$ref": "#/$defs/anchor" }, "token": { "type": "string" }, "file": { "type": "string" }, "view": { "$ref": "#/$defs/view" } } },
+          "to": { "type": "object", "properties": { "file": { "type": "string" }, "at": { "$ref": "#/$defs/anchor" }, "view": { "$ref": "#/$defs/view" } } },
+          "range": { "$ref": "#/$defs/anchor", "description": "lines of the definition to point at inside the hover" } } } },
+        { "if": { "properties": { "do": { "const": "trace" } } }, "then": { "required": ["frames"], "properties": {
+          "call": { "type": "string", "description": "the call being debugged, with its arguments; starts a session (a trace without it continues the last one)" },
+          "range": { "$ref": "#/$defs/anchor", "description": "the function: everything else is dimmed" },
+          "frames": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["at"], "properties": { "at": { "$ref": "#/$defs/anchor" }, "vars": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean", "null"] } } }, "additionalProperties": false } },
+          "returns": { "type": ["string", "number", "boolean", "null"], "description": "what the call returns; ends the session" } } } },
         { "if": { "properties": { "do": { "const": "impact" } } }, "then": { "required": ["items"], "properties": { "symbol": { "type": "string" }, "change": { "type": "string" }, "title": { "type": "string" }, "items": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["file", "at"], "properties": { "file": { "type": "string" }, "at": { "$ref": "#/$defs/anchor" }, "label": { "type": "string" }, "view": { "$ref": "#/$defs/view" }, "effect": { "$ref": "#/$defs/effect" }, "relation": { "type": "string" } } } } } } },
         { "if": { "properties": { "do": { "const": "refs" } } }, "then": { "required": ["items"], "properties": { "symbol": { "type": "string" }, "title": { "type": "string" }, "items": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["file", "at"], "properties": { "file": { "type": "string" }, "at": { "$ref": "#/$defs/anchor" }, "label": { "type": "string" }, "view": { "$ref": "#/$defs/view" } } } } } } },
         { "if": { "properties": { "do": { "const": "graph" } } }, "then": { "properties": {

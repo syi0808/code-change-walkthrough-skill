@@ -20,17 +20,17 @@ Classify each cluster separately when a change mixes types (R21).
 
 | Type | Order | Chapter skeleton | Key views and actions |
 |---|---|---|---|
-| Feature | **top-down** (entry point → new modules → wiring) | big picture → entry-point change → inside the new module → impact and tests | `diff` for the entry point, `after` for new files, `goto` to descend |
+| Feature | **map, then dependency order** (definitions → new modules → the entry point that uses them → wiring) | big picture (the flow, top-down) → new types and helpers → the new module → the entry-point change → impact and tests | `after` for new files, `peek` for short definitions, `trace` for helpers, `diff` for the entry point |
 | Bug fix | **symptom → cause → fix → regression test** | failing path (`before` view) → the faulty line → the fix → the test | the cause in `before` with `note tone:"why"`, the fix in `split` |
 | Refactor | **invariant → correspondence** | what stays the same → old-to-new mapping → summary of mechanical edits | `patience`, `split`, `whitespace: collapse`, one `refs` for repeated edits (R3) |
 | API change | **bottom-up** (definition → usages) | the new contract (signature, types) → 1–2 representative call sites → the remaining call-site patterns | `focus` the definition, `refs` labelled by pattern |
-| Performance | **before ↔ after contrast** | the hot path → the old approach → the new approach → evidence the behaviour is unchanged | `columns` or `split`, trade-offs as `note tone:"risk"` |
+| Performance | **before ↔ after contrast** | the hot path → the old approach → the new approach → evidence the behaviour is unchanged | a second pane with a `label` (old ↔ new) or `split`, `trace` on one input, trade-offs as `note tone:"risk"` |
 | Data / config | **data shape first** | schema or config → writers → readers → migration and compatibility | `graph` (writers → data → readers) |
 | Mixed | **cluster by cluster** | big picture (cluster map) → one chapter per cluster, in dependency order → mechanical edits summary | `graph` first, then one of the strategies above per chapter |
 
 **Ordering rules** (R13, R14, R22)
-- Use top-down when there is a clear entry point and the viewer needs the intent first. Start from `entry points`.
-- Use bottom-up when a new primitive is used in several places. Follow `bottom-up order`.
+- Give the top-down view in the scene-1 map (from `entry points`): the flow, part by part. Then build the change bottom-up, in dependency order (`bottom-up order` in the digest): the tour writes each file when its scene comes, so each file is written after what it uses, and `check` warns otherwise.
+- Use top-down scenes only when the change is all in the entry point (a behaviour change of one function) and the rest is wiring.
 - Use execution order when requests or data flow through a pipeline.
 - In every case, put a definition right before its usages, and an implementation right before its tests.
 
@@ -47,7 +47,9 @@ Classify each cluster separately when a change mixes types (R21).
 | Large file, few changes | nothing extra: diffs fold unchanged runs GitHub-style by default (`context: 3`), and folds the walkthrough points at open automatically. Use `context: null` to show the whole file |
 | The one edit that *is* the change (a guard added, a call wrapped, a condition flipped) | `type` on that hunk, so the viewer watches it happen (≤ ~15 lines, 1–3 per walkthrough) |
 | Unchanged related code | `view: "after"`; arrive there with `goto` when possible |
-| Two places to compare (caller/callee, interface/implementation, test/code) | `layout: "columns"` + `pane: 1` |
+| Two places to compare (old/new, caller/callee, test/code) | `open` into `pane: 1` with a `label` naming the comparison (R38); closes with the scene |
+| A short definition a line needs (enum, type, constant) | `peek` (R39) |
+| A helper or calculation whose result depends on its input | `trace` one call (R40) |
 | Impact, module relations | `graph` (3–7 nodes, labelled edges) |
 | Many usages of one symbol | `refs` (at most 5–6 items, classified by label) |
 

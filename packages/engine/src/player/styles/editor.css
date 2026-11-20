@@ -1,6 +1,7 @@
 /* ================================================================ stage & panes */
 .wt-stage { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); overflow: hidden; isolation: isolate; }
-.wt-panes { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 0fr; min-height: 0; transition: grid-template-columns .5s var(--ease-drawer); }
+/* the second group's width follows the timeline (Stage.svelte sets it while it slides in or out) */
+.wt-panes { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 0fr; min-height: 0; }
 .wt-panes.columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .wt-panes .pane + .pane { border-left: 1px solid var(--line); }
 .wt-panes:not(.columns) .pane:nth-child(2) { visibility: hidden; border: 0; }
@@ -15,6 +16,12 @@
 .wt-panes:not(.columns) .pane .tab.on::after { background: var(--accent-strong); }
 .tab .mode { font: 10px var(--mono); color: var(--fg-3); border: 1px solid var(--line-2); border-radius: 3px; padding: 0 4px; }
 .tab .sb { font: 600 11px var(--mono); }
+/* the active tab's close button (VS Code): what the pointer clicks to close a group */
+.tab .tx { display: grid; place-items: center; width: 18px; height: 18px; margin: 0 -6px 0 0; border-radius: 4px; color: var(--fg-2); }
+.tab .tx svg { width: 12px; height: 12px; }
+.tab .tx:hover { background: var(--bg-hover); color: var(--fg-strong); }
+/* pane 1: what the two groups are side by side for */
+.tabs .why { flex: 0 1 auto; align-self: center; min-width: 80px; margin: 0 8px 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 11.5px/18px var(--sans); padding: 0 9px; border-radius: 9px; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--bg)); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .tab.st-modified .nm, .tab.st-modified .sb { color: var(--git-mod); }
 .tab.st-added .nm, .tab.st-added .sb { color: var(--git-add); }
 .tab.st-deleted .nm { color: var(--git-del); text-decoration: line-through; } .tab.st-deleted .sb { color: var(--git-del); }
@@ -136,3 +143,41 @@
 /* code that the change did not touch: said where it is shown, so it is never mistaken for the change */
 .crumbs .outside { flex: none; font: 11px var(--sans); padding: 0 6px; border-radius: 3px; border: 1px dashed var(--fg-3); color: var(--fg-2); }
 .tab.outside .nm { font-style: italic; }
+
+/* ---------------------------------------------------------------- ⌘-hover: a definition over the line that uses it */
+.peek { position: absolute; z-index: 6; max-width: min(640px, calc(var(--vw, 100%) - 24px)); background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden; pointer-events: none; }
+.peek .pk-head { display: flex; align-items: center; gap: 6px; padding: 3px 10px; font: 11.5px var(--sans); color: var(--fg-2); border-bottom: 1px solid var(--line); }
+.peek .pk-head i { font-style: normal; color: var(--fg-3); }
+.peek .pk-head .fi { font: 700 9px var(--mono); }
+.peek .pk-head .outside { margin-left: 6px; font-size: 10.5px; padding: 0 5px; border-radius: 3px; border: 1px dashed var(--fg-3); }
+.peek .pk-code { padding: 4px 0; }
+.peek .pk-row { display: flex; white-space: pre; position: relative; }
+.peek .pk-n { flex: none; width: 34px; padding-right: 10px; text-align: right; color: var(--fg-3); user-select: none; }
+.peek .pk-t { padding-right: 14px; }
+.peek .pk-row.mark::before { content: ""; position: absolute; inset: 0; opacity: var(--mp, 1); background: color-mix(in srgb, var(--t-focus) 14%, transparent); box-shadow: inset 3px 0 var(--t-focus); }
+
+/* ---------------------------------------------------------------- a debug session (trace) */
+/* the line paused on: VS Code's yellow band and arrow; it glides from stop to stop */
+.dbg-line { position: absolute; left: 0; right: 0; z-index: 1; pointer-events: none; background: color-mix(in srgb, #ffcc00 20%, transparent); box-shadow: inset 0 1px color-mix(in srgb, #ffcc00 45%, transparent), inset 0 -1px color-mix(in srgb, #ffcc00 45%, transparent); }
+.dbg-arrow { position: absolute; left: 2px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; z-index: 3; }
+.dbg-arrow svg { display: block; width: 14px; height: 14px; }
+/* the values after each line's code (VS Code's inline values): a value just shown is brighter, then settles */
+.dbg-vals { position: absolute; z-index: 3; display: flex; align-items: center; gap: 2px; white-space: nowrap; pointer-events: none; font: italic 12px var(--mono); color: var(--fg-2); }
+.dbg-vals .dv { padding: 0 5px; border-radius: 3px; background: color-mix(in srgb, var(--fg-3) calc(10% + var(--fr, 0) * 18%), transparent); }
+.dbg-vals .dv .k { color: var(--fg-2); }
+.dbg-vals .dv .v { color: color-mix(in srgb, var(--fg-strong) calc(var(--fr, 0) * 100%), var(--fg)); font-style: normal; }
+.dbg-vals .dv.chg { box-shadow: inset 0 0 0 1px color-mix(in srgb, #ffcc00 calc(25% + var(--fr, 0) * 50%), transparent); }
+.dbg-vals .sep { color: var(--fg-3); }
+.dbg-vals.over { padding-left: 6px; background: var(--bg); box-shadow: -8px 0 8px var(--bg); border-radius: 3px; }
+.dbg-ret { margin-left: 8px; padding: 0 6px; border-radius: 3px; font-style: normal; color: var(--accent); background: color-mix(in srgb, var(--accent) calc(12% + var(--fr, 0) * 14%), transparent); }
+.dbg-ret .v { color: var(--fg-strong); }
+/* the debug toolbar, on the editor's header */
+.dbg-bar { display: inline-flex; align-items: center; gap: 8px; margin-right: 10px; padding: 1px 8px 1px 4px; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 5px; font: 12px var(--sans); color: var(--fg); white-space: nowrap; min-width: 0; max-width: 60%; overflow: hidden; }
+.dbg-btns { display: flex; flex: none; gap: 1px; padding-right: 6px; border-right: 1px solid var(--line-2); }
+.dbg-btns i { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 4px; color: #75beff; }
+.dbg-btns i.stop { color: #f48771; }
+.dbg-btns i svg { width: 14px; height: 14px; }
+.dbg-btns i.on { background: color-mix(in srgb, #75beff 30%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, #75beff 70%, transparent); }
+.dbg-call { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+.dbg-call b { font-weight: 600; font-size: 11px; color: var(--fg-2); text-transform: uppercase; letter-spacing: .03em; }
+.dbg-call code { font: 12px var(--mono); overflow: hidden; text-overflow: ellipsis; }
