@@ -36,6 +36,8 @@
       {/key}
       <span class="o-spacer"></span>
       {#if hunk}<span class="o-hunk">hunk {hunk}</span>{/if}
+      <!-- in a drill-down: where it will come back to (a cue for resuming the line it left) -->
+      {#if s.detour}<span class="o-detour swap-soft" title={`${s.detour.file}:${s.detour.line}`}><span class="k">↩ {t('detour.back')}</span><b>{baseName(s.detour.file)}:{s.detour.line}</b></span>{/if}
       {#if file}{#key file}<span class="swap-soft">{@render chip(file)}</span>{/key}{/if}
     {/if}
   </div>

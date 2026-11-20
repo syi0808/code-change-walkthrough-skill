@@ -19,7 +19,7 @@ Your job is to **author Walkthrough IR**. The engine replays the **whole diff** 
 ## Principles
 
 1. **Comprehension over spectacle.** Every motion must be a real IDE action (open, scroll, go to definition, find references). Nothing decorative.
-2. **Evidence-based design.** Follow the design rules R1–R36 in `references/design-rules.md`.
+2. **Evidence-based design.** Follow the design rules R1–R37 in `references/design-rules.md`.
 3. **Whole-codebase context.** A diff shows what was edited, not what the edit reaches or answers to. Explain through call, dependency, and data relations and the intent of the change, not file by file. Bring in unchanged code a reviewer needs (R34–R36): the dependents of every changed contract, and the constraints an edit answers.
 4. **Only verified claims.** Confirm every statement in the narration by reading the code. If an intent is unverified, turn it into a `reviewFocus` question instead of asserting it.
 5. **Language- and framework-agnostic.** The analysis script uses heuristics. Treat its output as leads, and confirm them in the code.
@@ -102,6 +102,8 @@ Read `references/ir-authoring.md` for patterns and pitfalls. Run `node "<skill>/
 - Write every piece of prose in note form, without em dashes (R32): 개조식 in Korean, telegraphic style in English. Only `question` is a full question
 - Write narration as **one lead line (the why) + 2–4 bullets**, one bullet per visual beat in step order, each pinned to its step with `cue`. Say where you are going before a `goto`, `refs`, or `impact`
 - Show the context outside the diff (R34, R35): an `impact` scene after the change it is about (or at the end) with the unchanged dependents and their effects, and a `goto` to a constraint before an edit that answers it
+- Drill down when a line needs a definition the viewer has not seen (R37): `goto` it, 1 or 2 bullets on what it does, `back`, then a bullet that applies it to the line. One level, a few steps
+- Write the `bridge` and `question` of a scene attached to a file (`at`) as what the code about to be replayed is for: they are shown before the replay (R30)
 - Give scene 1's graph nodes a `file`: the graph docks as a structure map that tracks the file in view
 - Fill in `meta.summary` (note-form bullets), `strategy.rationale`, `takeaways`, `reviewFocus`, and `meta.impact` (R36; `check` warns when it is empty)
 
@@ -150,6 +152,7 @@ The page embeds source code. Do not upload or publish it anywhere unless the use
 - [ ] New files open in `after`, deleted files in `before`, and in-place rewrites in `split`? (R26–R28)
 - [ ] Is unchanged code that the reader needs (callers, definitions) connected through `goto`, `refs`, or `impact`? (principle 3, R34, R35)
 - [ ] Does `meta.impact` say what outside the diff the change reaches, even if nothing? (R36)
+- [ ] Does every drill-down come `back` within its scene, one level deep, and resume with a bullet that applies what it showed? (R37)
 - [ ] Is all prose except `question` in note form (개조식, telegraphic)? (R32)
 - [ ] Are repetitive mechanical edits collapsed into one scene? (R3)
 - [ ] Is every claim verified in code, and does the narration explain instead of reading code aloud? (principle 4, R9)
@@ -164,7 +167,7 @@ The page embeds source code. Do not upload or publish it anywhere unless the use
 | `i18n/<lang>.json` | Installed UI string tables (created by `engine.mjs i18n`; not shipped) |
 
 Both scripts are generated bundles (built from `packages/engine` in the source repository). They are self-contained: don't edit them, and don't look for an engine elsewhere.
-| `references/design-rules.md` | Design rules R1–R36 |
+| `references/design-rules.md` | Design rules R1–R37 |
 | `references/strategy-playbook.md` | Change types → order, outline, views, size budget, audience |
 | `references/ir-authoring.md` | How to write good IR: scene recipes, anchors, common errors |
 | `docs/` | Background only (research rationale for the rules). Not needed to run the skill |

@@ -56,7 +56,13 @@
     if (!ptr || !keys) return;
     const p = s.pointer;
     const to = p ? pos(p.to) : null;
-    if (!p || !to) { ptr.hidden = true; keys.hidden = true; return; }
+    if (!p || !to) {
+      ptr.hidden = true;
+      // keys pressed without the mouse (Go Back): shown at the bottom of the code, where the eye already is
+      keys.hidden = !s.keys;
+      if (s.keys) { const st = document.querySelector('.wt-stage')!.getBoundingClientRect(); Object.assign(keys.style, { left: `${st.left + st.width / 2 - 30}px`, top: `${st.bottom - 64}px` }); }
+      return;
+    }
     const from = pos(p.from) || pos(null)!;
     // natural motion: slow-in / slow-out along a gentle arc
     const dx = to.x - from.x, dy = to.y - from.y, dist = Math.hypot(dx, dy) || 1;

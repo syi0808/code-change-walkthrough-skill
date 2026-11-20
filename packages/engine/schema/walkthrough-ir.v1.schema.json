@@ -120,7 +120,7 @@
       "type": "object",
       "required": ["do"],
       "properties": {
-        "do": { "enum": ["open", "close", "layout", "diffView", "reveal", "highlight", "focus", "unfocus", "note", "type", "replay", "goto", "refs", "impact", "graph", "say", "wait", "clear", "delete"] },
+        "do": { "enum": ["open", "close", "layout", "diffView", "reveal", "highlight", "focus", "unfocus", "note", "type", "replay", "goto", "refs", "impact", "graph", "say", "wait", "clear", "delete", "back"] },
         "pane": { "$ref": "#/$defs/pane" },
         "file": { "type": "string" },
         "view": { "$ref": "#/$defs/view" },

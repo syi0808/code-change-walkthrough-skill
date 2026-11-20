@@ -266,6 +266,49 @@ describe('procedures', () => {
   });
 });
 
+describe('preview', () => {
+  test('an explanation attached to a file is announced before the file is replayed', () => {
+    const res = compileFile(example, { repo });
+    const scs = scenesOf(res.ir);
+    const i = scs.findIndex((x) => x._previewed);
+    assert.ok(i > 0, 'some scene is previewed');
+    const sc = scs[i];
+    // the tour scene right before it replays its file, and opens with its bridge and question
+    let k = i - 1;
+    while (k > 0 && scs[k - 1].auto && scs[k - 1].tour?.file === sc.at!.file) k--;
+    assert.equal(scs[k].tour?.file, sc.at!.file);
+    assert.equal(scs[k].bridge, sc.bridge);
+    assert.equal(scs[k].question, sc.question);
+  });
+});
+
+describe('drill-down', () => {
+  test('back returns to the line its goto was clicked on, and marks that goto as a detour', () => {
+    const res = compileFile(example, { repo });
+    const steps = stepsOf(res.ir);
+    const b = steps.findIndex((st) => st.do === 'back');
+    assert.ok(b > 0, 'the example drills down');
+    const g = steps.slice(0, b).reverse().find((st) => st.do === 'goto')!;
+    assert.equal(g._detour, true);
+    assert.equal(steps[b]._to?.file, g._from?.file);
+    assert.equal(steps[b]._to?.line, g._from?.line);
+    assert.ok(!res.warnings.some((w) => /drill-down/.test(w.message)), 'the example drill-down is short and one level deep');
+  });
+  test('a back with nothing to return to is an error; a drill-down inside a drill-down is warned', () => {
+    const ir = load();
+    const first = ir.chapters[0].scenes![0];
+    first.steps = [...(first.steps || []), { do: 'back' }];
+    assert.ok(compile(ir, { repo }).errors.some((e) => /"back" needs a "goto"/.test(e.message)));
+    const ir2 = load();
+    const sc = ir2.chapters.flatMap((ch) => ch.scenes || []).find((x) => x.id === 'transient')!;
+    const g = sc.steps!.find((st) => st.do === 'goto')!;
+    const i = sc.steps!.indexOf(g);
+    // a second goto (back to the same definition) before the first returns, then two backs
+    sc.steps!.splice(i + 1, 0, { ...g, cue: undefined, from: { at: { find: 'constructor(public status' }, token: 'status' }, to: { file: 'src/api/retry.ts', at: { find: 'constructor(public status' } } }, { do: 'back' });
+    assert.ok(compile(ir2, { repo }).warnings.some((w) => /drill-down inside a drill-down/.test(w.message)));
+  });
+});
+
 describe('i18n', () => {
   test('the published Korean table is complete and keeps every placeholder', async () => {
     const { validateTable, EN } = await import('../src/i18n/index.ts');
@@ -276,6 +319,8 @@ describe('i18n', () => {
   });
   test('the compiler names tour scenes from the table, and the page embeds it', () => {
     const ir = load();
+    // detached from the explanation scenes, tour scenes keep their generated question (an attached one previews its scene's)
+    for (const ch of ir.chapters || []) for (const sc of ch.scenes || []) delete sc.at;
     const table = { language: 'ko', strings: { 'tour.question': '{name}: 무엇이 바뀌었나' } };
     ir.meta = { ...(ir.meta || {}), language: 'ko' };
     const res = compile(ir, { repo, i18n: table });

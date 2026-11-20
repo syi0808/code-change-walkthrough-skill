@@ -21,7 +21,7 @@
     const via = m.edges.find((e) => e.to === n.id && e.label)?.label || '';
     return { label: n.label || n.id, sub: n.sub || '', via };
   });
-  const bridging = $derived(player.live && !!s.bridge && !sc.auto);
+  const bridging = $derived(player.live && !!s.bridge);
   const v = $derived(!bridging && player.voice && !player.voicePlaced ? player.voice : null);
   let cap: HTMLDivElement | undefined = $state();
   const off = player.layout(ORDER.caption, () => {

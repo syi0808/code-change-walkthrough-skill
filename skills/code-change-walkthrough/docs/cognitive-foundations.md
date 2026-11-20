@@ -1,4 +1,4 @@
-# Cognitive foundations: rationale for R1–R36
+# Cognitive foundations: rationale for R1–R37
 
 This is background material and is not loaded at runtime. The operational rules live in `../references/design-rules.md`. This document gives the research basis for each rule and notes how the engine and the skill implement it.
 
@@ -149,6 +149,19 @@ This is background material and is not loaded at runtime. The operational rules 
 - **R36.** `meta.impact` states the reach (or its absence) in the overview, as an advance organizer for risk (Ausubel, 1960). `check` warns when it is empty.
 - Every unchanged file is badged *outside the diff* in the editor path and in the impact list (source monitoring).
 
+## 12. Drilling down and coming back (R37)
+
+**Basis**
+- Programmers read *as needed*: they look up a definition when the code in front of them depends on it, rather than reading everything first (Littman, Pinto, Letovsky & Soloway, 1986). "What does this do?" about a callee is one of the most frequent questions in change tasks (Sillito, Murphy & De Volder, 2006).
+- Knowing what a component is before seeing it work with others frees working memory for how they interact (pre-training principle; Mayer, 2021). A definition shown at the moment the line needs it is pre-training in the smallest dose.
+- A detour suspends a goal. Suspended goals decay within seconds unless rehearsed or cued, and resuming without a cue to where one left off is slow and error prone (memory for goals: Altmann & Trafton, 2002; resumption cues: Trafton, Altmann, Brock & Mintz, 2003). Working memory holds about four chunks (Cowan, 2001): a detour inside a detour leaves the first line with no room.
+- Integration needs the two pieces together: new knowledge is used when it is applied to the place it was fetched for (self-explanation, Chi et al., 1994).
+
+**Rules and implementation**
+- **R37.** `goto` the definition, 1 or 2 bullets, `back` to the line, then a bullet that applies the definition to it. One level, a few steps, inside the scene; `check` warns otherwise.
+- While away, the question strip names the line the detour will return to (a resumption cue that stays in view); `back` lands on that line, lights it and flashes it, so the place to resume is found without search.
+- The explorer switches with the jump instead of walking: during a Cmd+Click the eyes are on the code, and a second region moving at that moment competes with the jump (one locus of motion).
+
 ---
 
 ### References
@@ -162,7 +175,10 @@ This is background material and is not loaded at runtime. The operational rules 
 - Chi, M. T. H., et al. (1994). Eliciting self-explanations improves understanding. *Cognitive Science*.
 - Cowan, N. (2001). The magical number 4 in short-term memory. *Behavioral and Brain Sciences*.
 - Gleicher, M., et al. (2011). Visual comparison for information visualization. *Information Visualization*.
+- Altmann, E. M., & Trafton, J. G. (2002). Memory for goals: An activation-based model. *Cognitive Science*.
 - Kalyuga, S., Ayres, P., Chandler, P., & Sweller, J. (2003). The expertise reversal effect. *Educational Psychologist*.
+- Littman, D. C., Pinto, J., Letovsky, S., & Soloway, E. (1986). Mental models and software maintenance. *Empirical Studies of Programmers*.
+- Trafton, J. G., Altmann, E. M., Brock, D. P., & Mintz, F. E. (2003). Preparing to resume an interrupted task: Effects of prospective goal encoding and retrospective rehearsal. *IJHCS*.
 - Ko, A. J., Myers, B. A., Coblenz, M. J., & Aung, H. H. (2006). An exploratory study of how developers seek, relate, and collect relevant information during software maintenance tasks. *IEEE TSE*.
 - Lawrance, J., Bogart, C., Burnett, M., Bellamy, R., Rector, K., & Fleming, S. D. (2013). How programmers debug, revisited: An information foraging theory perspective. *IEEE TSE*.
 - Letovsky, S. (1987). Cognitive processes in program comprehension. *J. Systems and Software*.

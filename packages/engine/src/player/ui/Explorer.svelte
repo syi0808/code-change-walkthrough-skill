@@ -137,7 +137,7 @@
       <div class="ex-row-wrap" style={r.g < 1 ? `height:${(ROW_H * r.g).toFixed(2)}px;opacity:${r.g.toFixed(3)}` : null}>
         {#if r.kind === 'input'}
           {@const icon = fileIcon(r.label || 'x')}
-          <div class="ex-row editing" class:file={!r.open} class:dir={r.open} style={pad}>{#each { length: r.depth } as _, k}<span class="ig" style="left:{14 + k * 12}px"></span>{/each}{#if r.open}<span class="tw">{@html ICON.chevron}</span>{:else}<span class="tw"></span><span class="fi {r.label.includes('.') ? icon[1] : 'i-gray'}">{@html r.label.includes('.') && icon[0] !== '•' ? icon[0] : ICON.fileDoc}</span>{/if}<span class="ex-input"><span class="tx">{r.label}</span><span class="caret"></span></span></div>
+          <div class="ex-row editing" class:file={!r.open} class:dir={r.open} style={pad}>{#each { length: r.depth } as _, k}<span class="ig" style="left:{14 + k * 12}px"></span>{/each}{#if r.open}<span class="tw">{@html ICON.chevron}</span>{:else}<span class="fi {r.label.includes('.') ? icon[1] : 'i-gray'}">{@html r.label.includes('.') && icon[0] !== '•' ? icon[0] : ICON.fileDoc}</span>{/if}<span class="ex-input"><span class="tx">{r.label}</span><span class="caret"></span></span></div>
         {:else if r.kind === 'more'}
           <div class="ex-row more" style={pad}>{#each { length: r.depth } as _, k}<span class="ig" style="left:{14 + k * 12}px"></span>{/each}<span class="tw"></span><span class="nm">{t('explorer.omitted')}</span></div>
         {:else if r.kind === 'dir'}
@@ -151,7 +151,7 @@
           <div class="ex-row file{r.status ? ` st-${r.status}` : ''}" class:dragging={s.exDrag?.path === r.path} class:editing={!!edit} class:menu-on={s.exMenu?.path === r.path} class:gone={isGone(r.path)} class:open={open.has(r.path)} class:active={r.path === activeFile} class:selecting={r.path === s.exFocus} class:target={r.path === target} class:cur={r.path === cur} class:stub={!r.embedded}
             role="treeitem" aria-selected={r.path === activeFile} tabindex="-1" data-file={r.path} data-path={r.path} style={pad} title={r.path + (r.embedded ? '' : ': ' + t('explorer.notEmbedded'))}
             onclick={() => player.exploreOpen(r.path)} onkeydown={(e) => e.key === 'Enter' && player.exploreOpen(r.path)}>
-            {#each { length: r.depth } as _, k}<span class="ig" style="left:{14 + k * 12}px"></span>{/each}<span class="tw"></span><span class="fi {icon[1]}">{#if icon[0] === '•'}{@html ICON.fileDoc}{:else}{icon[0]}{/if}</span>{#if edit}<span class="ex-input"><span class="tx" class:sel={edit.sel}>{edit.text}</span>{#if !edit.sel}<span class="caret"></span>{/if}</span>{:else}<span class="nm">{r.label}</span>{#if r.status}<span class="sb">{STATUS_LETTER[r.status] || ''}</span>{/if}{/if}
+            {#each { length: r.depth } as _, k}<span class="ig" style="left:{14 + k * 12}px"></span>{/each}<span class="fi {icon[1]}">{#if icon[0] === '•'}{@html ICON.fileDoc}{:else}{icon[0]}{/if}</span>{#if edit}<span class="ex-input"><span class="tx" class:sel={edit.sel}>{edit.text}</span>{#if !edit.sel}<span class="caret"></span>{/if}</span>{:else}<span class="nm">{r.label}</span>{#if r.status}<span class="sb">{STATUS_LETTER[r.status] || ''}</span>{/if}{/if}
           </div>
         {/if}
       </div>

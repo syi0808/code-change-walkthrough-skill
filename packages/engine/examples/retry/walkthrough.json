@@ -330,7 +330,7 @@
           "id": "transient",
           "title": "What counts as transient",
           "goal": "Know retries are limited to 5xx and 429",
-          "narration": "`isTransient`: true only for an `HttpError` with status **5xx or 429** → client errors such as 404 fail at once\n\n- This check = why `client.ts` now throws `HttpError` instead of a plain `Error`",
+          "narration": "`isTransient`: true only for 5xx or 429 → 404 fails at once\n\n- Check needs `HttpError` → its definition first\n- `HttpError`: keeps the response `status` (a plain `Error` has none)\n- Back at the check: that `status` → 5xx or 429 retried\n- So `client.ts` now throws `HttpError` instead of `Error`",
           "steps": [
             {
               "do": "focus",
@@ -351,11 +351,29 @@
                 "at": {
                   "symbol": "HttpError"
                 }
-              }
+              },
+              "cue": 2
             },
             {
-              "do": "say",
-              "text": "`HttpError` exists to keep `status`"
+              "do": "highlight",
+              "range": {
+                "find": "constructor(public status"
+              },
+              "tone": "info",
+              "label": "status",
+              "cue": 3
+            },
+            {
+              "do": "back"
+            },
+            {
+              "do": "highlight",
+              "range": {
+                "find": "err.status >= 500"
+              },
+              "tone": "warn",
+              "label": "5xx · 429",
+              "cue": 4
             }
           ],
           "question": "Which failures count as worth retrying?",

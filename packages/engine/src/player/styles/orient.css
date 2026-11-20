@@ -43,3 +43,7 @@
 @keyframes swapIn { from { opacity: 0; transform: translateY(3px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
 .wt-panes, .wt-refs { transition: opacity var(--d-m) var(--ease); }
 .wt-stage.bridging .wt-panes, .wt-stage.bridging .wt-refs { opacity: .5; }
+/* in a drill-down: the line it will come back to */
+.o-detour { display: inline-flex; align-items: baseline; gap: 6px; padding: 1px 8px; margin-right: 8px; border-radius: 10px; font-size: 11.5px; color: var(--fg-2); background: color-mix(in srgb, var(--accent) 14%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); white-space: nowrap; }
+.o-detour .k { color: var(--accent); font-weight: 600; }
+.o-detour b { font: 600 11.5px var(--mono); color: var(--fg); }

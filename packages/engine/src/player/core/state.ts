@@ -75,6 +75,8 @@ export interface State {
   /** The scene the outline panel highlights: it changes together with the screen change, not during a replay. */
   guideScene: number;
   bridge: { p: number } | null;
+  /** In a drill-down (a goto a `back` will return from): the line it left, shown until the return. */
+  detour: { file: string; line: number; side: Side } | null;
 }
 
 /** An impact item lights up in the colour of its verdict. */
@@ -82,7 +84,7 @@ const EFFECT_TONE: Record<Effect, string> = { safe: 'info', check: 'warn', break
 
 export const DIFF_DEFAULT: DiffSettings = { mode: 'unified', algorithm: 'patience', granularity: 'word', context: 3, whitespace: 'collapse' };
 const newPane = (): PaneState => ({ tabs: [], file: null, view: 'after', diff: { ...DIFF_DEFAULT }, scroll: null, mem: {}, hl: [], focus: null, notes: [], flash: null, tokline: null, enter: null });
-const initState = (): State => ({ layout: 'single', active: 0, panes: [newPane(), newPane()], pointer: null, pointerAt: null, keys: null, toast: null, refs: null, graph: null, map: null, say: '', typing: [], exFocus: null, exScroll: null, exEdit: null, exDrag: null, exMenu: null, exRemove: null, exTop: 0, reveal: null, scene: 0, sceneP: 0, sceneT: 0, shown: 0, guideScene: 0, bridge: null });
+const initState = (): State => ({ layout: 'single', active: 0, panes: [newPane(), newPane()], pointer: null, pointerAt: null, keys: null, toast: null, refs: null, graph: null, map: null, say: '', typing: [], exFocus: null, exScroll: null, exEdit: null, exDrag: null, exMenu: null, exRemove: null, exTop: 0, reveal: null, scene: 0, sceneP: 0, sceneT: 0, shown: 0, guideScene: 0, bridge: null, detour: null });
 
 function resetTransient(s: State): void {
   for (const p of s.panes) { p.hl = []; p.focus = null; p.notes = []; p.flash = null; p.tokline = null; p.enter = null; }
@@ -231,17 +233,18 @@ function applyFsOp(s: State, st: Step, pr: Proc): void {
       if (at.name === 'denter') s.keys = ['⏎'];
       return;
     }
-    if (at.name === 'travel') { s.pointer = { from: op.dir ? dirBtn : last, to: btn, p: ease(at.p) }; return; }
-    s.pointer = { from: btn, to: btn, p: 1, click: at.name === 'press' };
-    s.pointerAt = btn;
-    if (pr.reached('name') && !pr.reached('walk')) s.exEdit = { mode: 'create', at: made ?? op.parent, text: typed(op.name), sel: false };
-    if (at.name === 'enter') s.keys = ['⏎'];
-    if (pr.reached('walk')) s.pointer = null;
-    return;
+    if (!pr.reached('walk')) {
+      if (at.name === 'travel') { s.pointer = { from: op.dir ? dirBtn : last, to: btn, p: ease(at.p) }; return; }
+      s.pointer = { from: btn, to: btn, p: 1, click: at.name === 'press' };
+      s.pointerAt = btn;
+      if (pr.reached('name')) s.exEdit = { mode: 'create', at: made ?? op.parent, text: typed(op.name), sel: false };
+      if (at.name === 'enter') s.keys = ['⏎'];
+      return;
+    }
   }
   const old: Anchor = { kind: 'ex', path: op.from! };
   const now: Anchor = { kind: 'ex', path: file };
-  if (!pr.reached('walk')) {
+  if (op.kind !== 'create' && !pr.reached('walk')) {
     if (at.name === 'travel') { s.pointer = { from: last, to: old, p: ease(at.p) }; return; }
     if (op.kind === 'rename') {
       s.pointer = { from: old, to: old, p: 1, click: at.name === 'select' };
@@ -260,8 +263,11 @@ function applyFsOp(s: State, st: Step, pr: Proc): void {
     s.pointerAt = drop;
     return;
   }
-  // the file now sits in its place: the explorer follows it, then the pointer clicks it open
-  s.pointer = at.name === 'walk' ? null : at.name === 'beat' ? { from: s.pointerAt, to: now, p: ease(at.p) } : { from: now, to: now, p: 1, click: at.name === 'press' };
+  // the file now sits in its place: the pointer waits where the operation ended while the explorer
+  // follows the file, then goes to the new row and clicks it: the file opens because it is clicked
+  const rest: Anchor = op.kind === 'create' ? { kind: 'exNew' } : op.kind === 'rename' ? old : { kind: 'ex', path: dropRow(op.parent) };
+  s.pointerAt = rest;
+  s.pointer = at.name === 'walk' ? { from: rest, to: rest, p: 1 } : at.name === 'reach' ? { from: rest, to: now, p: ease(at.p) } : { from: now, to: now, p: 1, click: at.name === 'click' };
 }
 /** After a file operation, the explorer rests where it ended (and a drag leaves the folders it opened open). */
 function fsRest(s: State, st: Step, before: string | null): void {
@@ -432,11 +438,13 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
       follow(s, fr.file, to.file, pr.pp('jump'), key);
       const r: LineRange = { side: to.side || 'after', from: to.from || 1, to: to.to || to.from || 1 };
       setScroll(tp, r, 'center', same ? glide(pr.pp('land')) : 1, pr.len('land'));
-      tp.hl.push({ ...r, tone: 'focus', label: null, p: pr.pp('land'), key });
+      tp.hl.push({ ...r, tone: 'focus', label: null, p: pr.pp('land'), key, t: pr.t('land') });
       // the flash fades over everything after the click
       const j0 = phaseStart(pr.ph, 'jump') || 0, rest = phasesMs(pr.ph) - j0 || 1;
       tp.flash = { side: r.side, from: r.from, to: r.from, key: `${st._id}`, p: pr.ms === Infinity ? 1 : clamp((pr.ms - j0) / rest, 0, 1) };
       s.toast = t('goto.toast', { token: st.from?.token || '', to: `${to.file}:${to.line}` });
+      // a drill-down: the line it left stays named on screen until the viewer is brought back to it
+      if (st._detour) s.detour = { file: fr.file, line: fr.line, side: fr.side };
       s.pointerAt = anchor;
       s.pointer = !pr.reached('flash') ? { from: anchor, to: anchor, p: 1, fade: true } : null;
       s.keys = null;
@@ -492,6 +500,27 @@ export function apply(s: State, st: Step, p: number, dur: number): void {
         if (i >= 0) pane.tabs.splice(i, 1);
         if (pane.file === file) { pane.file = null; const last = pane.tabs[pane.tabs.length - 1]; if (last) showFile(s, pi, last); }
       }
+      return;
+    }
+    case 'back': {
+      // Go Back (⌃−): to the line the drill-down left. That line is lit and flashes as it lands, so the
+      // place the explanation resumes is found at once, with what was just learned to apply to it.
+      const to = st._to;
+      if (!to || !to.line || !to.side) return;
+      const pr = procedure(st, p, dur);
+      if (!pr.reached('jump')) { s.keys = ['⌃', '−']; s.pointer = null; return; }
+      const before = s.panes[s.active].file;
+      const tp = s.panes[to.pane];
+      const same = tp.file === to.file;
+      showFile(s, to.pane, to.file, to.view);
+      follow(s, before, to.file, 1, key);
+      const r: LineRange = { side: to.side, from: to.line, to: to.line };
+      setScroll(tp, r, 'center', same ? glide(pr.pp('land')) : 1, pr.len('land'));
+      tp.hl.push({ ...r, tone: 'focus', label: null, p: pr.pp('land'), key, t: pr.t('land') });
+      const j0 = phaseStart(pr.ph, 'jump') || 0, rest = phasesMs(pr.ph) - j0 || 1;
+      tp.flash = { side: r.side, from: r.from, to: r.from, key: `${st._id}`, p: pr.ms === Infinity ? 1 : clamp((pr.ms - j0) / rest, 0, 1) };
+      s.toast = t('back.toast', { to: `${to.file.slice(to.file.lastIndexOf('/') + 1)}:${to.line}` });
+      s.detour = null;
       return;
     }
     case 'graph': {
@@ -568,7 +597,8 @@ export function stateAt(T: number): State {
   s.sceneT = t;
   s.bridge = t < sc.lead ? { p: t / sc.lead } : null;
   // orientation follows what is on screen: a tour scene's file is "current" once it opens
-  const early = sc.auto && k > 0 && sc.swapAt > 0;
+  // (a tour scene that opens with a preview of its explanation is current from its first frame: the card announces it)
+  const early = sc.auto && k > 0 && sc.swapAt > 0 && !sc.lead;
   s.shown = early && t < sc.swapAt ? k - 1 : k;
   // the outline changes with the screen change (one event), never during the replay that follows
   s.guideScene = k > 0 && ((early && t < sc.swapAt) || (!sc.auto && t < sc.swapEnd)) ? k - 1 : k;

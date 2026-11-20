@@ -34,7 +34,7 @@ export type PhaseName =
   // file operations in the explorer: New File / F2 / drag, typing the name, Enter; right click, Delete
   | 'select' | 'key' | 'name' | 'enter' | 'grab' | 'drag' | 'drop' | 'menu' | 'aim' | 'remove' | 'close'
   // New Folder before New File: travel to its button, press, type the folder's name, Enter, it opens
-  | 'dtravel' | 'dpress' | 'dname' | 'denter' | 'dopen'
+  | 'dtravel' | 'dpress' | 'dname' | 'denter' | 'dopen' | 'reach'
   // anything else, and the time a step stays before the next
   | 'main' | 'hold';
 export interface Phase { name: PhaseName; ms: number; /** refs / impact: the item */ i?: number }
@@ -91,11 +91,12 @@ function fsPhases(st: Step, nav: (ms: number) => number): Phase[] {
   const locate: Phase = { name: 'locate', ms: nav(locateMs(st._walk)) };
   // once the file exists, the explorer follows it to its sorted row (VS Code reveals it)
   const walk: Phase = { name: 'walk', ms: Math.max(250, op.settle || 0) };
+  // then the pointer goes to the new row and clicks it open: the file opens because it is clicked
+  const open: Phase[] = [walk, { name: 'reach', ms: nav(560) }, { name: 'click', ms: 210 }, { name: 'swap', ms: ACT.swap }];
   if (op.kind === 'create') {
     const folder: Phase[] = op.dir ? [{ name: 'dtravel', ms: nav(690) }, { name: 'dpress', ms: 210 }, { name: 'dname', ms: nameMs(op.dir) }, { name: 'denter', ms: 260 }, { name: 'dopen', ms: Math.max(320, op.reveal || 0) }] : [];
-    return [locate, ...folder, { name: 'travel', ms: nav(op.dir ? 420 : 690) }, { name: 'press', ms: 210 }, { name: 'beat', ms: 150 }, { name: 'name', ms: nameMs(op.name) }, { name: 'enter', ms: 260 }, walk, { name: 'swap', ms: ACT.swap }];
+    return [locate, ...folder, { name: 'travel', ms: nav(op.dir ? 420 : 690) }, { name: 'press', ms: 210 }, { name: 'beat', ms: 150 }, { name: 'name', ms: nameMs(op.name) }, { name: 'enter', ms: 260 }, ...open];
   }
-  const open: Phase[] = [walk, { name: 'beat', ms: 200 }, { name: 'press', ms: 210 }, { name: 'swap', ms: ACT.swap }];
   if (op.kind === 'rename') return [locate, { name: 'travel', ms: nav(690) }, { name: 'select', ms: 210 }, { name: 'key', ms: 380 }, { name: 'name', ms: nameMs(op.name) }, { name: 'enter', ms: 260 }, ...open];
   return [locate, { name: 'travel', ms: nav(690) }, { name: 'grab', ms: 260 }, { name: 'drag', ms: Math.max(600, op.drag || 0) }, { name: 'drop', ms: 260 }, ...open];
 }
@@ -142,10 +143,9 @@ function build(st: Step): Phase[] {
     case 'goto': {
       const g = ACT.goto;
       return [
-        ...(st._walkFrom ? [{ name: 'walk', ms: st._walkFrom } as Phase] : []),
         scroll(st._moveFrom, g.scroll),
         { name: 'point', ms: g.point }, { name: 'cmd', ms: g.cmd }, { name: 'click', ms: g.click },
-        { name: 'jump', ms: st._walk || 0 },
+        { name: 'jump', ms: 0 },
         { name: 'land', ms: Math.round(moveMs(st._move || 0, g.land)) },
         { name: 'flash', ms: g.flash },
       ];
@@ -161,6 +161,8 @@ function build(st: Step): Phase[] {
     }
     case 'layout': return [{ name: 'main', ms: ACT.layout }, ...walk];
     case 'delete': return deletePhases();
+    // Go Back: the keys, the jump to the line left (the explorer switches with it), the landing, the flash
+    case 'back': return [{ name: 'cmd', ms: 520 }, { name: 'jump', ms: 0 }, { name: 'land', ms: Math.round(moveMs(st._move || 0, 560)) }, { name: 'flash', ms: 700 }];
     case 'wait': return [{ name: 'main', ms: st.ms || 0 }];
     default: return [{ name: 'main', ms: MAIN[st.do] ?? 800 }];
   }
@@ -225,7 +227,7 @@ export function cueOffset(st: Step, dur: number): number {
 export interface Timed { st: Step; start: number; dur: number }
 
 /** Steps that point the viewer at something: the sentence about it should arrive with them. */
-const POINTING = new Set<Step['do']>(['highlight', 'focus', 'reveal', 'note', 'goto', 'refs', 'impact', 'type', 'graph']);
+const POINTING = new Set<Step['do']>(['highlight', 'focus', 'reveal', 'note', 'goto', 'back', 'refs', 'impact', 'type', 'graph']);
 /** Steps that do not move or change the code on screen: they may run while a sentence is read. */
 const STILL = new Set<Step['do']>(['say', 'wait', 'graph', 'clear', 'unfocus']);
 /** A sentence that has been read leaves before the screen moves: the time it takes to close (see core/notes OUT). */
@@ -336,13 +338,14 @@ export function layoutScene(sc: Scene, lead = 0): SceneLayout {
   const cues = cueTimes(sc, timed, lead);
   const lastCue = cues.times.length ? cues.times[cues.times.length - 1] + dwellMs(cues.items[cues.items.length - 1].text) : 0;
   // tour segments carry no narration: no reading time, no dwell
-  if (sc.auto) return { timed, cues, lead: 0, duration: maxEnd + 330, gates: [] };
+  if (sc.auto) return { timed, cues, lead, duration: maxEnd + 330, gates: [] };
   return { timed, cues, lead, duration: Math.max(maxEnd + 930, lastCue + 530, ready + 530, lead + 3330), gates };
 }
 
 /** The bridge card stays until its sentence can be read (the question stays on screen all scene). */
 export const leadFor = (sc: Scene, index: number): number =>
-  index && !sc.auto ? Math.min(BRIDGE_MAX, Math.max(BRIDGE, sc.bridge ? readMs(sc.bridge) + 530 : 0)) : 0;
+  // an author scene, or a tour scene that previews the explanation after it; not a scene already previewed
+  index && (!sc.auto || sc.bridge) && !sc._previewed ? Math.min(BRIDGE_MAX, Math.max(BRIDGE, sc.bridge ? readMs(sc.bridge) + 530 : 0)) : 0;
 
 /** Total duration of an IR in ms at 1x. */
 export function totalMs(ir: Pick<Walkthrough, 'chapters'>): number {

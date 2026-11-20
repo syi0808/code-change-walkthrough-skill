@@ -54,6 +54,8 @@ export const EN = {
 
   // ---- navigation overlays
   'goto.toast': 'Go to Definition  {token} → {to}',
+  'back.toast': 'Go Back  → {to}',
+  'detour.back': 'back to',
   'graph.title': 'Relationships',
   'graph.size': 'Expand / dock',
   'graph.close': 'Close',

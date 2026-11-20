@@ -106,6 +106,20 @@ Use 3–7 nodes. Nodes are files or key symbols, and edges carry verbs. Build th
 ```
 The `token` must appear literally on the `from` line. Say "let's jump into `withRetry`" in the narration first.
 
+**Drill down and come back** (a definition the line needs, just in time; R37)
+```json
+"narration": "`isTransient`: true only for 5xx or 429\n\n- Check needs `HttpError` → its definition first\n- `HttpError`: keeps the response `status`\n- Back at the check: that `status` → 5xx or 429 retried",
+"steps": [
+  { "do": "focus", "range": { "symbol": "isTransient" } },
+  { "do": "goto", "from": { "at": { "find": "err instanceof HttpError" }, "token": "HttpError" },
+    "to": { "file": "src/api/retry.ts", "at": { "symbol": "HttpError" } }, "cue": 2 },
+  { "do": "highlight", "range": { "find": "constructor(public status" }, "label": "status", "cue": 3 },
+  { "do": "back" },
+  { "do": "highlight", "range": { "find": "err.status >= 500" }, "tone": "warn", "label": "5xx · 429", "cue": 4 }
+]
+```
+`back` returns to the line the last `goto` was clicked on (VS Code's Go Back, ⌃−). Keep the detour to what the line needs, one level deep, inside the scene, and make the bullet after `back` say what the definition means *for this line*: that is where the detour pays off. For a definition the walkthrough continues into, use `goto` without `back`.
+
 **Compare two places** (caller and callee, interface and implementation, code and test)
 ```json
 [{ "do": "layout", "mode": "columns" },

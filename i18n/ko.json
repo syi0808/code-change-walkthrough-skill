@@ -39,6 +39,8 @@
     "note.risk": "주의",
     "note.tip": "팁",
     "goto.toast": "정의로 이동  {token} → {to}",
+    "back.toast": "뒤로 이동  → {to}",
+    "detour.back": "돌아갈 곳",
     "graph.title": "관계도",
     "graph.size": "크게/작게",
     "graph.close": "닫기",

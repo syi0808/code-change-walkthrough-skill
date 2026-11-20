@@ -13,7 +13,8 @@
 .tw.open svg { transform: rotate(90deg); }
 .ex-root .tw { width: 16px; display: grid; place-items: center; }
 .ex-row .nm { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
-.ex-row .fi { flex: none; width: 18px; text-align: center; font: 700 9px/1 var(--mono); letter-spacing: -.02em; }
+/* a file's icon sits in the column of a folder's chevron at the same depth, so names line up too */
+.ex-row .fi { flex: none; width: 16px; text-align: center; font: 700 9px/1 var(--mono); letter-spacing: -.02em; }
 .ex-row .fi svg { width: 13px; height: 13px; display: block; margin: 0 auto; }
 .ex-row .sb { flex: none; font: 600 11px var(--mono); margin-left: 6px; }
 .ex-row .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--git-mod); opacity: .8; margin-left: 6px; }

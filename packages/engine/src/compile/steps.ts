@@ -7,7 +7,9 @@ import type { Action, RefItem, Scene, Step, View } from '../ir/types.ts';
 import { resolvePoint, resolveRange } from './anchors.ts';
 import type { CompileContext } from './context.ts';
 
-const KNOWN = new Set<Action>(['open', 'layout', 'diffView', 'reveal', 'highlight', 'focus', 'unfocus', 'note', 'type', 'replay', 'goto', 'refs', 'impact', 'graph', 'say', 'wait', 'clear', 'close', 'delete']);
+const KNOWN = new Set<Action>(['open', 'layout', 'diffView', 'reveal', 'highlight', 'focus', 'unfocus', 'note', 'type', 'replay', 'goto', 'refs', 'impact', 'graph', 'say', 'wait', 'clear', 'close', 'delete', 'back']);
+/** A drill-down longer than this many steps loses the line it left (the goal decays while away). */
+const DETOUR_MAX_STEPS = 6;
 const EFFECTS = new Set(['safe', 'check', 'breaks', 'updated']);
 const VIEWS = new Set<View>(['after', 'before', 'diff']);
 /** Above this many characters a key hunk is replayed line by line: typing keeps one constant cadence. */
@@ -49,6 +51,11 @@ export function resolveScenes(cx: CompileContext): void {
     if (!was || was.file !== file) return 0;
     return Math.max(0, Math.abs(line - was.line) - (ensure ? EDITOR_HALF_ROWS : 0)) * EDITOR_ROW;
   };
+  // where each goto was clicked, for a later `back` (Go Back): the drill-down's way home
+  const trail: { st: Step; pane: number; file: string; view: View; side: 'before' | 'after'; line: number; scene: string; n: number }[] = [];
+  let stepNo = 0;
+  const detours: { a: number; b: number; W: string }[] = [];
+  const sceneOf = (W: string) => W.replace(/\.steps\[\d+\].*$/, '');
   const walkMs = (from: string, to: string) => Math.round(walkPlan(cx.dirs, from, to).reduce((a, x) => a + x.ms, 0));
   const sceneIds = new Set<string>();
   let authored = 0;
@@ -74,6 +81,7 @@ export function resolveScenes(cx: CompileContext): void {
   };
 
   function resolveStep(st: Step, W: string): void {
+    stepNo++;
     if (!KNOWN.has(st.do)) { cx.err(W, `unknown action "${st.do}" (known: ${[...KNOWN].join(', ')})`); return; }
     if (st.view && !VIEWS.has(st.view)) cx.err(W, 'view must be one of after|before|diff');
     switch (st.do) {
@@ -160,8 +168,6 @@ export function resolveScenes(cx: CompileContext): void {
         const from = st.from || {};
         const probe: Step = { do: 'goto', file: from.file, view: from.view, pane: st.pane };
         const u = useFile(probe, W); if (!u) return;
-        // the call site in another file: the explorer walks there before the jump
-        if (probe._walk) st._walkFrom = probe._walk;
         st._pane = u.p;
         st._from = { file: u.file, ...(resolvePoint(cx, from.at, u.file, u.view, W + '.from') || {}) };
         if (st._from.line) { const px = moveTo(u.p, u.file, st._from.line, true); if (px) st._moveFrom = px; }
@@ -177,10 +183,27 @@ export function resolveScenes(cx: CompileContext): void {
         const tview: View = to.view || (tf.after == null ? 'before' : tf.status === 'context' ? 'after' : panes[tp].file === to.file ? panes[tp].view : 'after');
         const r = resolveRange(cx, to.at ?? (from.token ? { symbol: from.token } : 1), to.file, tview, W + '.to');
         st._to = { file: to.file, pane: tp, view: tview, ...(r ? { side: r.side, line: r.from, from: r.from, to: r.to } : {}) };
-        if (onScreen[tp] && onScreen[tp] !== to.file) st._walk = walkMs(onScreen[tp]!, to.file);
         if (r) { const px = moveTo(tp, to.file, r.from, false); if (px) st._move = px; }
+        if (st._from.line && st._from.side) {
+          trail.push({ st, pane: u.p, file: u.file, view: u.view, side: st._from.side, line: st._from.line, scene: sceneOf(W), n: stepNo });
+        }
         setPane(tp, to.file, tview);
         active = tp;
+        return;
+      }
+      case 'back': {
+        // Go Back: to the line the last goto was clicked on, in its pane
+        const home = trail.pop();
+        if (!home) { cx.err(W, '"back" needs a "goto" before it to return from'); return; }
+        home.st._detour = true;
+        detours.push({ a: home.n, b: stepNo, W });
+        if (home.scene !== sceneOf(W)) cx.warn(W, '"back" returns to a goto in another scene: keep a drill-down inside one scene');
+        else if (stepNo - home.n > DETOUR_MAX_STEPS) cx.warn(W, `the drill-down lasts ${stepNo - home.n - 1} steps: keep it to what the line needs (1 or 2 points), so the line it left is still in mind when it returns`);
+        st._pane = home.pane;
+        st._to = { file: home.file, pane: home.pane, view: home.view, side: home.side, line: home.line, from: home.line, to: home.line };
+        { const px = moveTo(home.pane, home.file, home.line, false); if (px) st._move = px; }
+        setPane(home.pane, home.file, home.view);
+        active = home.pane;
         return;
       }
       case 'refs': case 'impact': {
@@ -291,4 +314,6 @@ export function resolveScenes(cx: CompileContext): void {
     });
   });
   if (!ir.chapters.length) cx.err('chapters', 'no chapters');
+  // a drill-down inside a drill-down: two lines to come back to, and the first is lost
+  for (const d of detours) if (detours.some((o) => o.a < d.a && d.b < o.b)) cx.warn(d.W, 'a drill-down inside a drill-down: come "back" before going to another definition; one detour at a time keeps the line it left in mind');
 }

@@ -53,7 +53,9 @@ export type Action =
   | 'open' | 'layout' | 'diffView' | 'reveal' | 'highlight' | 'focus' | 'unfocus' | 'note'
   | 'type' | 'replay' | 'goto' | 'refs' | 'impact' | 'graph' | 'say' | 'wait' | 'clear' | 'close'
   // the tour removes a deleted file from the explorer after replaying it (right click, Delete)
-  | 'delete';
+  | 'delete'
+  // Go Back (⌃−): return from a goto's definition to the line it was clicked on (a drill-down's way home)
+  | 'back';
 
 /** A file the walkthrough brings into the explorer the way a person would (compiler-made, on its first open):
  *  `create` (New File in `parent`, type `name`), `rename` (F2 on `from`, type `name`), `move` (drag `from`
@@ -118,11 +120,11 @@ export interface Step {
   _move?: number;
   /** goto: how far (px) the editor scrolls to the call site before the click. */
   _moveFrom?: number;
+  /** goto: a later `back` returns from it (a drill-down): the screen shows where it will return. */
+  _detour?: boolean;
   /** refs / impact, per item: the explorer's walk (ms) to its file, and the editor's scroll (px) within the same file. */
   _itemWalk?: number[];
   _itemMove?: number[];
-  /** goto: the explorer's walk (ms) to the call site's file, before the jump. */
-  _walkFrom?: number;
   _reveal?: boolean;
   _r?: LineRange | null;
   _first?: LineRange;
@@ -157,6 +159,8 @@ export interface Scene {
   at?: { file: string; hunk?: number };
   steps?: Step[];
   auto?: boolean;
+  /** compiler: this scene's bridge and question were shown before the tour replayed its file (a preview), so it continues without a bridge card */
+  _previewed?: boolean;
   tour?: TourInfo;
 }
 

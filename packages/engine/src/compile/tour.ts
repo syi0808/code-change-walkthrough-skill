@@ -97,7 +97,21 @@ export function expandTour(cx: CompileContext): void {
         let idx = -1;
         items.forEach((it, i) => { if (it.file === sc.at!.file && (sc.at!.hunk == null || it.hunk <= sc.at!.hunk)) idx = i; });
         if (idx < 0 && changed.includes(sc.at.file) && sc.at.hunk) cx.warn(where, `at.hunk ${sc.at.hunk} does not exist in ${sc.at.file}`);
-        if (idx >= next) scs.push(...take(idx));
+        if (idx >= next) {
+          const tours = take(idx);
+          scs.push(...tours);
+          // The explanation of a file is announced before the file is written, not after: the replay
+          // of the file it explains opens with its bridge and asks its question, so the code arriving
+          // line by line has a purpose the viewer already knows (an advance organizer).
+          let k = tours.length;
+          while (k > 0 && tours[k - 1].tour?.file === sc.at.file) k--;
+          const run = tours.slice(k);
+          if (run.length && sc.bridge) {
+            run[0].bridge = sc.bridge;
+            for (const t of run) if (sc.question) t.question = sc.question;
+            sc._previewed = true;
+          }
+        }
       }
       scs.push(sc);
     }
