@@ -211,11 +211,11 @@ function fsExplorer(s: State, st: Step, shown: string | null, pp: (n: PhaseName)
     top = walkTop(top, op.from!, inFolder(op.parent), pp('drag'), nowT, true);
     s.exScroll = { file: inFolder(op.parent), from: op.from!, p: pp('drag'), pick: 0, cursor: false, key, keep: true };
   }
-  // a new folder opens once made (its New File box goes inside it)
+  // a new folder opens once made, clicked open by the pointer (its New File box goes inside it)
   const made = op.dir ? (op.parent ? `${op.parent}/` : '') + op.dir : null;
   if (made && pp('dopen') > 0) {
     top = walkTop(top, inFolder(op.parent), inFolder(made), pp('dopen'), nowT);
-    s.exScroll = { file: inFolder(made), from: inFolder(op.parent), p: pp('dopen'), pick: 0, cursor: false, key };
+    s.exScroll = { file: inFolder(made), from: inFolder(op.parent), p: pp('dopen'), pick: 0, cursor: true, key };
   }
   if (pp('walk') > 0) {
     const src = op.kind === 'rename' ? op.from! : inFolder(made ?? op.parent);
@@ -255,9 +255,23 @@ function applyFsOp(s: State, st: Step, pr: Proc): void {
   if (op.kind === 'create') {
     const btn: Anchor = { kind: 'exNew' }, dirBtn: Anchor = { kind: 'exNewDir' };
     const made = op.dir ? (op.parent ? `${op.parent}/` : '') + op.dir : null;
+    // the new folder's row, clicked open after Enter: New File starts from there
+    const dmoves = made ? foldMoves(dirs, inFolder(op.parent), inFolder(made)) : [];
+    const drow: Anchor = dmoves.length > 1 ? { kind: 'ex', path: dmoves[dmoves.length - 2].path } : dirBtn;
     if (op.dir && !pr.reached('travel')) {
-      // New Folder first: its name (the new folders' path) typed, Enter, and it opens
+      // New Folder first: its name (the new folders' path) typed, Enter, then the pointer clicks it open
       if (at.name === 'dtravel') { s.pointer = { from: last, to: dirBtn, p: ease(at.p) }; return; }
+      if (at.name === 'dopen') {
+        const { k, local, seg } = walkAt(walkPlan(dirs, inFolder(op.parent), inFolder(made!)), at.p);
+        const dfolds = dmoves.length - 1;
+        if (k < dfolds) {
+          const row: Anchor = { kind: 'ex', path: dmoves[k].path };
+          const prev: Anchor = k === 0 ? dirBtn : { kind: 'ex', path: dmoves[k - 1].path };
+          s.pointer = local < seg.travel ? { from: prev, to: row, p: ease(local / seg.travel) } : { from: row, to: row, p: 1, click: local < seg.click };
+        } else s.pointer = { from: drow, to: drow, p: 1 };
+        s.pointerAt = drow;
+        return;
+      }
       s.pointer = { from: dirBtn, to: dirBtn, p: 1, click: at.name === 'dpress' };
       s.pointerAt = dirBtn;
       if (pr.reached('dname') && !pr.reached('dopen')) s.exEdit = { mode: 'mkdir', at: op.parent, text: typed(op.dir, typingIn('dname', op.dir)), sel: false };
@@ -265,7 +279,7 @@ function applyFsOp(s: State, st: Step, pr: Proc): void {
       return;
     }
     if (!pr.reached('walk')) {
-      if (at.name === 'travel') { s.pointer = { from: op.dir ? dirBtn : last, to: btn, p: ease(at.p) }; return; }
+      if (at.name === 'travel') { s.pointer = { from: op.dir ? drow : last, to: btn, p: ease(at.p) }; return; }
       s.pointer = { from: btn, to: btn, p: 1, click: at.name === 'press' };
       s.pointerAt = btn;
       if (pr.reached('name')) s.exEdit = { mode: 'create', at: made ?? op.parent, text: typed(op.name), sel: false };
